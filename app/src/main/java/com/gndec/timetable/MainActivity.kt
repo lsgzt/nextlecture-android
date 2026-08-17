@@ -83,9 +83,11 @@ class MainActivity : ComponentActivity() {
                                 restoreState = true
                             }
                         }
-                        NavHost(navController = nav, startDestination = if (settings!!.onboardingDone) "home" else "onboarding") {
+                        val setupComplete = settings!!.onboardingDone || settings!!.studentName.isNotBlank() || settings!!.registrationNumber.isNotBlank() || settings!!.rollNumber.isNotBlank()
+                        NavHost(navController = nav, startDestination = if (setupComplete) "home" else "onboarding") {
                             composable("onboarding", enterTransition = { fadeIn(tween(140)) }, exitTransition = { fadeOut(tween(100)) }) {
                                 OnboardingScreen(container = container) {
+                                    container.appScope.launch { container.settings.setOnboardingDone(true) }
                                     nav.navigate("home") { popUpTo("onboarding") { inclusive = true } }
                                 }
                             }

@@ -385,7 +385,7 @@ private fun IconCircle(icon: androidx.compose.ui.graphics.vector.ImageVector, si
 
 @Composable
 private fun PrimaryAction(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, enabled: Boolean = true, onClick: () -> Unit) {
-    Button(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = Color.White, disabledContentColor = Color.White.copy(alpha = 0.72f))) {
+    Button(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0A6A66), contentColor = Color.White, disabledContainerColor = Color(0xFF244746), disabledContentColor = Color.White.copy(alpha = 0.72f))) {
         Text(text, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.weight(1f))
         Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
