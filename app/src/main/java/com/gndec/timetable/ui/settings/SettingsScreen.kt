@@ -69,6 +69,7 @@ import com.gndec.timetable.ui.theme.GndecTealDark
 import com.gndec.timetable.util.Formatters
 
 private val TestDelayOptions = listOf(1, 5, 10, 15)
+private const val SOURCE_CODE_URL = "https://github.com/lsgzt/nextlecture-android"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -232,7 +233,12 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit) {
                 item {
                     SectionCard("About", Icons.Default.CheckCircle) {
                         Text("GNDEC Timetable v${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleMedium)
-                        Text("Reminders are local and offline-capable.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("An open-source Android app for GNDEC students. Reminders are local and offline-capable.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Source code", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+                        Text("github.com/lsgzt/nextlecture-android", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SOURCE_CODE_URL))) }) {
+                            Text("View source code on GitHub")
+                        }
                     }
                 }
             }

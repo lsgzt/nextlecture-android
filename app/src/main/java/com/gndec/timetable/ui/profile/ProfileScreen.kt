@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Person
@@ -66,13 +67,14 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit) {
     val settings by container.settings.flow.collectAsStateWithLifecycle(initialValue = AppSettings())
     val scope = rememberCoroutineScope()
     val savedBranch = settings.branch.trim().uppercase()
+    val hasSavedProfile = settings.studentName.isNotBlank() || settings.registrationNumber.isNotBlank() || settings.rollNumber.isNotBlank()
     var branch by remember(savedBranch) { mutableStateOf(savedBranch) }
     var directory by remember(savedBranch) { mutableStateOf<List<StudentDirectoryRecord>>(emptyList()) }
-    var query by remember(settings.studentName) { mutableStateOf(settings.studentName) }
-    var selectedRecord by remember(settings.registrationNumber) { mutableStateOf<StudentDirectoryRecord?>(null) }
+    var query by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var manualMode by remember { mutableStateOf(settings.profileSource == "manual" && settings.studentName.isNotBlank()) }
+    var lookupOpen by remember(hasSavedProfile) { mutableStateOf(!hasSavedProfile) }
+    var manualMode by remember { mutableStateOf(false) }
     var manualName by remember(settings.studentName) { mutableStateOf(settings.studentName) }
     var manualRoll by remember(settings.rollNumber) { mutableStateOf(settings.rollNumber) }
     var manualRegistration by remember(settings.registrationNumber) { mutableStateOf(settings.registrationNumber) }
@@ -88,26 +90,21 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit) {
         when (val result = container.studentDirectoryManager.load(branch, force)) {
             is StudentDirectoryResult.Ready -> {
                 directory = result.records
-                selectedRecord = result.records.firstOrNull { it.registrationNumber == settings.registrationNumber }
                 loading = false
             }
             is StudentDirectoryResult.Failed -> {
                 directory = result.cached
-                selectedRecord = result.cached.firstOrNull { it.registrationNumber == settings.registrationNumber }
                 loading = false
                 error = result.reason
             }
         }
     }
 
-    LaunchedEffect(branch) {
-        if (branch.isNotBlank()) loadBranch(force = false)
+    LaunchedEffect(branch, lookupOpen) {
+        if (lookupOpen && branch.isNotBlank()) loadBranch(force = false)
     }
 
     fun choose(record: StudentDirectoryRecord) {
-        selectedRecord = record
-        query = record.candidateName
-        manualMode = false
         scope.launch {
             container.settings.saveStudentProfile(
                 record.candidateName,
@@ -121,6 +118,8 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit) {
             )
             runCatching { container.refreshManager.changeGroup(record.temporarySubsection) }
             savedMessage = "Official details saved on this device"
+            manualMode = false
+            lookupOpen = false
         }
     }
 
@@ -129,6 +128,8 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit) {
             container.settings.saveStudentProfile(manualName, manualRoll, branch, manualRegistration, manualMentor, manualSection, manualSubsection, "manual")
             runCatching { if (manualSubsection.isNotBlank()) container.refreshManager.changeGroup(manualSubsection) }
             savedMessage = "Manual profile saved on this device"
+            manualMode = false
+            lookupOpen = false
         }
     }
 
@@ -145,39 +146,56 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit) {
             item { PremiumPageHeader("Profile", "Student identity", onBack = onBack) }
             item { ProfileHero(initials, displayName, settings.temporarySubsection.ifBlank { settings.branch.ifBlank { "Add your branch" } }, settings.registrationNumber.ifBlank { "Not linked yet" }) }
             item { SourceStatus(settings.profileSource, loading, savedMessage) }
-            item {
-                SectionTitle("Connect your official record", "Choose your branch, then search the GNDEC 2026 temporary-section PDF.")
-            }
-            item {
-                BranchSelector(branch, onBranch = { branch = it; directory = emptyList(); query = ""; selectedRecord = null; manualMode = false }, onRefresh = { scope.launch { loadBranch(force = true) } }, loading = loading)
-            }
-            if (branch.isNotBlank()) {
+
+            if (hasSavedProfile && !lookupOpen) {
                 item {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-                        OutlinedTextField(query, { query = it; manualMode = false }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Search your name") }, leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) }, enabled = !loading)
-                        Spacer(Modifier.height(8.dp))
-                        if (matches.isNotEmpty() && !manualMode && query.trim().length >= 2) {
-                            matches.take(12).forEach { record ->
-                                CandidateRow(record, matches, onClick = { choose(record) })
+                    SavedProfileCard(
+                        name = settings.studentName,
+                        branch = settings.branch,
+                        registration = settings.registrationNumber,
+                        roll = settings.rollNumber,
+                        section = settings.temporarySection,
+                        subsection = settings.temporarySubsection,
+                        mentor = settings.mentorName
+                    )
+                }
+                item {
+                    ProfileActionRow(
+                        text = "Want to search your name on the official record again?",
+                        onClick = { lookupOpen = true; query = ""; error = null }
+                    )
+                }
+            } else {
+                item {
+                    SectionTitle("Connect your official record", "Choose your branch, then search the GNDEC 2026 temporary-section PDF.")
+                }
+                item {
+                    BranchSelector(
+                        branch,
+                        onBranch = { branch = it; directory = emptyList(); query = ""; error = null; manualMode = false },
+                        onRefresh = { scope.launch { loadBranch(force = true) } },
+                        loading = loading
+                    )
+                }
+                if (branch.isNotBlank()) {
+                    item {
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                            OutlinedTextField(query, { query = it; manualMode = false }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Search your name") }, leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) }, enabled = !loading)
+                            Spacer(Modifier.height(8.dp))
+                            if (matches.isNotEmpty() && !manualMode && query.trim().length >= 2) {
+                                matches.take(12).forEach { record -> CandidateRow(record, matches, onClick = { choose(record) }) }
+                            } else if (directory.isEmpty() && !loading) {
+                                Text("Tap refresh to fetch the official student list for $branch.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                             }
-                        } else if (directory.isEmpty() && !loading) {
-                            Text("Tap refresh to fetch the official student list for $branch.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
-            }
-            error?.let { message ->
-                item { ErrorCard(message, hasCache = directory.isNotEmpty()) }
-            }
-            selectedRecord?.let { record ->
-                item { OfficialRecordCard(record) }
-            }
-            item {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Need to correct something?", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { manualMode = !manualMode }) { Text(if (manualMode) "Hide manual" else "Enter manually") }
+                error?.let { message -> item { ErrorCard(message, hasCache = directory.isNotEmpty()) } }
+                item {
+                    ProfileActionRow(text = "Enter your profile manually instead", onClick = { manualMode = true })
                 }
             }
+
             if (manualMode) {
                 item {
                     ManualFields(
@@ -197,6 +215,31 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit) {
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SavedProfileCard(name: String, branch: String, registration: String, roll: String, section: String, subsection: String, mentor: String) {
+    Card(Modifier.fillMaxWidth().padding(horizontal = 20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), shape = RoundedCornerShape(20.dp), elevation = CardDefaults.cardElevation(0.dp)) {
+        Column(Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Text("SAVED STUDENT DETAILS", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+            Text(name.ifBlank { "Name not added" }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Detail("Branch", branch.ifBlank { "Not added" })
+            Detail("Registration number", registration.ifBlank { "Not added" })
+            Detail("Roll number / Sr. No.", roll.ifBlank { "Not added" })
+            Detail("Temporary section", listOf(section, subsection).filter { it.isNotBlank() }.joinToString("  · ").ifBlank { "Not added" })
+            Detail("Mentor", mentor.ifBlank { "Not added" })
+        }
+    }
+}
+
+@Composable
+private fun ProfileActionRow(text: String, onClick: () -> Unit) {
+    Card(onClick = onClick, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer), shape = RoundedCornerShape(16.dp), elevation = CardDefaults.cardElevation(0.dp)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(text, Modifier.weight(1f), color = MaterialTheme.colorScheme.onPrimaryContainer, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+            Icon(Icons.Default.ArrowForward, contentDescription = "Open", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
         }
     }
 }
