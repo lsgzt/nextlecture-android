@@ -1,0 +1,9 @@
+{
+  "name": "gndec-timetable-normalizer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Restricted backend that normalizes timetable cells via Groq without exposing the API key.",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": { "express": "^4.19.2" }
+}

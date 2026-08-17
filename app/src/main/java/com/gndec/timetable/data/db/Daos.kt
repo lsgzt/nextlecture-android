@@ -1,0 +1,73 @@
+package com.gndec.timetable.data.db
+
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import kotlinx.coroutines.flow.Flow
+
+@Dao
+interface LectureDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(items: List<LectureEntity>)
+
+    @Query("DELETE FROM lectures")
+    suspend fun deleteAll()
+
+    @Query("SELECT * FROM lectures WHERE groupName = :g ORDER BY dayOfWeek, startMinutes")
+    fun observeForGroup(g: String): Flow<List<LectureEntity>>
+
+    @Query("SELECT * FROM lectures WHERE groupName = :g ORDER BY dayOfWeek, startMinutes")
+    suspend fun getForGroup(g: String): List<LectureEntity>
+
+    @Query("SELECT * FROM lectures WHERE groupName = :g AND dayOfWeek = :d AND startMinutes = :s LIMIT 1")
+    suspend fun findOne(g: String, d: Int, s: Int): LectureEntity?
+
+    @Query("SELECT COUNT(*) FROM lectures WHERE groupName = :g")
+    suspend fun countForGroup(g: String): Int
+
+    @Query("SELECT COUNT(*) FROM lectures")
+    suspend fun countAll(): Int
+
+    @Query("SELECT DISTINCT groupName FROM lectures ORDER BY groupName")
+    suspend fun distinctGroups(): List<String>
+}
+
+@Dao
+interface MetaDao {
+    @Query("SELECT * FROM timetable_meta WHERE id = 1")
+    fun observe(): Flow<TimetableMetaEntity?>
+
+    @Query("SELECT * FROM timetable_meta WHERE id = 1")
+    suspend fun get(): TimetableMetaEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun put(meta: TimetableMetaEntity)
+}
+
+@Dao
+interface AiCacheDao {
+    @Query("SELECT * FROM ai_cache WHERE rawHash = :h")
+    suspend fun get(h: String): AiCacheEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun put(e: AiCacheEntity)
+}
+
+@Dao
+interface AlarmDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putAll(items: List<ScheduledAlarmEntity>)
+
+    @Query("SELECT * FROM scheduled_alarms")
+    suspend fun getAll(): List<ScheduledAlarmEntity>
+
+    @Query("SELECT COUNT(*) FROM scheduled_alarms WHERE epochMillis > :now")
+    suspend fun countFuture(now: Long): Int
+
+    @Query("DELETE FROM scheduled_alarms WHERE requestCode = :code")
+    suspend fun delete(code: Int)
+
+    @Query("DELETE FROM scheduled_alarms")
+    suspend fun clear()
+}
