@@ -90,6 +90,24 @@ object NotificationHelper {
     fun notificationsEnabled(context: Context): Boolean =
         NotificationManagerCompat.from(context).areNotificationsEnabled()
 
+    /**
+     * Keep the notification shade focused on the newest timetable event.
+     * Matching by title as well as group also cleans reminders created by
+     * older app versions that did not yet assign a notification group.
+     */
+    private fun clearOlderActiveReminders(context: Context, keepId: Int) {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.activeNotifications
+            .filter { status ->
+                status.id != keepId &&
+                    status.notification.channelId == CHANNEL_REMINDERS &&
+                    status.notification.extras?.getCharSequence(android.app.Notification.EXTRA_TITLE)?.toString()?.let { title ->
+                        title.startsWith("📚") || title.startsWith("🌿")
+                    } == true
+            }
+            .forEach { status -> manager.cancel(status.tag, status.id) }
+    }
+
     /** Post the delayed settings test notification. */
     fun showTestNotification(context: Context): Boolean {
         if (!notificationsEnabled(context)) return false
@@ -123,6 +141,7 @@ object NotificationHelper {
     /**
      * Post a lecture reminder. The caller reuses one notification ID for every
      * stage of the same lecture, so countdowns are replaced rather than stacked.
+     * A new lecture also clears any older lecture/free-period reminder.
      */
     fun showLectureReminder(
         context: Context,
@@ -155,6 +174,7 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        clearOlderActiveReminders(context, notificationId)
         val notification = NotificationCompat.Builder(context, CHANNEL_REMINDERS)
             .setSmallIcon(R.drawable.ic_launcher)
             .setSound(lectureSound(context))
@@ -207,6 +227,7 @@ object NotificationHelper {
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        clearOlderActiveReminders(context, notificationId)
         val notification = NotificationCompat.Builder(context, CHANNEL_REMINDERS)
             .setSmallIcon(R.drawable.ic_launcher)
             .setSound(lectureSound(context))
