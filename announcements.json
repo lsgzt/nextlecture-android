@@ -1,4 +1,13 @@
 {
   "version": 1,
-  "announcements": []
+  "announcements": [
+{
+      "id": "test",
+      "title": "test",
+      "message": "The timetable parser has been improved. Please refresh your timetable.",
+      "publishedAt": "2026-08-17T12:00:00Z",
+      "type": "update",
+      "active": true
+    }
+]
 }
