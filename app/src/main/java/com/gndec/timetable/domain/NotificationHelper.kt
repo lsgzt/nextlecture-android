@@ -19,6 +19,7 @@ object NotificationHelper {
     const val CHANNEL_REMINDERS = "lecture_reminders_v3"
     const val CHANNEL_UPDATES = "timetable_updates_v2"
     private const val TEST_NOTIFICATION_ID = 190816
+    const val GROUP_LECTURE_REMINDERS = "gndec_lecture_reminders"
 
     fun ensureChannels(context: Context) {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -89,10 +90,7 @@ object NotificationHelper {
     fun notificationsEnabled(context: Context): Boolean =
         NotificationManagerCompat.from(context).areNotificationsEnabled()
 
-    /**
-     * Post a lecture reminder. Everything needed is passed in —
-     * NO network calls happen here (works fully offline).
-     */
+    /** Post the delayed settings test notification. */
     fun showTestNotification(context: Context): Boolean {
         if (!notificationsEnabled(context)) return false
         ensureChannels(context)
@@ -122,6 +120,10 @@ object NotificationHelper {
         }
     }
 
+    /**
+     * Post a lecture reminder. The caller reuses one notification ID for every
+     * stage of the same lecture, so countdowns are replaced rather than stacked.
+     */
     fun showLectureReminder(
         context: Context,
         subject: String,
@@ -146,7 +148,7 @@ object NotificationHelper {
         }
 
         val openIntent = PendingIntent.getActivity(
-            context, 0,
+            context, notificationId,
             Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             },
@@ -161,14 +163,68 @@ object NotificationHelper {
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setContentIntent(openIntent)
             .setAutoCancel(true)
+            .setOnlyAlertOnce(false)
+            .setGroup(GROUP_LECTURE_REMINDERS)
+            .setSortKey("lecture_${notificationId}")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .build()
 
         try {
             NotificationManagerCompat.from(context).notify(notificationId, notification)
-        } catch (se: SecurityException) {
+        } catch (_: SecurityException) {
             // POST_NOTIFICATIONS revoked at runtime — nothing else we can do locally
+        }
+    }
+
+    /** Post one notification at the beginning of a real gap between classes. */
+    fun showFreePeriodNotification(
+        context: Context,
+        startMinutes: Int,
+        endMinutes: Int,
+        nextSubject: String,
+        nextStartMinutes: Int,
+        nextVenue: String,
+        notificationId: Int
+    ) {
+        if (!notificationsEnabled(context)) return
+        val durationMinutes = (endMinutes - startMinutes).coerceAtLeast(0)
+        val durationText = when {
+            durationMinutes % 60 == 0 -> "${durationMinutes / 60}h"
+            durationMinutes > 60 -> "${durationMinutes / 60}h ${durationMinutes % 60}m"
+            else -> "${durationMinutes}m"
+        }
+        val title = "🌿 Your next $durationText is free"
+        val body = buildString {
+            append("🕐 ${Formatters.range(startMinutes, endMinutes)}")
+            append("\nNext: $nextSubject at ${Formatters.hm(nextStartMinutes)}")
+            if (nextVenue.isNotBlank()) append("\n📍 $nextVenue")
+        }
+        val openIntent = PendingIntent.getActivity(
+            context, notificationId,
+            Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = NotificationCompat.Builder(context, CHANNEL_REMINDERS)
+            .setSmallIcon(R.drawable.ic_launcher)
+            .setSound(lectureSound(context))
+            .setContentTitle(title)
+            .setContentText("Next: $nextSubject at ${Formatters.hm(nextStartMinutes)}")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentIntent(openIntent)
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+            .setGroup(GROUP_LECTURE_REMINDERS)
+            .setSortKey("free_${notificationId}")
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .build()
+        try {
+            NotificationManagerCompat.from(context).notify(notificationId, notification)
+        } catch (_: SecurityException) {
+            // POST_NOTIFICATIONS revoked at runtime.
         }
     }
 }
