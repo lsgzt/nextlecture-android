@@ -143,27 +143,7 @@ private val BottomNavItems = listOf(
 
 @Composable
 fun BottomBar(current: String, onNavigate: (String) -> Unit) {
-    NavigationBar(
-        containerColor = MaterialTheme.colorScheme.surface,
-        tonalElevation = 0.dp,
-        modifier = Modifier.height(80.dp)
-    ) {
-        BottomNavItems.forEach { (route, label, icon) ->
-            NavigationBarItem(
-                selected = current == route,
-                onClick = { onNavigate(route) },
-                icon = { Icon(icon, contentDescription = label, modifier = Modifier.size(25.dp)) },
-                label = { Text(label, fontSize = 14.sp) },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                    selectedTextColor = MaterialTheme.colorScheme.primary,
-                    indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
-                    unselectedIconColor = MaterialTheme.colorScheme.onSurface,
-                    unselectedTextColor = MaterialTheme.colorScheme.onSurface
-                )
-            )
-        }
-    }
+    PremiumBottomBar(selected = current, onNavigate = onNavigate)
 }
 
 @Composable

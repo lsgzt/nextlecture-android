@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -26,6 +27,13 @@ data class AppSettings(
     val rollNumber: String = "",
     val branch: String = "",
     val registrationNumber: String = "",
+    val mentorName: String = "",
+    val temporarySection: String = "",
+    val temporarySubsection: String = "",
+    val profileSource: String = "manual",
+    val studentDirectoryBranch: String = "",
+    val studentDirectoryJson: String = "",
+    val studentDirectoryUpdatedAt: Long = 0L,
     val announcementNotifications: Boolean = true,
     val lastAnnouncementId: String = "",
     val lastAnnouncementTitle: String = "",
@@ -56,6 +64,13 @@ class SettingsManager(private val context: Context) {
         val ROLL_NUMBER = stringPreferencesKey("roll_number")
         val BRANCH = stringPreferencesKey("branch")
         val REGISTRATION_NUMBER = stringPreferencesKey("registration_number")
+        val MENTOR_NAME = stringPreferencesKey("mentor_name")
+        val TEMPORARY_SECTION = stringPreferencesKey("temporary_section")
+        val TEMPORARY_SUBSECTION = stringPreferencesKey("temporary_subsection")
+        val PROFILE_SOURCE = stringPreferencesKey("profile_source")
+        val STUDENT_DIRECTORY_BRANCH = stringPreferencesKey("student_directory_branch")
+        val STUDENT_DIRECTORY_JSON = stringPreferencesKey("student_directory_json")
+        val STUDENT_DIRECTORY_UPDATED_AT = longPreferencesKey("student_directory_updated_at")
         val ANNOUNCEMENT_NOTIFICATIONS = booleanPreferencesKey("announcement_notifications")
         val LAST_ANNOUNCEMENT_ID = stringPreferencesKey("last_announcement_id")
         val LAST_ANNOUNCEMENT_TITLE = stringPreferencesKey("last_announcement_title")
@@ -80,6 +95,13 @@ class SettingsManager(private val context: Context) {
             rollNumber = p[K.ROLL_NUMBER] ?: "",
             branch = p[K.BRANCH] ?: "",
             registrationNumber = p[K.REGISTRATION_NUMBER] ?: "",
+            mentorName = p[K.MENTOR_NAME] ?: "",
+            temporarySection = p[K.TEMPORARY_SECTION] ?: "",
+            temporarySubsection = p[K.TEMPORARY_SUBSECTION] ?: "",
+            profileSource = p[K.PROFILE_SOURCE] ?: "manual",
+            studentDirectoryBranch = p[K.STUDENT_DIRECTORY_BRANCH] ?: "",
+            studentDirectoryJson = p[K.STUDENT_DIRECTORY_JSON] ?: "",
+            studentDirectoryUpdatedAt = p[K.STUDENT_DIRECTORY_UPDATED_AT] ?: 0L,
             announcementNotifications = p[K.ANNOUNCEMENT_NOTIFICATIONS] ?: true,
             lastAnnouncementId = p[K.LAST_ANNOUNCEMENT_ID] ?: "",
             lastAnnouncementTitle = p[K.LAST_ANNOUNCEMENT_TITLE] ?: "",
@@ -103,6 +125,34 @@ class SettingsManager(private val context: Context) {
     suspend fun setRollNumber(value: String) = context.dataStore.edit { it[K.ROLL_NUMBER] = value.trim() }
     suspend fun setBranch(value: String) = context.dataStore.edit { it[K.BRANCH] = value.trim() }
     suspend fun setRegistrationNumber(value: String) = context.dataStore.edit { it[K.REGISTRATION_NUMBER] = value.trim() }
+    suspend fun setMentorName(value: String) = context.dataStore.edit { it[K.MENTOR_NAME] = value.trim() }
+    suspend fun setTemporarySection(value: String) = context.dataStore.edit { it[K.TEMPORARY_SECTION] = value.trim() }
+    suspend fun setTemporarySubsection(value: String) = context.dataStore.edit { it[K.TEMPORARY_SUBSECTION] = value.trim() }
+    suspend fun setProfileSource(value: String) = context.dataStore.edit { it[K.PROFILE_SOURCE] = value.trim() }
+    suspend fun setStudentDirectoryCache(branch: String, json: String, updatedAt: Long = System.currentTimeMillis()) = context.dataStore.edit {
+        it[K.STUDENT_DIRECTORY_BRANCH] = branch
+        it[K.STUDENT_DIRECTORY_JSON] = json
+        it[K.STUDENT_DIRECTORY_UPDATED_AT] = updatedAt
+    }
+    suspend fun saveStudentProfile(
+        name: String,
+        rollNumber: String,
+        branch: String,
+        registrationNumber: String,
+        mentorName: String,
+        temporarySection: String,
+        temporarySubsection: String,
+        source: String
+    ) = context.dataStore.edit {
+        it[K.STUDENT_NAME] = name.trim()
+        it[K.ROLL_NUMBER] = rollNumber.trim()
+        it[K.BRANCH] = branch.trim()
+        it[K.REGISTRATION_NUMBER] = registrationNumber.trim()
+        it[K.MENTOR_NAME] = mentorName.trim()
+        it[K.TEMPORARY_SECTION] = temporarySection.trim()
+        it[K.TEMPORARY_SUBSECTION] = temporarySubsection.trim()
+        it[K.PROFILE_SOURCE] = source.trim()
+    }
     suspend fun setAnnouncementNotifications(enabled: Boolean) = context.dataStore.edit { it[K.ANNOUNCEMENT_NOTIFICATIONS] = enabled }
     suspend fun setLastAnnouncementId(id: String) = context.dataStore.edit { it[K.LAST_ANNOUNCEMENT_ID] = id }
     suspend fun setAnnouncementCache(id: String, title: String, message: String, publishedAt: String) = context.dataStore.edit {

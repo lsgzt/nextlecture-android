@@ -12,6 +12,7 @@ offline-capable lecture reminders** via `AlarmManager` — no network needed at 
 - "Last fetched" freshness indicator + manual **↻ Fetch again** (ETag / Last-Modified aware)
 - Next-lecture card with live countdown, happening-now state, free-period detection
 - Full day view with completed / happening / upcoming / free states
+- Reference-style Home, Today, Alerts, Profile, and onboarding surfaces with a fixed-height bottom navigation
 - Local lecture reminders (15 min before / at start, configurable) with a custom notification sound
 - Exact alarms with graceful fallback + reliability checklist (battery, permissions)
 - Boot receiver reschedules alarms after device reboot
@@ -19,6 +20,7 @@ offline-capable lecture reminders** via `AlarmManager` — no network needed at 
   ambiguous subject/teacher/venue/type fields, with local AI-result caching
 - Bring-your-own Groq API key (encrypted storage) or restricted developer backend
 - Dynamic Groq model list (models API) + custom model ID — no APK update needed for model changes
+- Official GNDEC 2026 student lookup by branch PDF, duplicate-name disambiguation, local cache, and manual fallback
 
 ## Architecture
 
@@ -27,10 +29,19 @@ GNDEC official site → fetch HTML (ETag/Last-Modified) → Jsoup parser →
 raw timetable → (deterministic | Groq AI for ambiguous cells) → validation →
 Room → ┬ Home Screen (instant, offline)
        └ AlarmManager → BroadcastReceiver → Notification  (internet NOT needed)
+
+GNDEC 2026 branch PDF → OkHttp → on-device PDF text extraction →
+student directory cache → name search → profile + temporary subsection/group
 ```
 
 Backend (optional, in `/backend`) is only a restricted cell-normalization proxy with a
 server-side `GROQ_API_KEY` secret. Push/FCM is not required for lecture reminders.
+
+## Official 2026 student profile lookup
+
+During first-time setup, the app lets the student choose CE, CS, EC, EE, IT, ME, or RAI. It downloads the corresponding **2026 Batch Temporary Section details** PDF from GNDEC’s official timetable page, extracts the student directory on-device, and keeps the parsed directory locally for offline reuse. Typing a name filters the branch list; if the same name appears more than once, the choices include the registration number so the student can identify the correct record.
+
+After a match is selected, the app saves the candidate name, registration number, Sr. No. as the roll-number field, branch, temporary section, temporary subsection/timetable group, and mentor name. The Profile screen provides the same branch refresh and search workflow later, including a manual-entry fallback if the official PDF is unavailable or a correction is needed. The source PDFs are the seven branch links under the **2026 Batch Temporary Section details** section at [GNDEC’s timetable page](https://appsc.gndec.ac.in/time_tables).
 
 ## Build
 
@@ -52,6 +63,7 @@ APK, and uploads it as an artifact named **`college-timetable-debug.apk`**
 - No Groq key is embedded in the APK or committed to the repo.
 - User-provided keys are stored with Android Keystore-backed encrypted preferences.
 - Keys are never logged, never sent to the backend, never included in analytics/crash logs.
+- Student directory and profile data remain local to the device after download.
 
 ## Reliability disclaimer
 

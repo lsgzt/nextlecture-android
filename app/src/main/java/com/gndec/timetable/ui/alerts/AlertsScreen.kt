@@ -51,10 +51,10 @@ import com.gndec.timetable.data.db.LectureEntity
 import com.gndec.timetable.data.prefs.AppSettings
 import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.domain.NotificationHelper
-import com.gndec.timetable.ui.BottomBar
-import com.gndec.timetable.ui.Header
+import com.gndec.timetable.ui.PremiumBottomBar
+import com.gndec.timetable.ui.PremiumPageHeader
 import com.gndec.timetable.ui.IconBadge
-import com.gndec.timetable.ui.ScreenSurface
+import com.gndec.timetable.ui.PremiumScreenBackground
 import com.gndec.timetable.ui.TealOutlineButton
 import com.gndec.timetable.ui.theme.GndecAqua
 import com.gndec.timetable.ui.theme.GndecGreen
@@ -104,20 +104,19 @@ fun AlertsScreen(
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = { BottomBar("alerts") { route -> when (route) { "home" -> onOpenHome(); "today" -> onOpenToday() } } }
+        bottomBar = { PremiumBottomBar("alerts") { route -> when (route) { "home" -> onOpenHome(); "today" -> onOpenToday() } } }
     ) { padding ->
-        ScreenSurface {
+        PremiumScreenBackground {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentPadding = PaddingValues(bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 item {
-                    Header(
-                        title = "Lecture reminders",
-                        subtitle = "Ready for ${upcoming.size} scheduled lectures",
-                        onSettings = onOpenSettings,
-                        modifier = Modifier.padding(top = 8.dp)
+                    PremiumPageHeader(
+                        title = "Alerts",
+                        subtitle = "${upcoming.size} scheduled lectures",
+                        onSettings = onOpenSettings
                     )
                 }
                 item { HealthCard(enabled, reliability, meta?.lastSuccessfulFetch) }

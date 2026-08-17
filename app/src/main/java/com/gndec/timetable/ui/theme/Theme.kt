@@ -100,7 +100,7 @@ fun GndecTheme(mode: String, content: @Composable () -> Unit) {
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as? ComponentActivity)?.window ?: return@SideEffect
-            window.statusBarColor = colors.background.toArgb()
+            window.statusBarColor = (if (dark) colors.background else GndecAqua).toArgb()
             window.navigationBarColor = colors.background.toArgb()
             WindowCompat.getInsetsController(window, view).apply {
                 isAppearanceLightStatusBars = !dark
