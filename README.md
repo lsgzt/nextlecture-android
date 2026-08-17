@@ -59,3 +59,27 @@ The app maximizes practical reliability (exact alarms, boot recovery, reliabilit
 checklist) but cannot *guarantee* notifications: OEM battery restrictions, disabled
 notifications, Do Not Disturb or a powered-off device can affect delivery. The app
 detects and surfaces these conditions in Settings → Notification Reliability.
+
+## Announcements for all users
+
+The app reads `announcements.json` from the public `main` branch through GitHub’s raw-content endpoint. This is a lightweight broadcast feed rather than a real-time push service: devices check it when the app opens and during the existing network-constrained background refresh, then show each new announcement once as a local notification and in the Home screen.
+
+To publish an announcement from a phone, open the repository on GitHub, open `announcements.json`, choose **Edit**, and add an object inside the `announcements` array. Use a unique `id`, a short `title`, the full `message`, an ISO-style `publishedAt` value, and `active: true`. Commit the change to `main`; installed apps will discover it on their next feed check.
+
+```json
+{
+  "version": 1,
+  "announcements": [
+    {
+      "id": "2026-08-17-maintenance",
+      "title": "Timetable update",
+      "message": "The timetable parser has been improved. Please refresh your timetable.",
+      "publishedAt": "2026-08-17T12:00:00Z",
+      "type": "update",
+      "active": true
+    }
+  ]
+}
+```
+
+This feed is intentionally separate from lecture reminders. Lecture reminders remain local and offline-capable; announcement delivery depends on Android allowing the periodic check and on the device having connectivity at check time. The in-app **Settings → App updates → Manage on GitHub** shortcut opens the mobile edit page for this file.

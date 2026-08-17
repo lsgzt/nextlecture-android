@@ -19,6 +19,7 @@ class AppContainer(val context: Context) {
     val fetcher by lazy { TimetableFetcher() }
     val normalizer by lazy { AiNormalizer(db.aiCacheDao(), GroqClient(), BackendClient()) }
     val scheduler by lazy { AlarmScheduler(context) }
+    val announcementManager by lazy { AnnouncementManager(context, settings) }
     val refreshManager by lazy { RefreshManager(db, settings, keys, fetcher, normalizer, scheduler) }
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 }

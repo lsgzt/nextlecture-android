@@ -165,6 +165,18 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit) {
                     }
                 }
                 item {
+                    SectionCard("App updates", Icons.Default.Notifications) {
+                        ToggleRow("Announcements and updates", settings.announcementNotifications, vm::setAnnouncementNotifications)
+                        Text("New messages are checked when the app opens and during the existing background refresh.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth())
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = vm::checkAnnouncements, enabled = !busy) { Text("Check now") }
+                            TextButton(onClick = {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/lsgzt/nextlecture-android/edit/main/announcements.json")))
+                            }) { Text("Manage on GitHub") }
+                        }
+                    }
+                }
+                item {
                     SectionCard("Notification reliability", Icons.Default.Security) {
                         Text("Check notification permissions and battery settings.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth())
                         TealOutlineButton("Run reliability check", Icons.Default.Security, modifier = Modifier.fillMaxWidth(), onClick = vm::runReliabilityCheck)

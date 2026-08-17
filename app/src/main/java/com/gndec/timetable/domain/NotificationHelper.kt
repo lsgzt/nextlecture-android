@@ -17,7 +17,7 @@ object NotificationHelper {
 
     // v2 forces Android to create a fresh channel so existing muted/old channels cannot suppress the bundled sound.
     const val CHANNEL_REMINDERS = "lecture_reminders_v3"
-    const val CHANNEL_UPDATES = "timetable_updates"
+    const val CHANNEL_UPDATES = "timetable_updates_v2"
     private const val TEST_NOTIFICATION_ID = 190816
 
     fun ensureChannels(context: Context) {
@@ -46,13 +46,45 @@ object NotificationHelper {
             CHANNEL_UPDATES,
             context.getString(R.string.channel_updates_name),
             NotificationManager.IMPORTANCE_DEFAULT
-        )
+        ).apply {
+            description = "Announcements and app updates"
+            setSound(sound, attrs)
+            enableVibration(true)
+        }
         nm.createNotificationChannels(listOf(reminders, updates))
     }
 
     private fun lectureSound(context: Context): Uri = Uri.parse(
         "android.resource://${context.packageName}/${R.raw.lecture_reminder}"
     )
+
+    fun showAnnouncement(context: Context, announcementId: String, title: String, message: String) {
+        if (!notificationsEnabled(context)) return
+        ensureChannels(context)
+        val openIntent = PendingIntent.getActivity(
+            context,
+            announcementId.hashCode(),
+            Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = NotificationCompat.Builder(context, CHANNEL_UPDATES)
+            .setSmallIcon(R.drawable.ic_launcher)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setContentIntent(openIntent)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .build()
+        try {
+            NotificationManagerCompat.from(context).notify(announcementId.hashCode(), notification)
+        } catch (_: SecurityException) {
+            // POST_NOTIFICATIONS is disabled at runtime.
+        }
+    }
 
     fun notificationsEnabled(context: Context): Boolean =
         NotificationManagerCompat.from(context).areNotificationsEnabled()

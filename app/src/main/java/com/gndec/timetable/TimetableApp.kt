@@ -26,8 +26,12 @@ class TimetableApp : Application() {
         container.appScope.launch {
             runCatching { container.refreshManager.refreshIfStale() }
         }
+        container.appScope.launch {
+            runCatching { container.announcementManager.loadCached() }
+            runCatching { container.announcementManager.refreshAndNotify() }
+        }
 
-        // Non-urgent periodic background refresh
+        // Non-urgent periodic background refresh (12h cadence).
         val work = PeriodicWorkRequestBuilder<RefreshWorker>(12, TimeUnit.HOURS)
             .setConstraints(
                 Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()

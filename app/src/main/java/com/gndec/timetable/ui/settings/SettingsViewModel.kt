@@ -72,6 +72,13 @@ class SettingsViewModel(private val c: AppContainer) {
     fun setRemindAtStart(b: Boolean) = scope.launch { c.settings.setRemindAtStart(b); reschedule() }
     fun setAiEnabled(b: Boolean) = scope.launch { c.settings.setAiEnabled(b) }
     fun setThemeMode(m: String) = scope.launch { c.settings.setThemeMode(m) }
+    fun setAnnouncementNotifications(enabled: Boolean) = scope.launch { c.settings.setAnnouncementNotifications(enabled) }
+    fun checkAnnouncements() = scope.launch {
+        _busy.value = true
+        c.announcementManager.refreshAndNotify()
+        _message.value = "Announcement feed checked"
+        _busy.value = false
+    }
     fun setBackendUrl(u: String) = scope.launch { c.settings.setBackendUrl(u); _message.value = "Backend URL saved" }
     fun setModel(m: String) = scope.launch { c.settings.setModel(m); _message.value = "Model set to $m" }
 

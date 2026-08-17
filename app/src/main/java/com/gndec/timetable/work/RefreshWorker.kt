@@ -10,6 +10,7 @@ import com.gndec.timetable.domain.RefreshResult
 class RefreshWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result {
         val app = applicationContext as TimetableApp
+        runCatching { app.container.announcementManager.refreshAndNotify() }
         return when (val r = app.container.refreshManager.refresh(force = false)) {
             is RefreshResult.Failed -> if (runAttemptCount < 3) Result.retry() else Result.success()
             is RefreshResult.Success, RefreshResult.UpToDate -> Result.success()

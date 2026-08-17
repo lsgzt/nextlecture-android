@@ -41,6 +41,7 @@ data class HomeUiState(
     val nowMillis: Long = System.currentTimeMillis(),
     val status: NextLectureEngine.Status = NextLectureEngine.Status.NoData,
     val upcomingToday: List<LectureEntity> = emptyList(),
+    val todayLectures: List<LectureEntity> = emptyList(),
     val freeGapMinutes: Int? = null,
     val stale: Boolean = false
 )
@@ -74,13 +75,15 @@ class HomeViewModel(private val c: AppContainer) {
             val zdt = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault())
             val dow = zdt.dayOfWeek.value
             val nowMin = zdt.hour * 60 + zdt.minute
+            val todayLectures = lectures.filter { it.dayOfWeek == dow }.sortedBy { it.startMinutes }
             HomeUiState(
                 loading = false,
                 group = s.group,
                 lastFetch = m?.lastSuccessfulFetch,
                 nowMillis = now,
                 status = NextLectureEngine.compute(lectures, dow, nowMin),
-                upcomingToday = lectures.filter { it.dayOfWeek == dow && it.startMinutes > nowMin },
+                upcomingToday = todayLectures.filter { it.startMinutes > nowMin },
+                todayLectures = todayLectures,
                 freeGapMinutes = NextLectureEngine.freeGapMinutes(lectures, dow, nowMin),
                 stale = Formatters.isStale(m?.lastSuccessfulFetch, now)
             )

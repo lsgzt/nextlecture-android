@@ -25,7 +25,12 @@ data class AppSettings(
     val studentName: String = "",
     val rollNumber: String = "",
     val branch: String = "",
-    val registrationNumber: String = ""
+    val registrationNumber: String = "",
+    val announcementNotifications: Boolean = true,
+    val lastAnnouncementId: String = "",
+    val lastAnnouncementTitle: String = "",
+    val lastAnnouncementMessage: String = "",
+    val lastAnnouncementPublishedAt: String = ""
 ) {
     companion object {
         const val DEFAULT_SOURCE_URL =
@@ -51,6 +56,11 @@ class SettingsManager(private val context: Context) {
         val ROLL_NUMBER = stringPreferencesKey("roll_number")
         val BRANCH = stringPreferencesKey("branch")
         val REGISTRATION_NUMBER = stringPreferencesKey("registration_number")
+        val ANNOUNCEMENT_NOTIFICATIONS = booleanPreferencesKey("announcement_notifications")
+        val LAST_ANNOUNCEMENT_ID = stringPreferencesKey("last_announcement_id")
+        val LAST_ANNOUNCEMENT_TITLE = stringPreferencesKey("last_announcement_title")
+        val LAST_ANNOUNCEMENT_MESSAGE = stringPreferencesKey("last_announcement_message")
+        val LAST_ANNOUNCEMENT_PUBLISHED_AT = stringPreferencesKey("last_announcement_published_at")
     }
 
     val flow: Flow<AppSettings> = context.dataStore.data.map { p ->
@@ -69,7 +79,12 @@ class SettingsManager(private val context: Context) {
             studentName = p[K.STUDENT_NAME] ?: "",
             rollNumber = p[K.ROLL_NUMBER] ?: "",
             branch = p[K.BRANCH] ?: "",
-            registrationNumber = p[K.REGISTRATION_NUMBER] ?: ""
+            registrationNumber = p[K.REGISTRATION_NUMBER] ?: "",
+            announcementNotifications = p[K.ANNOUNCEMENT_NOTIFICATIONS] ?: true,
+            lastAnnouncementId = p[K.LAST_ANNOUNCEMENT_ID] ?: "",
+            lastAnnouncementTitle = p[K.LAST_ANNOUNCEMENT_TITLE] ?: "",
+            lastAnnouncementMessage = p[K.LAST_ANNOUNCEMENT_MESSAGE] ?: "",
+            lastAnnouncementPublishedAt = p[K.LAST_ANNOUNCEMENT_PUBLISHED_AT] ?: ""
         )
     }
 
@@ -88,4 +103,12 @@ class SettingsManager(private val context: Context) {
     suspend fun setRollNumber(value: String) = context.dataStore.edit { it[K.ROLL_NUMBER] = value.trim() }
     suspend fun setBranch(value: String) = context.dataStore.edit { it[K.BRANCH] = value.trim() }
     suspend fun setRegistrationNumber(value: String) = context.dataStore.edit { it[K.REGISTRATION_NUMBER] = value.trim() }
+    suspend fun setAnnouncementNotifications(enabled: Boolean) = context.dataStore.edit { it[K.ANNOUNCEMENT_NOTIFICATIONS] = enabled }
+    suspend fun setLastAnnouncementId(id: String) = context.dataStore.edit { it[K.LAST_ANNOUNCEMENT_ID] = id }
+    suspend fun setAnnouncementCache(id: String, title: String, message: String, publishedAt: String) = context.dataStore.edit {
+        it[K.LAST_ANNOUNCEMENT_ID] = id
+        it[K.LAST_ANNOUNCEMENT_TITLE] = title
+        it[K.LAST_ANNOUNCEMENT_MESSAGE] = message
+        it[K.LAST_ANNOUNCEMENT_PUBLISHED_AT] = publishedAt
+    }
 }
