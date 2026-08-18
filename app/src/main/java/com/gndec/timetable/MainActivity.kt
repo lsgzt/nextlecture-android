@@ -25,10 +25,13 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.gndec.timetable.data.db.LectureEntity
 import com.gndec.timetable.data.prefs.AppSettings
+import com.gndec.timetable.domain.AppContainer
+import com.gndec.timetable.domain.NotificationHelper
 import com.gndec.timetable.ui.alerts.AlertsScreen
 import com.gndec.timetable.ui.day.DayScreen
 import com.gndec.timetable.ui.details.LectureDetailScreen
 import com.gndec.timetable.ui.home.HomeScreen
+import com.gndec.timetable.ui.onboarding.NotificationPermissionOnboardingScreen
 import com.gndec.timetable.ui.onboarding.OnboardingScreen
 import com.gndec.timetable.ui.profile.ProfileScreen
 import com.gndec.timetable.ui.settings.SettingsScreen
@@ -84,11 +87,24 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         val setupComplete = settings!!.onboardingDone || settings!!.studentName.isNotBlank() || settings!!.registrationNumber.isNotBlank() || settings!!.rollNumber.isNotBlank()
-                        NavHost(navController = nav, startDestination = if (setupComplete) "home" else "onboarding") {
+                        val permissionPromptNeeded = setupComplete &&
+                            !settings!!.notificationPermissionPrompted &&
+                            !NotificationHelper.notificationsEnabled(container.context)
+                        val startDestination = when {
+                            !setupComplete -> "onboarding"
+                            permissionPromptNeeded -> "notification_onboarding"
+                            else -> "home"
+                        }
+                        NavHost(navController = nav, startDestination = startDestination) {
                             composable("onboarding", enterTransition = { fadeIn(tween(140)) }, exitTransition = { fadeOut(tween(100)) }) {
                                 OnboardingScreen(container = container) {
                                     container.appScope.launch { container.settings.setOnboardingDone(true) }
                                     nav.navigate("home") { popUpTo("onboarding") { inclusive = true } }
+                                }
+                            }
+                            composable("notification_onboarding", enterTransition = { fadeIn(tween(140)) }, exitTransition = { fadeOut(tween(100)) }) {
+                                NotificationPermissionOnboardingScreen(container = container) {
+                                    nav.navigate("home") { popUpTo("notification_onboarding") { inclusive = true } }
                                 }
                             }
                             composable("home", enterTransition = { fadeIn(tween(140)) }, exitTransition = { fadeOut(tween(100)) }) {

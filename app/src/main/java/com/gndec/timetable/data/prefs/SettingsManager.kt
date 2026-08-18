@@ -23,6 +23,7 @@ data class AppSettings(
     val remind5: Boolean = false,
     val remindAtStart: Boolean = true,
     val onboardingDone: Boolean = false,
+    val notificationPermissionPrompted: Boolean = false,
     val studentName: String = "",
     val rollNumber: String = "",
     val branch: String = "",
@@ -60,6 +61,7 @@ class SettingsManager(private val context: Context) {
         val REMIND5 = booleanPreferencesKey("remind_5")
         val REMIND_START = booleanPreferencesKey("remind_start")
         val ONBOARDED = booleanPreferencesKey("onboarding_done")
+        val NOTIFICATION_PERMISSION_PROMPTED = booleanPreferencesKey("notification_permission_prompted")
         val STUDENT_NAME = stringPreferencesKey("student_name")
         val ROLL_NUMBER = stringPreferencesKey("roll_number")
         val BRANCH = stringPreferencesKey("branch")
@@ -91,6 +93,7 @@ class SettingsManager(private val context: Context) {
             remind5 = p[K.REMIND5] ?: false,
             remindAtStart = p[K.REMIND_START] ?: true,
             onboardingDone = p[K.ONBOARDED] ?: false,
+            notificationPermissionPrompted = p[K.NOTIFICATION_PERMISSION_PROMPTED] ?: false,
             studentName = p[K.STUDENT_NAME] ?: "",
             rollNumber = p[K.ROLL_NUMBER] ?: "",
             branch = p[K.BRANCH] ?: "",
@@ -121,6 +124,7 @@ class SettingsManager(private val context: Context) {
     suspend fun setRemind5(b: Boolean) = context.dataStore.edit { it[K.REMIND5] = b }
     suspend fun setRemindAtStart(b: Boolean) = context.dataStore.edit { it[K.REMIND_START] = b }
     suspend fun setOnboardingDone(b: Boolean) = context.dataStore.edit { it[K.ONBOARDED] = b }
+    suspend fun setNotificationPermissionPrompted(b: Boolean) = context.dataStore.edit { it[K.NOTIFICATION_PERMISSION_PROMPTED] = b }
     suspend fun setStudentName(value: String) = context.dataStore.edit { it[K.STUDENT_NAME] = value.trim() }
     suspend fun setRollNumber(value: String) = context.dataStore.edit { it[K.ROLL_NUMBER] = value.trim() }
     suspend fun setBranch(value: String) = context.dataStore.edit { it[K.BRANCH] = value.trim() }

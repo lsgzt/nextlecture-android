@@ -43,6 +43,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -84,6 +85,7 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit) {
     val busy by vm.busy.collectAsStateWithLifecycle()
     val reliability by vm.reliability.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    LaunchedEffect(Unit) { vm.runReliabilityCheck() }
     var groupDialog by remember { mutableStateOf(false) }
     var keyInput by remember { mutableStateOf("") }
     var customModel by remember { mutableStateOf("") }

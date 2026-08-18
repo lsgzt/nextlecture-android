@@ -1,5 +1,6 @@
 package com.gndec.timetable.domain
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -7,8 +8,11 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
 import android.net.Uri
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.gndec.timetable.MainActivity
 import com.gndec.timetable.R
 import com.gndec.timetable.util.Formatters
@@ -87,8 +91,12 @@ object NotificationHelper {
         }
     }
 
-    fun notificationsEnabled(context: Context): Boolean =
-        NotificationManagerCompat.from(context).areNotificationsEnabled()
+    fun notificationsEnabled(context: Context): Boolean {
+        val appNotificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
+        val runtimePermissionGranted = Build.VERSION.SDK_INT < 33 ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        return appNotificationsEnabled && runtimePermissionGranted
+    }
 
     /**
      * Keep the notification shade focused on the newest timetable event.

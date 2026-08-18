@@ -102,10 +102,22 @@ fun OnboardingScreen(container: AppContainer, onDone: () -> Unit) {
         }
     }
 
-    val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { onDone() }
+    val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        scope.launch {
+            container.settings.setNotificationPermissionPrompted(true)
+            onDone()
+        }
+    }
+
+    fun finishNotificationStep() {
+        scope.launch {
+            container.settings.setNotificationPermissionPrompted(true)
+            onDone()
+        }
+    }
 
     fun requestNotificationsAndFinish() {
-        if (Build.VERSION.SDK_INT >= 33) notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) else onDone()
+        if (Build.VERSION.SDK_INT >= 33) notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) else finishNotificationStep()
     }
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -192,11 +204,40 @@ fun OnboardingScreen(container: AppContainer, onDone: () -> Unit) {
                     }
                 }
                 4 -> item {
-                    NotificationStep(onEnable = { requestNotificationsAndFinish() }, onSkip = onDone)
+                    NotificationStep(onEnable = { requestNotificationsAndFinish() }, onSkip = { finishNotificationStep() })
                 }
             }
         }
     }
+}
+
+@Composable
+fun NotificationPermissionOnboardingScreen(container: AppContainer, onDone: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        scope.launch {
+            container.settings.setNotificationPermissionPrompted(true)
+            onDone()
+        }
+    }
+
+    fun finish() {
+        scope.launch {
+            container.settings.setNotificationPermissionPrompted(true)
+            onDone()
+        }
+    }
+
+    NotificationStep(
+        onEnable = {
+            if (Build.VERSION.SDK_INT >= 33 && !com.gndec.timetable.domain.NotificationHelper.notificationsEnabled(container.context)) {
+                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                finish()
+            }
+        },
+        onSkip = { finish() }
+    )
 }
 
 @Composable
