@@ -401,14 +401,14 @@ private fun Detail(label: String, value: String) {
 @Composable
 private fun CopyableDetail(label: String, value: String, onCopy: () -> Unit) {
     Column {
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(label, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+            Text(value, Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
             if (value != "Not added") {
-                IconButton(onClick = onCopy, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy registration number", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                IconButton(onClick = onCopy, modifier = Modifier.size(30.dp)) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy registration number", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(17.dp))
                 }
             }
         }
-        Text(value, fontWeight = FontWeight.SemiBold)
     }
 }

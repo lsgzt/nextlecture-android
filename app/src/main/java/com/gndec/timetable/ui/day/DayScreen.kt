@@ -44,7 +44,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -55,6 +54,7 @@ import com.gndec.timetable.data.db.LectureEntity
 import com.gndec.timetable.data.prefs.AppSettings
 import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.ui.PremiumBottomBar
+import com.gndec.timetable.ui.PremiumPageHeader
 import com.gndec.timetable.ui.PremiumScreenBackground
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
@@ -102,12 +102,11 @@ fun DayScreen(
     val todays = lectures.filter { it.dayOfWeek == time.dayOfWeek.value }.sortedBy { it.startMinutes }
     val timeline = buildTimeline(todays, nowMinutes)
     val freeMinutes = timeline.filterIsInstance<TimelineItem.Free>().sumOf { it.end - it.start }
-    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val background = if (isDark) Color(0xFF111214) else MaterialTheme.colorScheme.background
-    val muted = if (isDark) Color(0xFFB9BCBB) else MaterialTheme.colorScheme.onSurfaceVariant
-    val primaryText = if (isDark) Color(0xFFF0F2F1) else MaterialTheme.colorScheme.onSurface
-    val accent = if (isDark) Color(0xFF76E0C5) else MaterialTheme.colorScheme.primary
-    val dateLabel = "${time.dayOfWeek.name.lowercase().replaceFirstChar(Char::uppercase)} · ${DateFormatter.format(time)}"
+    val background = MaterialTheme.colorScheme.background
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val primaryText = MaterialTheme.colorScheme.onSurface
+    val accent = MaterialTheme.colorScheme.primary
+    val dateLabel = "${group ?: "Select group"} · ${time.dayOfWeek.name.lowercase().replaceFirstChar(Char::uppercase)} · ${DateFormatter.format(time)}"
 
     Scaffold(
         containerColor = background,
@@ -127,14 +126,7 @@ fun DayScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 item {
-                    TodayHeader(
-                        group = group ?: "Select group",
-                        dateLabel = dateLabel,
-                        accent = accent,
-                        primaryText = primaryText,
-                        muted = muted,
-                        onSettings = onOpenSettings
-                    )
+                    PremiumPageHeader("Today", dateLabel, onSettings = onOpenSettings)
                 }
                 item {
                     DaySummary(
@@ -144,11 +136,11 @@ fun DayScreen(
                         accent = accent,
                         primaryText = primaryText,
                         muted = muted,
-                        cardColor = if (isDark) Color(0xFF202123) else MaterialTheme.colorScheme.surface
+                        cardColor = MaterialTheme.colorScheme.surface
                     )
                 }
                 if (timeline.isEmpty()) {
-                    item { EmptyDayCard(cardColor = if (isDark) Color(0xFF202123) else MaterialTheme.colorScheme.surface, primaryText = primaryText, muted = muted) }
+                    item { EmptyDayCard(cardColor = MaterialTheme.colorScheme.surface, primaryText = primaryText, muted = muted) }
                 } else {
                     items(
                         timeline,
@@ -164,7 +156,6 @@ fun DayScreen(
                                 lecture = item.lecture,
                                 state = item.state,
                                 nowMinutes = nowMinutes,
-                                isDark = isDark,
                                 accent = accent,
                                 primaryText = primaryText,
                                 muted = muted,
@@ -286,19 +277,13 @@ private fun TimelineLectureCard(
     lecture: LectureEntity,
     state: LectureState,
     nowMinutes: Int,
-    isDark: Boolean,
     accent: Color,
     primaryText: Color,
     muted: Color,
     onClick: () -> Unit
 ) {
     val live = state == LectureState.HAPPENING
-    val cardColor = when {
-        live && isDark -> Color(0xFF315951)
-        isDark -> Color(0xFF202123)
-        live -> Color(0xFFE2F2EE)
-        else -> MaterialTheme.colorScheme.surface
-    }
+    val cardColor = if (live) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
     val railColor = if (live) accent else muted.copy(alpha = 0.65f)
     val remaining = (lecture.endMinutes - nowMinutes).coerceAtLeast(0)
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.Top) {
