@@ -18,7 +18,7 @@ android {
         versionName = "1.0.0"
         // GitHub release marker is intentionally independent from Android versionName.
         // Update this marker whenever a new APK is published under GitHub Releases.
-        buildConfigField("String", "RELEASE_MARKER", "\"1.5\"")
+        buildConfigField("String", "RELEASE_MARKER", "\"1.6\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
