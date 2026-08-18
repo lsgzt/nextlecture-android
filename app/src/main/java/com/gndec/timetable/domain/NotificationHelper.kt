@@ -76,7 +76,7 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val notification = NotificationCompat.Builder(context, CHANNEL_UPDATES)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.drawable.ic_launcher)
             .setContentTitle(title)
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
@@ -105,7 +105,7 @@ object NotificationHelper {
         )
         val message = "A newer app release is available. Tap to download release $latestMarker."
         val notification = NotificationCompat.Builder(context, CHANNEL_UPDATES)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.drawable.ic_launcher)
             .setContentTitle(releaseName.ifBlank { "GNDEC Timetable update $latestMarker" })
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
@@ -158,7 +158,7 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val notification = NotificationCompat.Builder(context, CHANNEL_REMINDERS)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.drawable.ic_launcher)
             .setSound(lectureSound(context))
             .setContentTitle("GNDEC Timetable notifications work")
             .setContentText("This is a test reminder from your timetable app.")
@@ -214,7 +214,7 @@ object NotificationHelper {
 
         clearOlderActiveReminders(context, notificationId)
         val notification = NotificationCompat.Builder(context, CHANNEL_REMINDERS)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.drawable.ic_launcher)
             .setSound(lectureSound(context))
             .setContentTitle(title)
             .setContentText(body.replace("\n", "  •  "))
@@ -267,7 +267,7 @@ object NotificationHelper {
         )
         clearOlderActiveReminders(context, notificationId)
         val notification = NotificationCompat.Builder(context, CHANNEL_REMINDERS)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(R.drawable.ic_launcher)
             .setSound(lectureSound(context))
             .setContentTitle(title)
             .setContentText("Next: $nextSubject at ${Formatters.hm(nextStartMinutes)}")
