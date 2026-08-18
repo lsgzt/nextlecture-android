@@ -195,7 +195,7 @@ fun PremiumNextLectureCard(
                 Spacer(Modifier.height(6.dp))
                 Text(
                     if (isHappening) "ENDS IN $countdown" else "STARTS IN $countdown",
-                    color = MaterialTheme.colorScheme.primary,
+                    color = if (isHappening) MaterialTheme.colorScheme.primary else Color(0xFFE89A4A),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 0.5.sp
