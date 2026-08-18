@@ -1,13 +1,13 @@
 {
   "version": 1,
   "announcements": [
-{
-      "id": "test",
-      "title": "test",
-      "message": "The timetable parser has been improved. Please refresh your timetable.",
-      "publishedAt": "2026-08-17T12:00:00Z",
-      "type": "update",
+    {
+      "id": "official-whatsapp-timetable-reminder-2026-08-18",
+      "title": "Keep checking the official GNDEC WhatsApp group",
+      "message": "Please keep checking your official GNDEC WhatsApp group regularly, because the latest timetable is sometimes shared directly through WhatsApp.",
+      "publishedAt": "2026-08-18T12:00:00Z",
+      "type": "notice",
       "active": true
     }
-]
+  ]
 }

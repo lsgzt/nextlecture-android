@@ -191,7 +191,17 @@ fun PremiumNextLectureCard(
             }
             Spacer(Modifier.height(15.dp))
             Text(lecture.subject ?: "Lecture", color = titleColor, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.height(7.dp))
+            if (countdown.isNotBlank()) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    if (isHappening) "ENDS IN $countdown" else "STARTS IN $countdown",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.5.sp
+                )
+            }
+            Spacer(Modifier.height(10.dp))
             Text(Formatters.range(lecture.startMinutes, lecture.endMinutes), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(13.dp))
             lecture.venue?.takeIf { it.isNotBlank() }?.let {
@@ -199,10 +209,6 @@ fun PremiumNextLectureCard(
                 Spacer(Modifier.height(7.dp))
             }
             PremiumMetaRow(Icons.Default.Person, lecture.teacher?.takeIf { it.isNotBlank() } ?: "Teacher unavailable")
-            if (countdown.isNotBlank() && !isHappening) {
-                Spacer(Modifier.height(12.dp))
-                Text(countdown, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-            }
         }
     }
 }
