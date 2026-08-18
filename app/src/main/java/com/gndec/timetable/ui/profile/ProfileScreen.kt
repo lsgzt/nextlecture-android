@@ -1,5 +1,8 @@
 package com.gndec.timetable.ui.profile
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -23,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -32,6 +36,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -50,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import com.gndec.timetable.data.prefs.AppSettings
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gndec.timetable.domain.AppContainer
@@ -66,6 +72,7 @@ import kotlinx.coroutines.launch
 fun ProfileScreen(container: AppContainer, onBack: () -> Unit) {
     val settings by container.settings.flow.collectAsStateWithLifecycle(initialValue = AppSettings())
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val savedBranch = settings.branch.trim().uppercase()
     val hasSavedProfile = settings.studentName.isNotBlank() || settings.registrationNumber.isNotBlank() || settings.rollNumber.isNotBlank()
     var branch by remember(savedBranch) { mutableStateOf(savedBranch) }
@@ -156,7 +163,14 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit) {
                         roll = settings.rollNumber,
                         section = settings.temporarySection,
                         subsection = settings.temporarySubsection,
-                        mentor = settings.mentorName
+                        mentor = settings.mentorName,
+                        onCopyRegistration = {
+                            if (settings.registrationNumber.isNotBlank()) {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("Registration number", settings.registrationNumber))
+                                savedMessage = "Registration number copied"
+                            }
+                        }
                     )
                 }
                 item {
@@ -220,13 +234,13 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit) {
 }
 
 @Composable
-private fun SavedProfileCard(name: String, branch: String, registration: String, roll: String, section: String, subsection: String, mentor: String) {
+private fun SavedProfileCard(name: String, branch: String, registration: String, roll: String, section: String, subsection: String, mentor: String, onCopyRegistration: () -> Unit) {
     Card(Modifier.fillMaxWidth().padding(horizontal = 20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), shape = RoundedCornerShape(20.dp), elevation = CardDefaults.cardElevation(0.dp)) {
         Column(Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text("SAVED STUDENT DETAILS", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
             Text(name.ifBlank { "Name not added" }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Detail("Branch", branch.ifBlank { "Not added" })
-            Detail("Registration number", registration.ifBlank { "Not added" })
+            CopyableDetail("Registration number", registration.ifBlank { "Not added" }, onCopyRegistration)
             Detail("Roll number / Sr. No.", roll.ifBlank { "Not added" })
             Detail("Temporary section", listOf(section, subsection).filter { it.isNotBlank() }.joinToString("  · ").ifBlank { "Not added" })
             Detail("Mentor", mentor.ifBlank { "Not added" })
@@ -380,6 +394,21 @@ private fun Input(label: String, value: String, onValue: (String) -> Unit) {
 private fun Detail(label: String, value: String) {
     Column {
         Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+        Text(value, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun CopyableDetail(label: String, value: String, onCopy: () -> Unit) {
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+            if (value != "Not added") {
+                IconButton(onClick = onCopy, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy registration number", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                }
+            }
+        }
         Text(value, fontWeight = FontWeight.SemiBold)
     }
 }
