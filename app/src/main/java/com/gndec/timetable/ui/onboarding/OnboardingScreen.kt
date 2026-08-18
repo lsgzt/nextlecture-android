@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PersonSearch
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.WifiOff
@@ -345,13 +346,13 @@ private fun ManualProfileStep(branch: String, name: String, roll: String, regist
 @Composable
 private fun NotificationStep(onEnable: () -> Unit, onSkip: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(top = 36.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        IconCircle(Icons.Default.CloudDone, 72.dp)
+        IconCircle(Icons.Default.Notifications, 72.dp)
         Spacer(Modifier.height(20.dp))
-        Text("You’re ready", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+        Text("Never miss a lecture", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
         Spacer(Modifier.height(8.dp))
-        Text("Enable notifications so lecture reminders can reach you on time, even when the timetable app is closed.", color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+        Text("Get timely notifications about your lectures so you never miss them, even when the timetable app is closed.", color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         Spacer(Modifier.height(24.dp))
-        PrimaryAction("Enable notifications", Icons.Default.Refresh, onClick = onEnable)
+        PrimaryAction("Enable notifications", Icons.Default.Notifications, onClick = onEnable)
         TextButton(onClick = onSkip) { Text("Skip for now") }
     }
 }
