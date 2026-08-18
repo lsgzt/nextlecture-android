@@ -39,7 +39,12 @@ data class AppSettings(
     val lastAnnouncementId: String = "",
     val lastAnnouncementTitle: String = "",
     val lastAnnouncementMessage: String = "",
-    val lastAnnouncementPublishedAt: String = ""
+    val lastAnnouncementPublishedAt: String = "",
+    val lastReleaseMarker: String = "",
+    val lastReleaseName: String = "",
+    val lastReleaseNotes: String = "",
+    val lastReleaseCheckedAt: Long = 0L,
+    val lastReleaseNotifiedMarker: String = ""
 ) {
     companion object {
         const val DEFAULT_SOURCE_URL =
@@ -78,6 +83,11 @@ class SettingsManager(private val context: Context) {
         val LAST_ANNOUNCEMENT_TITLE = stringPreferencesKey("last_announcement_title")
         val LAST_ANNOUNCEMENT_MESSAGE = stringPreferencesKey("last_announcement_message")
         val LAST_ANNOUNCEMENT_PUBLISHED_AT = stringPreferencesKey("last_announcement_published_at")
+        val LAST_RELEASE_MARKER = stringPreferencesKey("last_release_marker")
+        val LAST_RELEASE_NAME = stringPreferencesKey("last_release_name")
+        val LAST_RELEASE_NOTES = stringPreferencesKey("last_release_notes")
+        val LAST_RELEASE_CHECKED_AT = longPreferencesKey("last_release_checked_at")
+        val LAST_RELEASE_NOTIFIED_MARKER = stringPreferencesKey("last_release_notified_marker")
     }
 
     val flow: Flow<AppSettings> = context.dataStore.data.map { p ->
@@ -109,7 +119,12 @@ class SettingsManager(private val context: Context) {
             lastAnnouncementId = p[K.LAST_ANNOUNCEMENT_ID] ?: "",
             lastAnnouncementTitle = p[K.LAST_ANNOUNCEMENT_TITLE] ?: "",
             lastAnnouncementMessage = p[K.LAST_ANNOUNCEMENT_MESSAGE] ?: "",
-            lastAnnouncementPublishedAt = p[K.LAST_ANNOUNCEMENT_PUBLISHED_AT] ?: ""
+            lastAnnouncementPublishedAt = p[K.LAST_ANNOUNCEMENT_PUBLISHED_AT] ?: "",
+            lastReleaseMarker = p[K.LAST_RELEASE_MARKER] ?: "",
+            lastReleaseName = p[K.LAST_RELEASE_NAME] ?: "",
+            lastReleaseNotes = p[K.LAST_RELEASE_NOTES] ?: "",
+            lastReleaseCheckedAt = p[K.LAST_RELEASE_CHECKED_AT] ?: 0L,
+            lastReleaseNotifiedMarker = p[K.LAST_RELEASE_NOTIFIED_MARKER] ?: ""
         )
     }
 
@@ -165,4 +180,11 @@ class SettingsManager(private val context: Context) {
         it[K.LAST_ANNOUNCEMENT_MESSAGE] = message
         it[K.LAST_ANNOUNCEMENT_PUBLISHED_AT] = publishedAt
     }
+    suspend fun setReleaseCache(marker: String, name: String, notes: String, checkedAt: Long) = context.dataStore.edit {
+        it[K.LAST_RELEASE_MARKER] = marker.trim()
+        it[K.LAST_RELEASE_NAME] = name.trim()
+        it[K.LAST_RELEASE_NOTES] = notes.trim()
+        it[K.LAST_RELEASE_CHECKED_AT] = checkedAt
+    }
+    suspend fun setReleaseNotifiedMarker(marker: String) = context.dataStore.edit { it[K.LAST_RELEASE_NOTIFIED_MARKER] = marker.trim() }
 }

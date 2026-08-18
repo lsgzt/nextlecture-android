@@ -52,11 +52,9 @@ Requires JDK 17+ and the Android SDK (installed automatically on CI).
 ./gradlew assembleDebug       # build APK → app/build/outputs/apk/debug/app-debug.apk
 ```
 
-## Download the APK from GitHub Actions
+## GitHub Releases
 
-Every push runs `.github/workflows/build-apk.yml`: it runs the tests, builds the debug
-APK, and uploads it as an artifact named **`college-timetable-debug.apk`**
-(Actions tab → latest run → Artifacts).
+Published APKs are distributed through the repository’s GitHub Releases page. The app’s **Download update** action opens the latest stable APK asset directly.
 
 ## Security
 
@@ -95,3 +93,11 @@ To publish an announcement from a phone, open the repository on GitHub, open `an
 ```
 
 This feed is intentionally separate from lecture reminders. Lecture reminders remain local and offline-capable; announcement delivery depends on Android allowing the periodic check and on the device having connectivity at check time. The in-app **Settings → App updates → Manage on GitHub** shortcut opens the mobile edit page for this file.
+
+## GitHub release updates
+
+The app checks the latest stable GitHub release from `https://api.github.com/repos/lsgzt/nextlecture-android/releases/latest` on startup when the cached result is older than six hours and during the existing 12-hour background refresh. Settings also provides **Check for updates**.
+
+Android `versionName` remains `1.0.0` for the current app, while `BuildConfig.RELEASE_MARKER` is the separate GitHub release marker. The current marker is `1.5`, so a GitHub release tagged `1.5` is treated as the same version and a future marker such as `1.6` will be treated as newer. Update the marker in `app/build.gradle.kts` whenever publishing a new release.
+
+When a newer stable release is found, Home and Settings show an update card and the app may send one update notification per release marker. **Download update** opens `https://github.com/lsgzt/nextlecture-android/releases/latest/download/gndec-timetable.apk`. Android still requires the user to confirm the APK installation.

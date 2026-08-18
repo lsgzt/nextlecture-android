@@ -23,6 +23,7 @@ object NotificationHelper {
     const val CHANNEL_REMINDERS = "lecture_reminders_v3"
     const val CHANNEL_UPDATES = "timetable_updates_v2"
     private const val TEST_NOTIFICATION_ID = 190816
+    private const val APP_UPDATE_NOTIFICATION_ID = 190817
     const val GROUP_LECTURE_REMINDERS = "gndec_lecture_reminders"
 
     fun ensureChannels(context: Context) {
@@ -86,6 +87,35 @@ object NotificationHelper {
             .build()
         try {
             NotificationManagerCompat.from(context).notify(announcementId.hashCode(), notification)
+        } catch (_: SecurityException) {
+            // POST_NOTIFICATIONS is disabled at runtime.
+        }
+    }
+
+    fun showAppUpdate(context: Context, latestMarker: String, releaseName: String) {
+        if (!notificationsEnabled(context)) return
+        ensureChannels(context)
+        val openIntent = PendingIntent.getActivity(
+            context,
+            APP_UPDATE_NOTIFICATION_ID,
+            Intent(Intent.ACTION_VIEW, Uri.parse(ReleaseUpdateManager.DOWNLOAD_URL)).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val message = "A newer app release is available. Tap to download release $latestMarker."
+        val notification = NotificationCompat.Builder(context, CHANNEL_UPDATES)
+            .setSmallIcon(R.drawable.ic_launcher)
+            .setContentTitle(releaseName.ifBlank { "GNDEC Timetable update $latestMarker" })
+            .setContentText(message)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setContentIntent(openIntent)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(NotificationCompat.CATEGORY_PROMO)
+            .build()
+        try {
+            NotificationManagerCompat.from(context).notify(APP_UPDATE_NOTIFICATION_ID, notification)
         } catch (_: SecurityException) {
             // POST_NOTIFICATIONS is disabled at runtime.
         }

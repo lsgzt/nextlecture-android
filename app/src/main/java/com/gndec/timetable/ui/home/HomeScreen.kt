@@ -1,5 +1,7 @@
 package com.gndec.timetable.ui.home
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -18,7 +20,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gndec.timetable.data.db.LectureEntity
 import com.gndec.timetable.domain.AppContainer
@@ -50,6 +54,8 @@ fun HomeScreen(
     val state by vm.ui.collectAsStateWithLifecycle()
     val fetchState by vm.fetchState.collectAsStateWithLifecycle()
     val announcement by container.announcementManager.latest.collectAsStateWithLifecycle()
+    val releaseUpdate by container.releaseUpdateManager.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     val next = when (val status = state.status) {
         is NextLectureEngine.Status.Next -> status.lecture
@@ -117,6 +123,25 @@ fun HomeScreen(
                             style = MaterialTheme.typography.bodySmall,
                             modifier = androidx.compose.ui.Modifier.padding(horizontal = 24.dp)
                         )
+                    }
+                }
+                if (releaseUpdate.updateAvailable) {
+                    item {
+                        androidx.compose.material3.Card(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+                            colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                            elevation = androidx.compose.material3.CardDefaults.cardElevation(0.dp)
+                        ) {
+                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                Text("UPDATE AVAILABLE · RELEASE ${releaseUpdate.latestMarker}", color = GndecOrange, style = MaterialTheme.typography.labelMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, letterSpacing = 1.1.sp)
+                                Text(releaseUpdate.releaseName.ifBlank { "A newer GNDEC Timetable build is ready" }, style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                                Text("Download the latest APK from GitHub to get the newest fixes and features.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                                androidx.compose.material3.TextButton(onClick = {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(com.gndec.timetable.domain.ReleaseUpdateManager.DOWNLOAD_URL)))
+                                }) { Text("Download update") }
+                            }
+                        }
                     }
                 }
                 if (next != null) {

@@ -11,6 +11,7 @@ class RefreshWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
     override suspend fun doWork(): Result {
         val app = applicationContext as TimetableApp
         runCatching { app.container.announcementManager.refreshAndNotify() }
+        runCatching { app.container.releaseUpdateManager.refreshIfStale() }
         return when (val r = app.container.refreshManager.refresh(force = false)) {
             is RefreshResult.Failed -> if (runAttemptCount < 3) Result.retry() else Result.success()
             is RefreshResult.Success, RefreshResult.UpToDate -> Result.success()

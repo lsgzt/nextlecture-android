@@ -47,6 +47,7 @@ class SettingsViewModel(private val c: AppContainer) {
     val busy = _busy.asStateFlow()
     private val _reliability = MutableStateFlow<ReliabilityStatus?>(null)
     val reliability = _reliability.asStateFlow()
+    val releaseUpdate = c.releaseUpdateManager.state.stateIn(scope, SharingStarted.Eagerly, com.gndec.timetable.domain.ReleaseUpdateState())
 
     init { scope.launch { _groups.value = c.db.lectureDao().distinctGroups() } }
 
@@ -77,6 +78,16 @@ class SettingsViewModel(private val c: AppContainer) {
         _busy.value = true
         c.announcementManager.refreshAndNotify()
         _message.value = "Announcement feed checked"
+        _busy.value = false
+    }
+    fun checkForUpdates() = scope.launch {
+        _busy.value = true
+        val result = c.releaseUpdateManager.checkForUpdates(force = true)
+        _message.value = when {
+            result.error != null -> "Couldn’t check GitHub releases"
+            result.updateAvailable -> "Update ${result.latestMarker} is available"
+            else -> "You are using the latest release"
+        }
         _busy.value = false
     }
     fun setBackendUrl(u: String) = scope.launch { c.settings.setBackendUrl(u); _message.value = "Backend URL saved" }

@@ -30,6 +30,10 @@ class TimetableApp : Application() {
             runCatching { container.announcementManager.loadCached() }
             runCatching { container.announcementManager.refreshAndNotify() }
         }
+        container.appScope.launch {
+            runCatching { container.releaseUpdateManager.loadCached() }
+            runCatching { container.releaseUpdateManager.refreshIfStale() }
+        }
 
         // Non-urgent periodic background refresh (12h cadence).
         val work = PeriodicWorkRequestBuilder<RefreshWorker>(12, TimeUnit.HOURS)

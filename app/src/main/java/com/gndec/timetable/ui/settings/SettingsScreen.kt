@@ -84,6 +84,7 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit) {
     val message by vm.message.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
     val reliability by vm.reliability.collectAsStateWithLifecycle()
+    val releaseUpdate by vm.releaseUpdate.collectAsStateWithLifecycle()
     val context = LocalContext.current
     LaunchedEffect(Unit) { vm.runReliabilityCheck() }
     var groupDialog by remember { mutableStateOf(false) }
@@ -170,13 +171,33 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit) {
                 item {
                     SectionCard("App updates", Icons.Default.Notifications) {
                         ToggleRow("Announcements and updates", settings.announcementNotifications, vm::setAnnouncementNotifications)
-                        Text("New messages are checked when the app opens and during the existing background refresh.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth())
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            TextButton(onClick = vm::checkAnnouncements, enabled = !busy) { Text("Check now") }
-                            TextButton(onClick = {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/lsgzt/nextlecture-android/edit/main/announcements.json")))
-                            }) { Text("Manage on GitHub") }
+                        Text("Announcements and release checks run when the app opens and during the existing background refresh.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth())
+                        if (releaseUpdate.latestMarker.isNotBlank()) {
+                            Text(
+                                if (releaseUpdate.updateAvailable) "Update available · release ${releaseUpdate.latestMarker}" else "You’re up to date · release ${BuildConfig.RELEASE_MARKER}",
+                                color = if (releaseUpdate.updateAvailable) GndecOrange else GndecGreen,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            if (releaseUpdate.updateAvailable) {
+                                Text(releaseUpdate.releaseName, style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
+                                releaseUpdate.notes.takeIf { it.isNotBlank() }?.let { notes ->
+                                    Text(notes.take(240), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth())
+                                }
+                                TealOutlineButton("Download update", modifier = Modifier.fillMaxWidth(), onClick = {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(com.gndec.timetable.domain.ReleaseUpdateManager.DOWNLOAD_URL)))
+                                })
+                            }
+                        } else {
+                            Text("No release check has completed yet.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth())
                         }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = vm::checkForUpdates, enabled = !busy) { Text("Check for updates") }
+                            TextButton(onClick = vm::checkAnnouncements, enabled = !busy) { Text("Check announcements") }
+                        }
+                        TextButton(onClick = {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/lsgzt/nextlecture-android/edit/main/announcements.json")))
+                        }) { Text("Manage announcements on GitHub") }
                     }
                 }
                 item {
