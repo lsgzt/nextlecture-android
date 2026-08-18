@@ -14,8 +14,8 @@ android {
         applicationId = "com.gndec.timetable"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 16
+        versionName = "1.6.0"
         // GitHub release marker is intentionally independent from Android versionName.
         // Update this marker whenever a new APK is published under GitHub Releases.
         buildConfigField("String", "RELEASE_MARKER", "\"1.6\"")

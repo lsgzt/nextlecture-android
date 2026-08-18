@@ -43,6 +43,12 @@ class ReleaseUpdateManager(
         const val DOWNLOAD_URL = "https://github.com/lsgzt/nextlecture-android/releases/latest/download/gndec-timetable.apk"
         private const val CHECK_INTERVAL_MS = 6L * 60L * 60L * 1000L
 
+        fun installedMarker(): String = if (compareMarkers(BuildConfig.RELEASE_MARKER, BuildConfig.VERSION_NAME) >= 0) {
+            BuildConfig.RELEASE_MARKER
+        } else {
+            BuildConfig.VERSION_NAME
+        }
+
         fun isNewer(remote: String, local: String): Boolean = compareMarkers(remote, local) > 0
 
         private fun compareMarkers(left: String, right: String): Int {
@@ -78,7 +84,7 @@ class ReleaseUpdateManager(
                 releaseName = cached.lastReleaseName,
                 notes = cached.lastReleaseNotes,
                 checkedAt = cached.lastReleaseCheckedAt,
-                updateAvailable = isNewer(cached.lastReleaseMarker, BuildConfig.RELEASE_MARKER)
+                updateAvailable = isNewer(cached.lastReleaseMarker, installedMarker())
             )
         }
     }
@@ -117,7 +123,7 @@ class ReleaseUpdateManager(
             }
 
             val now = System.currentTimeMillis()
-            val available = isNewer(release.tag_name, BuildConfig.RELEASE_MARKER)
+            val available = isNewer(release.tag_name, installedMarker())
             val current = settings.flow.first()
             val next = ReleaseUpdateState(
                 latestMarker = release.tag_name.trim().removePrefix("v"),

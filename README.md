@@ -98,6 +98,6 @@ This feed is intentionally separate from lecture reminders. Lecture reminders re
 
 The app checks the latest stable GitHub release from `https://api.github.com/repos/lsgzt/nextlecture-android/releases/latest` on startup when the cached result is older than six hours and during the existing 12-hour background refresh. Settings also provides **Check for updates**.
 
-Android `versionName` remains `1.0.0` for the current app, while `BuildConfig.RELEASE_MARKER` is the separate GitHub release marker. The current marker is `1.5`, so a GitHub release tagged `1.5` is treated as the same version and a future marker such as `1.6` will be treated as newer. Update the marker in `app/build.gradle.kts` whenever publishing a new release.
+Android `versionName` is currently `1.6.0`, while `BuildConfig.RELEASE_MARKER` is the separate GitHub release marker `1.6`. The two values are compared numerically, so a GitHub release tagged `1.6` is treated as the same version and a future marker such as `1.7` will be treated as newer. Update both version values in `app/build.gradle.kts` whenever publishing a new release.
 
 When a newer stable release is found, Home and Settings show an update card and the app may send one update notification per release marker. **Download update** opens `https://github.com/lsgzt/nextlecture-android/releases/latest/download/gndec-timetable.apk`. Android still requires the user to confirm the APK installation.

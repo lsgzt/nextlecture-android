@@ -174,7 +174,7 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit) {
                         Text("Announcements and release checks run when the app opens and during the existing background refresh.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth())
                         if (releaseUpdate.latestMarker.isNotBlank()) {
                             Text(
-                                if (releaseUpdate.updateAvailable) "Update available · release ${releaseUpdate.latestMarker}" else "You’re up to date · release ${BuildConfig.RELEASE_MARKER}",
+                                if (releaseUpdate.updateAvailable) "Update available · release ${releaseUpdate.latestMarker}" else "You’re up to date · release ${com.gndec.timetable.domain.ReleaseUpdateManager.installedMarker()}",
                                 color = if (releaseUpdate.updateAvailable) GndecOrange else GndecGreen,
                                 fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier.fillMaxWidth()
