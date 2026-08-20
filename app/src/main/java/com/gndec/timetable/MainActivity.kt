@@ -33,6 +33,7 @@ import com.gndec.timetable.ui.details.LectureDetailScreen
 import com.gndec.timetable.ui.home.HomeScreen
 import com.gndec.timetable.ui.onboarding.NotificationPermissionOnboardingScreen
 import com.gndec.timetable.ui.onboarding.OnboardingScreen
+import com.gndec.timetable.ui.notice.NoticeScreen
 import com.gndec.timetable.ui.profile.ProfileScreen
 import com.gndec.timetable.ui.settings.SettingsScreen
 import com.gndec.timetable.ui.theme.GndecTheme
@@ -41,6 +42,21 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    override fun onStart() {
+        super.onStart()
+        val app = application as TimetableApp
+        app.container.appScope.launch {
+            runCatching {
+                if (app.container.settings.flow.first().group != null) {
+                    app.container.refreshManager.refresh(force = true)
+                }
+            }
+        }
+        app.container.appScope.launch {
+            runCatching { app.container.erpNoticeManager.refresh() }
+        }
+    }
+
     override fun onStop() {
         super.onStop()
         val app = application as TimetableApp
@@ -112,6 +128,7 @@ class MainActivity : ComponentActivity() {
                                     container = container,
                                     onOpenToday = { navigate("today") },
                                     onOpenAlerts = { navigate("alerts") },
+                                    onOpenNotice = { navigate("notice") },
                                     onOpenSettings = { navigate("settings") },
                                     onOpenProfile = { navigate("profile") },
                                     onOpenLecture = { selectedLecture = it; navigate("detail") }
@@ -126,6 +143,7 @@ class MainActivity : ComponentActivity() {
                                     container = container,
                                     onOpenHome = { navigate("home") },
                                     onOpenAlerts = { navigate("alerts") },
+                                    onOpenNotice = { navigate("notice") },
                                     onOpenSettings = { navigate("settings") },
                                     onOpenLecture = { selectedLecture = it; navigate("detail") }
                                 )
@@ -139,8 +157,22 @@ class MainActivity : ComponentActivity() {
                                     container = container,
                                     onOpenHome = { navigate("home") },
                                     onOpenToday = { navigate("today") },
+                                    onOpenNotice = { navigate("notice") },
                                     onOpenSettings = { navigate("settings") },
                                     onOpenLecture = { selectedLecture = it; navigate("detail") }
+                                )
+                            }
+                            composable(
+                                "notice",
+                                enterTransition = { fadeIn(tween(100)) },
+                                exitTransition = { fadeOut(tween(70)) }
+                            ) {
+                                NoticeScreen(
+                                    container = container,
+                                    onOpenHome = { navigate("home") },
+                                    onOpenToday = { navigate("today") },
+                                    onOpenAlerts = { navigate("alerts") },
+                                    onOpenSettings = { navigate("settings") }
                                 )
                             }
                             composable(

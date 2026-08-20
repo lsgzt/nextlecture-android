@@ -22,16 +22,16 @@ class TimetableApp : Application() {
         container = AppContainer(this)
         NotificationHelper.ensureChannels(this)
 
-        // Refresh on app start when the cache is old enough (cheap: ETag-guarded)
+        // Load local caches immediately, then refresh live sources on every app launch.
         container.appScope.launch {
             runCatching { container.studentDirectoryManager.migrateSavedProfileIfNeeded() }
         }
         container.appScope.launch {
-            runCatching { container.refreshManager.refreshIfStale() }
-        }
-        container.appScope.launch {
             runCatching { container.announcementManager.loadCached() }
             runCatching { container.announcementManager.refreshAndNotify() }
+        }
+        container.appScope.launch {
+            runCatching { container.erpNoticeManager.loadCached() }
         }
         container.appScope.launch {
             runCatching { container.releaseUpdateManager.loadCached() }

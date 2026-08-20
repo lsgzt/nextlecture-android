@@ -20,6 +20,7 @@ class AppContainer(val context: Context) {
     val normalizer by lazy { AiNormalizer(db.aiCacheDao(), GroqClient(), BackendClient()) }
     val scheduler by lazy { AlarmScheduler(context) }
     val announcementManager by lazy { AnnouncementManager(context, settings) }
+    val erpNoticeManager by lazy { ErpNoticeManager(context, settings) }
     val releaseUpdateManager by lazy { ReleaseUpdateManager(context, settings) }
     val studentDirectoryManager by lazy { StudentDirectoryManager(context, settings) }
     val refreshManager by lazy { RefreshManager(db, settings, keys, fetcher, normalizer, scheduler) }

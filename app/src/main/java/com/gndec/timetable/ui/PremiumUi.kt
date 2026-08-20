@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.navigationBars
 import com.gndec.timetable.data.db.LectureEntity
 import com.gndec.timetable.domain.Announcement
+import com.gndec.timetable.domain.ErpNotice
 import com.gndec.timetable.util.Formatters
 
 private val LightAqua = Color(0xFFE8F6F4)
@@ -239,6 +240,32 @@ fun PremiumAnnouncementCard(announcement: Announcement, modifier: Modifier = Mod
 }
 
 @Composable
+fun PremiumErpNoticeBanner(notice: ErpNotice, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Card(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(0.dp)
+    ) {
+        Row(Modifier.padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(38.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f), CircleShape), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Campaign, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text("NEW TODAY · GNDEC NOTICE", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                Spacer(Modifier.height(3.dp))
+                Text(notice.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text("Tap to open official notice", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            }
+            Icon(Icons.Default.ChevronRight, contentDescription = "Open today’s notice", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
 fun PremiumTodayPreview(lectures: List<LectureEntity>, dateLabel: String, onOpen: () -> Unit, onLecture: (LectureEntity) -> Unit, modifier: Modifier = Modifier) {
     Card(
         modifier = modifier,
@@ -328,6 +355,7 @@ fun PremiumBottomBar(selected: String, onNavigate: (String) -> Unit) {
     val items = listOf(
         Triple("home", "Home", Icons.Default.Home),
         Triple("today", "Today", Icons.Default.Today),
+        Triple("notice", "Notice", Icons.Default.Campaign),
         Triple("alerts", "Alerts", Icons.Default.Notifications)
     )
     Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp, shadowElevation = 0.dp) {

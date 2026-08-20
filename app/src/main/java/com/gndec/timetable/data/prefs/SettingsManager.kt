@@ -46,6 +46,8 @@ data class AppSettings(
     val lastAnnouncementTitle: String = "",
     val lastAnnouncementMessage: String = "",
     val lastAnnouncementPublishedAt: String = "",
+    val erpNoticeJson: String = "",
+    val erpNoticeUpdatedAt: Long = 0L,
     val lastReleaseMarker: String = "",
     val lastReleaseName: String = "",
     val lastReleaseNotes: String = "",
@@ -95,6 +97,8 @@ class SettingsManager(private val context: Context) {
         val LAST_ANNOUNCEMENT_TITLE = stringPreferencesKey("last_announcement_title")
         val LAST_ANNOUNCEMENT_MESSAGE = stringPreferencesKey("last_announcement_message")
         val LAST_ANNOUNCEMENT_PUBLISHED_AT = stringPreferencesKey("last_announcement_published_at")
+        val ERP_NOTICE_JSON = stringPreferencesKey("erp_notice_json")
+        val ERP_NOTICE_UPDATED_AT = longPreferencesKey("erp_notice_updated_at")
         val LAST_RELEASE_MARKER = stringPreferencesKey("last_release_marker")
         val LAST_RELEASE_NAME = stringPreferencesKey("last_release_name")
         val LAST_RELEASE_NOTES = stringPreferencesKey("last_release_notes")
@@ -137,6 +141,8 @@ class SettingsManager(private val context: Context) {
             lastAnnouncementTitle = p[K.LAST_ANNOUNCEMENT_TITLE] ?: "",
             lastAnnouncementMessage = p[K.LAST_ANNOUNCEMENT_MESSAGE] ?: "",
             lastAnnouncementPublishedAt = p[K.LAST_ANNOUNCEMENT_PUBLISHED_AT] ?: "",
+            erpNoticeJson = p[K.ERP_NOTICE_JSON] ?: "",
+            erpNoticeUpdatedAt = p[K.ERP_NOTICE_UPDATED_AT] ?: 0L,
             lastReleaseMarker = p[K.LAST_RELEASE_MARKER] ?: "",
             lastReleaseName = p[K.LAST_RELEASE_NAME] ?: "",
             lastReleaseNotes = p[K.LAST_RELEASE_NOTES] ?: "",
@@ -209,6 +215,10 @@ class SettingsManager(private val context: Context) {
         it[K.LAST_ANNOUNCEMENT_TITLE] = title
         it[K.LAST_ANNOUNCEMENT_MESSAGE] = message
         it[K.LAST_ANNOUNCEMENT_PUBLISHED_AT] = publishedAt
+    }
+    suspend fun setErpNoticeCache(json: String, updatedAt: Long) = context.dataStore.edit {
+        it[K.ERP_NOTICE_JSON] = json
+        it[K.ERP_NOTICE_UPDATED_AT] = updatedAt
     }
     suspend fun setReleaseCache(marker: String, name: String, notes: String, checkedAt: Long) = context.dataStore.edit {
         it[K.LAST_RELEASE_MARKER] = marker.trim()

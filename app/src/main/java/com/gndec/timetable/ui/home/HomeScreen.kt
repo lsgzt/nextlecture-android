@@ -26,9 +26,11 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gndec.timetable.data.db.LectureEntity
 import com.gndec.timetable.domain.AppContainer
+import com.gndec.timetable.domain.ErpNoticeManager
 import com.gndec.timetable.domain.NextLectureEngine
 import com.gndec.timetable.ui.PremiumAnnouncementCard
 import com.gndec.timetable.ui.PremiumBottomBar
+import com.gndec.timetable.ui.PremiumErpNoticeBanner
 import com.gndec.timetable.ui.PremiumBrandHeader
 import com.gndec.timetable.ui.PremiumNextLectureCard
 import com.gndec.timetable.ui.PremiumOfflineCard
@@ -45,6 +47,7 @@ fun HomeScreen(
     container: AppContainer,
     onOpenToday: () -> Unit,
     onOpenAlerts: () -> Unit,
+    onOpenNotice: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenProfile: () -> Unit,
     onOpenLecture: (LectureEntity) -> Unit
@@ -54,6 +57,7 @@ fun HomeScreen(
     val state by vm.ui.collectAsStateWithLifecycle()
     val fetchState by vm.fetchState.collectAsStateWithLifecycle()
     val announcement by container.announcementManager.latest.collectAsStateWithLifecycle()
+    val erpNotices by container.erpNoticeManager.notices.collectAsStateWithLifecycle()
     val releaseUpdate by container.releaseUpdateManager.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
@@ -83,10 +87,12 @@ fun HomeScreen(
         "${it.dayOfWeek.name.lowercase().replaceFirstChar(Char::uppercase)} ${it.dayOfMonth} ${it.month.name.lowercase().replaceFirstChar(Char::uppercase)}"
     }
     val updatedText = state.lastFetch?.let { Formatters.freshnessText(it, state.nowMillis).removePrefix("Updated ") } ?: "No sync yet"
+    val todayIso = Instant.ofEpochMilli(state.nowMillis).atZone(ZoneId.systemDefault()).toLocalDate().toString()
+    val todayNotice = erpNotices.firstOrNull { it.publishedDate == todayIso }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = { PremiumBottomBar("home") { route -> when (route) { "today" -> onOpenToday(); "alerts" -> onOpenAlerts() } } }
+        bottomBar = { PremiumBottomBar("home") { route -> when (route) { "today" -> onOpenToday(); "notice" -> onOpenNotice(); "alerts" -> onOpenAlerts() } } }
     ) { padding ->
         PremiumScreenBackground {
             LazyColumn(
@@ -101,6 +107,15 @@ fun HomeScreen(
                         onSettings = onOpenSettings,
                         onProfile = onOpenProfile
                     )
+                }
+                todayNotice?.let { notice ->
+                    item {
+                        PremiumErpNoticeBanner(
+                            notice = notice,
+                            onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(notice.url))) },
+                            modifier = androidx.compose.ui.Modifier.padding(horizontal = 20.dp)
+                        )
+                    }
                 }
                 item {
                     PremiumStatusRow(

@@ -120,7 +120,8 @@ class StudentDirectoryManager(
             current.rollNumber != match.crn ||
             current.registrationNumber == match.crn ||
             current.fatherName.isBlank() ||
-            current.motherName.isBlank()
+            current.motherName.isBlank() ||
+            current.group != match.subsection
         if (!needsUpgrade) return@withContext false
 
         settings.saveStudentProfile(
@@ -138,6 +139,7 @@ class StudentDirectoryManager(
             mentorVenue = match.venue,
             source = "gndec_permanent_pdf"
         )
+        settings.setGroup(match.subsection)
         true
     }
 

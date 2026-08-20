@@ -89,7 +89,7 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit) {
     var manualMother by remember(settings.motherName) { mutableStateOf(settings.motherName) }
     var manualMentor by remember(settings.mentorName) { mutableStateOf(settings.mentorName) }
     var manualSection by remember(settings.studentSection) { mutableStateOf(settings.studentSection) }
-    var manualSubsection by remember(settings.studentSubsection.ifBlank { settings.studentGroup }) { mutableStateOf(settings.studentGroup.ifBlank { settings.studentSubsection }) }
+    var manualSubsection by remember(settings.studentSubsection) { mutableStateOf(settings.studentSubsection) }
     var savedMessage by remember { mutableStateOf<String?>(null) }
 
     suspend fun loadBranch(force: Boolean) {
@@ -130,7 +130,7 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit) {
                 record.venue,
                 "gndec_permanent_pdf"
             )
-            runCatching { container.refreshManager.changeGroup(record.group) }
+            runCatching { container.refreshManager.changeGroup(record.subsection) }
             savedMessage = "Official details saved on this device"
             manualMode = false
             lookupOpen = false
@@ -158,7 +158,7 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item { PremiumPageHeader("Profile", "Student identity", onBack = onBack) }
-            item { ProfileHero(initials, displayName, settings.studentGroup.ifBlank { settings.studentSubsection.ifBlank { settings.branch.ifBlank { "Add your branch" } } }, settings.rollNumber.ifBlank { "CRN not added" }) }
+            item { ProfileHero(initials, displayName, settings.studentSubsection.ifBlank { settings.branch.ifBlank { "Add your branch" } }, settings.rollNumber.ifBlank { "CRN not added" }) }
             item { SourceStatus(settings.profileSource, loading, savedMessage) }
 
             if (hasSavedProfile && !lookupOpen) {

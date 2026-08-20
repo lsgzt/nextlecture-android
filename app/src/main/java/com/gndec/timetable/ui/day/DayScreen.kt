@@ -1,6 +1,7 @@
 package com.gndec.timetable.ui.day
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,12 +35,15 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,9 +62,11 @@ import com.gndec.timetable.ui.PremiumPageHeader
 import com.gndec.timetable.ui.PremiumScreenBackground
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
+import java.time.DayOfWeek
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.temporal.TemporalAdjusters
 
 private sealed class TimelineItem {
     data class Lecture(val lecture: LectureEntity, val state: LectureState) : TimelineItem()
@@ -68,6 +74,7 @@ private sealed class TimelineItem {
 }
 
 private enum class LectureState { COMPLETED, HAPPENING, UPCOMING }
+private enum class DayViewMode(val title: String) { TODAY("Today"), TOMORROW("Tomorrow"), WEEK("Full week") }
 
 private val Zone = ZoneId.systemDefault()
 private val DateFormatter = DateTimeFormatter.ofPattern("d MMMM")
@@ -77,6 +84,7 @@ fun DayScreen(
     container: AppContainer,
     onOpenHome: () -> Unit,
     onOpenAlerts: () -> Unit,
+    onOpenNotice: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenLecture: (LectureEntity) -> Unit
 ) {
@@ -86,6 +94,8 @@ fun DayScreen(
         if (group == null) flowOf(emptyList()) else container.db.lectureDao().observeForGroup(group)
     }.collectAsStateWithLifecycle(initialValue = emptyList())
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var viewModeName by rememberSaveable { mutableStateOf(DayViewMode.TODAY.name) }
+    val viewMode = DayViewMode.valueOf(viewModeName)
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -99,14 +109,27 @@ fun DayScreen(
     }
     val time = Instant.ofEpochMilli(nowMillis).atZone(Zone)
     val nowMinutes = time.hour * 60 + time.minute
-    val todays = lectures.filter { it.dayOfWeek == time.dayOfWeek.value }.sortedBy { it.startMinutes }
-    val timeline = buildTimeline(todays, nowMinutes)
+    val todayDow = time.dayOfWeek.value
+    val tomorrowDow = if (todayDow == 7) 1 else todayDow + 1
+    val selectedDow = if (viewMode == DayViewMode.TOMORROW) tomorrowDow else todayDow
+    val selectedLectures = lectures.filter { it.dayOfWeek == selectedDow }.sortedBy { it.startMinutes }
+    val timeline = if (viewMode == DayViewMode.WEEK) emptyList() else buildTimeline(selectedLectures, if (viewMode == DayViewMode.TODAY) nowMinutes else -1)
     val freeMinutes = timeline.filterIsInstance<TimelineItem.Free>().sumOf { it.end - it.start }
     val background = MaterialTheme.colorScheme.background
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val primaryText = MaterialTheme.colorScheme.onSurface
     val accent = MaterialTheme.colorScheme.primary
-    val dateLabel = "${group ?: "Select group"} · ${time.dayOfWeek.name.lowercase().replaceFirstChar(Char::uppercase)} · ${DateFormatter.format(time)}"
+    val selectedDate = when (viewMode) {
+        DayViewMode.TODAY -> time.toLocalDate()
+        DayViewMode.TOMORROW -> time.toLocalDate().plusDays(1)
+        DayViewMode.WEEK -> time.toLocalDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+    }
+    val dateLabel = when (viewMode) {
+        DayViewMode.TODAY -> "${group ?: "Select group"} · Today · ${DateFormatter.format(selectedDate)}"
+        DayViewMode.TOMORROW -> "${group ?: "Select group"} · Tomorrow · ${DateFormatter.format(selectedDate)}"
+        DayViewMode.WEEK -> "${group ?: "Select group"} · ${DateFormatter.format(selectedDate)} – ${DateFormatter.format(selectedDate.plusDays(6))}"
+    }
+    val weekDays = (0L..6L).map { selectedDate.plusDays(it) }
 
     Scaffold(
         containerColor = background,
@@ -115,6 +138,7 @@ fun DayScreen(
                 when (route) {
                     "home" -> onOpenHome()
                     "alerts" -> onOpenAlerts()
+                    "notice" -> onOpenNotice()
                 }
             }
         }
@@ -125,50 +149,78 @@ fun DayScreen(
                 contentPadding = PaddingValues(top = 8.dp, bottom = 26.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                item { PremiumPageHeader(viewMode.title, dateLabel, onSettings = onOpenSettings) }
                 item {
-                    PremiumPageHeader("Today", dateLabel, onSettings = onOpenSettings)
+                    DayModeSelector(viewMode) { viewModeName = it.name }
                 }
-                item {
-                    DaySummary(
-                        lectures = todays.size,
-                        freeMinutes = freeMinutes,
-                        reminders = scheduledReminders,
-                        accent = accent,
-                        primaryText = primaryText,
-                        muted = muted,
-                        cardColor = MaterialTheme.colorScheme.surface
-                    )
-                }
-                if (timeline.isEmpty()) {
-                    item { EmptyDayCard(cardColor = MaterialTheme.colorScheme.surface, primaryText = primaryText, muted = muted) }
+                if (viewMode == DayViewMode.WEEK) {
+                    item {
+                        WeekSummary(
+                            totalLectures = lectures.size,
+                            weekStart = selectedDate,
+                            cardColor = MaterialTheme.colorScheme.surface,
+                            primaryText = primaryText,
+                            muted = muted,
+                            accent = accent
+                        )
+                    }
+                    items(weekDays, key = { it.toString() }) { date ->
+                        WeekDaySection(
+                            date = date,
+                            lectures = lectures.filter { it.dayOfWeek == date.dayOfWeek.value }.sortedBy { it.startMinutes },
+                            primaryText = primaryText,
+                            muted = muted,
+                            accent = accent,
+                            onOpenLecture = onOpenLecture
+                        )
+                    }
                 } else {
-                    items(
-                        timeline,
-                        key = { item ->
+                    item {
+                        DaySummary(
+                            lectures = selectedLectures.size,
+                            freeMinutes = freeMinutes,
+                            reminders = if (viewMode == DayViewMode.TODAY) scheduledReminders else 0,
+                            accent = accent,
+                            primaryText = primaryText,
+                            muted = muted,
+                            cardColor = MaterialTheme.colorScheme.surface
+                        )
+                    }
+                    if (timeline.isEmpty()) {
+                        item { EmptyDayCard(cardColor = MaterialTheme.colorScheme.surface, primaryText = primaryText, muted = muted) }
+                    } else {
+                        items(
+                            timeline,
+                            key = { item ->
+                                when (item) {
+                                    is TimelineItem.Lecture -> "${viewMode.name}-lecture-${item.lecture.id}"
+                                    is TimelineItem.Free -> "${viewMode.name}-free-${item.start}-${item.end}"
+                                }
+                            }
+                        ) { item ->
                             when (item) {
-                                is TimelineItem.Lecture -> "lecture-${item.lecture.id}"
-                                is TimelineItem.Free -> "free-${item.start}-${item.end}"
+                                is TimelineItem.Lecture -> TimelineLectureCard(
+                                    lecture = item.lecture,
+                                    state = item.state,
+                                    nowMinutes = if (viewMode == DayViewMode.TODAY) nowMinutes else -1,
+                                    accent = accent,
+                                    primaryText = primaryText,
+                                    muted = muted,
+                                    onClick = { onOpenLecture(item.lecture) }
+                                )
+                                is TimelineItem.Free -> FreePeriod(start = item.start, end = item.end, muted = muted, accent = accent)
                             }
                         }
-                    ) { item ->
-                        when (item) {
-                            is TimelineItem.Lecture -> TimelineLectureCard(
-                                lecture = item.lecture,
-                                state = item.state,
-                                nowMinutes = nowMinutes,
-                                accent = accent,
-                                primaryText = primaryText,
-                                muted = muted,
-                                onClick = { onOpenLecture(item.lecture) }
-                            )
-                            is TimelineItem.Free -> FreePeriod(
-                                start = item.start,
-                                end = item.end,
-                                muted = muted,
-                                accent = accent
-                            )
-                        }
                     }
+                }
+                item {
+                    DayViewActionCard(
+                        mode = viewMode,
+                        cardColor = MaterialTheme.colorScheme.secondaryContainer,
+                        primaryText = primaryText,
+                        muted = muted,
+                        onSelect = { viewModeName = it.name }
+                    )
                 }
                 item {
                     Row(
@@ -181,6 +233,97 @@ fun DayScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun DayModeSelector(mode: DayViewMode, onSelect: (DayViewMode) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+        DayViewMode.values().forEach { item ->
+            val active = item == mode
+            Card(
+                onClick = { onSelect(item) },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface),
+                border = androidx.compose.foundation.BorderStroke(1.dp, if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
+                elevation = CardDefaults.cardElevation(0.dp)
+            ) {
+                Text(item.title, modifier = Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 11.dp), color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.labelMedium, fontWeight = if (active) FontWeight.Bold else FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DayViewActionCard(mode: DayViewMode, cardColor: Color, primaryText: Color, muted: Color, onSelect: (DayViewMode) -> Unit) {
+    Card(Modifier.fillMaxWidth().padding(horizontal = 20.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = cardColor), elevation = CardDefaults.cardElevation(0.dp)) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Text("Explore more timetable views", color = primaryText, fontWeight = FontWeight.Bold)
+            Text("Switch without leaving Today", color = muted, style = MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (mode != DayViewMode.TODAY) TextButton(onClick = { onSelect(DayViewMode.TODAY) }) { Text("Today") }
+                if (mode != DayViewMode.TOMORROW) TextButton(onClick = { onSelect(DayViewMode.TOMORROW) }) { Text("Tomorrow") }
+                if (mode != DayViewMode.WEEK) TextButton(onClick = { onSelect(DayViewMode.WEEK) }) { Text("Full week") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WeekSummary(totalLectures: Int, weekStart: java.time.LocalDate, cardColor: Color, primaryText: Color, muted: Color, accent: Color) {
+    Card(Modifier.fillMaxWidth().padding(horizontal = 20.dp), shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = cardColor), elevation = CardDefaults.cardElevation(0.dp)) {
+        Row(Modifier.padding(17.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(44.dp).background(accent.copy(alpha = 0.13f), CircleShape), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.CalendarMonth, contentDescription = null, tint = accent, modifier = Modifier.size(23.dp))
+            }
+            Spacer(Modifier.width(11.dp))
+            Column(Modifier.weight(1f)) {
+                Text("FULL WEEK", color = accent, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                Text("$totalLectures lectures", color = primaryText, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Monday to Sunday", color = muted, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun WeekDaySection(date: java.time.LocalDate, lectures: List<LectureEntity>, primaryText: Color, muted: Color, accent: Color, onOpenLecture: (LectureEntity) -> Unit) {
+    Card(Modifier.fillMaxWidth().padding(horizontal = 20.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), elevation = CardDefaults.cardElevation(0.dp)) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 13.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(date.dayOfWeek.name.lowercase().replaceFirstChar(Char::uppercase), color = primaryText, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(DateFormatter.format(date), color = muted, style = MaterialTheme.typography.bodySmall)
+                }
+                Text("${lectures.size} lectures", color = accent, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+            }
+            Spacer(Modifier.height(5.dp))
+            if (lectures.isEmpty()) {
+                Text("No lectures scheduled", color = muted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 10.dp))
+            } else {
+                lectures.forEachIndexed { index, lecture ->
+                    WeekLectureRow(lecture, primaryText, muted, accent, onOpenLecture)
+                    if (index < lectures.lastIndex) androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WeekLectureRow(lecture: LectureEntity, primaryText: Color, muted: Color, accent: Color, onOpenLecture: (LectureEntity) -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable { onOpenLecture(lecture) }.padding(vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.width(72.dp)) {
+            Text(formatTime(lecture.startMinutes), color = accent, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+            Text(formatTime(lecture.endMinutes), color = muted, style = MaterialTheme.typography.labelSmall)
+        }
+        Box(Modifier.width(3.dp).height(34.dp).background(accent.copy(alpha = 0.7f)))
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(lecture.subject ?: "Lecture", color = primaryText, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(lecture.teacher?.takeIf { it.isNotBlank() } ?: (lecture.venue ?: "Details unavailable"), color = muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -200,36 +343,7 @@ private fun buildTimeline(lectures: List<LectureEntity>, nowMinutes: Int): List<
 }
 
 @Composable
-private fun TodayHeader(
-    group: String,
-    dateLabel: String,
-    accent: Color,
-    primaryText: Color,
-    muted: Color,
-    onSettings: () -> Unit
-) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text("Today", color = primaryText, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-            Text(group, color = accent, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            Text(dateLabel, color = muted, style = MaterialTheme.typography.bodyLarge)
-        }
-        IconButton(onClick = onSettings) {
-            Icon(Icons.Default.Settings, contentDescription = "Settings", tint = accent, modifier = Modifier.size(27.dp))
-        }
-    }
-}
-
-@Composable
-private fun DaySummary(
-    lectures: Int,
-    freeMinutes: Int,
-    reminders: Int,
-    accent: Color,
-    primaryText: Color,
-    muted: Color,
-    cardColor: Color
-) {
+private fun DaySummary(lectures: Int, freeMinutes: Int, reminders: Int, accent: Color, primaryText: Color, muted: Color, cardColor: Color) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         MetricCard(lectures.toString(), "LECTURES", accent, primaryText, muted, cardColor, Modifier.weight(1f))
         MetricCard(formatDurationShort(freeMinutes), "FREE", primaryText, primaryText, muted, cardColor, Modifier.weight(1f))
@@ -238,21 +352,8 @@ private fun DaySummary(
 }
 
 @Composable
-private fun MetricCard(
-    value: String,
-    label: String,
-    valueColor: Color,
-    primaryText: Color,
-    muted: Color,
-    cardColor: Color,
-    modifier: Modifier
-) {
-    Card(
-        modifier.height(102.dp),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = cardColor),
-        elevation = CardDefaults.cardElevation(0.dp)
-    ) {
+private fun MetricCard(value: String, label: String, valueColor: Color, primaryText: Color, muted: Color, cardColor: Color, modifier: Modifier) {
+    Card(modifier.height(102.dp), shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = cardColor), elevation = CardDefaults.cardElevation(0.dp)) {
         Column(Modifier.fillMaxSize().padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             Text(value, color = valueColor, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Medium)
             Spacer(Modifier.height(8.dp))
@@ -273,15 +374,7 @@ private fun EmptyDayCard(cardColor: Color, primaryText: Color, muted: Color) {
 }
 
 @Composable
-private fun TimelineLectureCard(
-    lecture: LectureEntity,
-    state: LectureState,
-    nowMinutes: Int,
-    accent: Color,
-    primaryText: Color,
-    muted: Color,
-    onClick: () -> Unit
-) {
+private fun TimelineLectureCard(lecture: LectureEntity, state: LectureState, nowMinutes: Int, accent: Color, primaryText: Color, muted: Color, onClick: () -> Unit) {
     val live = state == LectureState.HAPPENING
     val cardColor = if (live) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
     val railColor = if (live) accent else muted.copy(alpha = 0.65f)
@@ -289,26 +382,10 @@ private fun TimelineLectureCard(
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.Top) {
         TimelineRail(lecture, state, railColor, primaryText, muted)
         Spacer(Modifier.width(12.dp))
-        Card(
-            onClick = onClick,
-            modifier = Modifier.weight(1f),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = cardColor),
-            elevation = CardDefaults.cardElevation(0.dp)
-        ) {
+        Card(onClick = onClick, modifier = Modifier.weight(1f), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = cardColor), elevation = CardDefaults.cardElevation(0.dp)) {
             Column(Modifier.padding(horizontal = 18.dp, vertical = 17.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        when (state) {
-                            LectureState.COMPLETED -> "COMPLETED"
-                            LectureState.HAPPENING -> "LIVE NOW"
-                            LectureState.UPCOMING -> "UPCOMING"
-                        },
-                        color = if (live) accent else muted,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.7.sp
-                    )
+                    Text(when (state) { LectureState.COMPLETED -> "COMPLETED"; LectureState.HAPPENING -> "LIVE NOW"; LectureState.UPCOMING -> "UPCOMING" }, color = if (live) accent else muted, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, letterSpacing = 1.7.sp)
                     Spacer(Modifier.weight(1f))
                     if (live) {
                         Text("${formatDurationUpper(remaining)} REMAINING", color = accent, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
@@ -322,10 +399,7 @@ private fun TimelineLectureCard(
                 Text((lecture.subject ?: "Lecture").uppercase(), color = primaryText, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(13.dp))
                 TimelineMetaRow(Icons.Default.Person, lecture.teacher?.takeIf { it.isNotBlank() }?.uppercase() ?: "TEACHER UNAVAILABLE", primaryText, muted)
-                lecture.venue?.takeIf { it.isNotBlank() }?.let {
-                    Spacer(Modifier.height(8.dp))
-                    TimelineMetaRow(Icons.Default.LocationOn, it, primaryText, muted)
-                }
+                lecture.venue?.takeIf { it.isNotBlank() }?.let { Spacer(Modifier.height(8.dp)); TimelineMetaRow(Icons.Default.LocationOn, it, primaryText, muted) }
             }
         }
     }
@@ -336,16 +410,7 @@ private fun TimelineRail(lecture: LectureEntity, state: LectureState, railColor:
     Column(Modifier.width(116.dp).heightIn(min = 185.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.width(2.dp).height(26.dp).background(railColor.copy(alpha = 0.45f)))
         Box(Modifier.size(56.dp).background(railColor.copy(alpha = 0.18f), CircleShape), contentAlignment = Alignment.Center) {
-            Icon(
-                when (state) {
-                    LectureState.COMPLETED -> Icons.Default.CheckCircle
-                    LectureState.HAPPENING -> Icons.Default.Notifications
-                    LectureState.UPCOMING -> Icons.Default.AccessTime
-                },
-                contentDescription = null,
-                tint = railColor,
-                modifier = Modifier.size(25.dp)
-            )
+            Icon(when (state) { LectureState.COMPLETED -> Icons.Default.CheckCircle; LectureState.HAPPENING -> Icons.Default.Notifications; LectureState.UPCOMING -> Icons.Default.AccessTime }, contentDescription = null, tint = railColor, modifier = Modifier.size(25.dp))
         }
         Spacer(Modifier.height(9.dp))
         Text(formatTime(lecture.startMinutes), color = if (state == LectureState.HAPPENING) railColor else primaryText, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)

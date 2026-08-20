@@ -77,6 +77,7 @@ fun AlertsScreen(
     container: AppContainer,
     onOpenHome: () -> Unit,
     onOpenToday: () -> Unit,
+    onOpenNotice: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenLecture: (LectureEntity) -> Unit
 ) {
@@ -104,7 +105,7 @@ fun AlertsScreen(
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = { PremiumBottomBar("alerts") { route -> when (route) { "home" -> onOpenHome(); "today" -> onOpenToday() } } }
+        bottomBar = { PremiumBottomBar("alerts") { route -> when (route) { "home" -> onOpenHome(); "today" -> onOpenToday(); "notice" -> onOpenNotice() } } }
     ) { padding ->
         PremiumScreenBackground {
             LazyColumn(

@@ -98,11 +98,12 @@ fun OnboardingScreen(container: AppContainer, onDone: () -> Unit) {
             val section = record?.section ?: manualSection
             val subsection = record?.subsection ?: manualSubsection
             val studentGroup = record?.group ?: subsection
+            val timetableGroup = subsection
             val mentorMobile = record?.mentorMobile.orEmpty()
             val mentorVenue = record?.venue.orEmpty()
             container.settings.saveStudentProfile(name, crn, branch, registration, father, mother, mentor, section, subsection, studentGroup, mentorMobile, mentorVenue, source)
-            if (studentGroup.isNotBlank()) {
-                runCatching { container.refreshManager.changeGroup(studentGroup) }
+            if (timetableGroup.isNotBlank()) {
+                runCatching { container.refreshManager.changeGroup(timetableGroup) }
             }
             loading = false
             step = 4
@@ -359,7 +360,7 @@ private fun ConfirmProfileStep(record: StudentDirectoryRecord?, onConfirm: () ->
     Column(Modifier.fillMaxWidth()) {
         Text("Is this you?", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(5.dp))
-        Text("We’ll save these permanent details locally and use ${record.group} as your timetable group.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("We’ll save these permanent details locally and use ${record.subsection} as your timetable group.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(14.dp))
         Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer), shape = RoundedCornerShape(20.dp), elevation = CardDefaults.cardElevation(0.dp)) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
