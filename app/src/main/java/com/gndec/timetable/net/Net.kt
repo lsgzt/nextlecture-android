@@ -19,6 +19,8 @@ import java.util.concurrent.TimeUnit
 
 class HttpException(val code: Int, message: String) : Exception("HTTP $code: $message")
 
+class GeminiRecitationException(message: String) : Exception(message)
+
 data class ChatMessage(val role: String, val content: String)
 
 object Net {
@@ -35,7 +37,7 @@ class GeminiClient(private val client: OkHttpClient = Net.client) {
     private val base = "https://generativelanguage.googleapis.com/v1beta"
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
-    /** Returns bare model IDs, for example `gemini-2.5-flash`. */
+    /** Returns bare model IDs, for example `gemini-3.6-flash`. */
     suspend fun listModels(apiKey: String): List<String> = withContext(Dispatchers.IO) {
         val req = Request.Builder()
             .url("$base/models")
@@ -93,56 +95,67 @@ class GeminiClient(private val client: OkHttpClient = Net.client) {
                 val body = resp.body?.string() ?: throw HttpException(resp.code, "empty body")
                 val root = json.parseToJsonElement(body) as? JsonObject
                     ?: throw HttpException(200, "unexpected Gemini payload")
-                val text = extractText(root)
-                AiCellParser.parse(text)
-                    ?: throw HttpException(200, "AI output failed validation")
+                val text = extractTextOrNull(root) ?: throw HttpException(200, diagnostic(root))
+                AiCellParser.parse(text) ?: throw HttpException(200, "AI output failed validation")
             }
         }
 
-    /** Sends Gemini's multi-turn chat request with user/model turns and a separate system instruction. */
+    /** Sends a complete multi-turn response. Syllabus uses chatStream for progressive UI updates. */
     suspend fun chat(
         messages: List<ChatMessage>,
         systemPrompt: String,
         model: String,
         apiKey: String
+    ): String = chatStream(messages, systemPrompt, model, apiKey) { }
+
+    /**
+     * Streams Gemini's REST SSE response. Each non-empty text delta is delivered immediately
+     * on the IO thread, while the returned string contains the complete answer for persistence.
+     */
+    suspend fun chatStream(
+        messages: List<ChatMessage>,
+        systemPrompt: String,
+        model: String,
+        apiKey: String,
+        onText: (String) -> Unit
     ): String = withContext(Dispatchers.IO) {
         require(messages.any { it.content.isNotBlank() }) { "At least one chat message is required" }
-        val payload = buildJsonObject {
-            put("systemInstruction", buildJsonObject {
-                put("parts", buildJsonArray {
-                    add(buildJsonObject { put("text", systemPrompt) })
-                })
-            })
-            put("contents", buildJsonArray {
-                messages.filter { it.content.isNotBlank() }.forEach { message ->
-                    add(buildJsonObject {
-                        put("role", if (message.role.equals("model", ignoreCase = true) || message.role.equals("assistant", ignoreCase = true)) "model" else "user")
-                        put("parts", buildJsonArray {
-                            add(buildJsonObject { put("text", message.content) })
-                        })
-                    })
-                }
-            })
-            put("generationConfig", buildJsonObject {
-                // Gemini 3.6+ rejects the legacy temperature/topP sampling fields.
-                // Leave thinking at the model default and reserve enough output for all syllabus units.
-                put("maxOutputTokens", 32768)
-            })
-        }
+        val payload = buildChatPayload(messages, systemPrompt)
         val req = Request.Builder()
-            .url(generateUrl(model))
+            .url(streamUrl(model))
             .header("x-goog-api-key", apiKey)
+            .header("Accept", "text/event-stream")
             .post(payload.toString().toRequestBody(Net.JSON_MEDIA))
             .build()
         client.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) {
-                val detail = resp.body?.string()?.take(300).orEmpty()
-                throw HttpException(resp.code, "Gemini chat failed${if (detail.isNotBlank()) ": $detail" else ""}")
+                val detail = resp.body?.string()?.take(500).orEmpty()
+                throw HttpException(resp.code, "Gemini streaming failed${if (detail.isNotBlank()) ": $detail" else ""}")
             }
-            val body = resp.body?.string() ?: throw HttpException(resp.code, "empty body")
-            val root = json.parseToJsonElement(body) as? JsonObject
-                ?: throw HttpException(200, "unexpected Gemini payload")
-            extractText(root)
+            val body = resp.body ?: throw HttpException(resp.code, "empty streaming body")
+            val complete = StringBuilder()
+            val finishReasons = mutableSetOf<String>()
+            body.charStream().buffered().useLines { lines ->
+                lines.forEach { line ->
+                    val data = line.trim().takeIf { it.startsWith("data:") }
+                        ?.removePrefix("data:")?.trim()
+                        ?.takeIf { it.isNotBlank() && it != "[DONE]" }
+                        ?: return@forEach
+                    val root = runCatching { json.parseToJsonElement(data) as? JsonObject }.getOrNull() ?: return@forEach
+                    finishReasons += finishReasons(root)
+                    val delta = extractTextOrNull(root).orEmpty()
+                    if (delta.isNotBlank()) {
+                        complete.append(delta)
+                        onText(delta)
+                    }
+                }
+            }
+            val answer = complete.toString().trim()
+            if (answer.isNotBlank()) return@withContext answer
+            if (finishReasons.contains("RECITATION")) {
+                throw GeminiRecitationException("Gemini stopped because the answer was too close to source text (RECITATION)")
+            }
+            throw HttpException(200, "Gemini returned HTTP 200 without answer text${finishReasons.takeIf { it.isNotEmpty() }?.let { " (finishReason=${it.joinToString()})" } ?: ""}")
         }
     }
 
@@ -154,7 +167,29 @@ class GeminiClient(private val client: OkHttpClient = Net.client) {
         false to false
     }
 
-    private fun extractText(root: JsonObject): String {
+    private fun buildChatPayload(messages: List<ChatMessage>, systemPrompt: String): JsonObject = buildJsonObject {
+        put("systemInstruction", buildJsonObject {
+            put("parts", buildJsonArray {
+                add(buildJsonObject { put("text", systemPrompt) })
+            })
+        })
+        put("contents", buildJsonArray {
+            messages.filter { it.content.isNotBlank() }.forEach { message ->
+                add(buildJsonObject {
+                    put("role", if (message.role.equals("model", ignoreCase = true) || message.role.equals("assistant", ignoreCase = true)) "model" else "user")
+                    put("parts", buildJsonArray {
+                        add(buildJsonObject { put("text", message.content) })
+                    })
+                })
+            }
+        })
+        put("generationConfig", buildJsonObject {
+            // Gemini 3.6+ should use its default sampling behavior; legacy temperature/topP are omitted.
+            put("maxOutputTokens", 32768)
+        })
+    }
+
+    private fun extractTextOrNull(root: JsonObject): String? {
         val texts = mutableListOf<String>()
         val candidates = root["candidates"] as? JsonArray
         candidates?.forEach { candidateElement ->
@@ -169,23 +204,27 @@ class GeminiClient(private val client: OkHttpClient = Net.client) {
         }
         val topLevelText = (root["text"] as? JsonPrimitive)?.content?.trim().orEmpty()
         if (topLevelText.isNotBlank()) texts += topLevelText
-        val answer = texts.joinToString("\n").trim()
-        if (answer.isNotBlank()) return answer
+        return texts.joinToString("\n").trim().takeIf { it.isNotBlank() }
+    }
 
+    private fun finishReasons(root: JsonObject): List<String> =
+        (root["candidates"] as? JsonArray)
+            ?.mapNotNull { ((it as? JsonObject)?.get("finishReason") as? JsonPrimitive)?.content }
+            .orEmpty()
+
+    private fun diagnostic(root: JsonObject): String {
+        val reasons = finishReasons(root)
         val feedback = root["promptFeedback"] as? JsonObject
         val blockReason = (feedback?.get("blockReason") as? JsonPrimitive)?.content.orEmpty()
-        val finishReasons = candidates?.mapNotNull { candidateElement ->
-            ((candidateElement as? JsonObject)?.get("finishReason") as? JsonPrimitive)?.content
-        }.orEmpty().distinct()
-        val diagnostic = buildString {
+        return buildString {
             append("Gemini returned HTTP 200 without answer text")
             if (blockReason.isNotBlank()) append(" (blockReason=$blockReason)")
-            if (finishReasons.isNotEmpty()) append(" (finishReason=${finishReasons.joinToString()})")
+            if (reasons.isNotEmpty()) append(" (finishReason=${reasons.joinToString()})")
         }
-        throw HttpException(200, diagnostic)
     }
 
     private fun generateUrl(model: String): String = "$base/models/${normalizeModel(model)}:generateContent"
+    private fun streamUrl(model: String): String = "$base/models/${normalizeModel(model)}:streamGenerateContent?alt=sse"
 
     companion object {
         fun normalizeModel(value: String): String = value.trim().removePrefix("models/")

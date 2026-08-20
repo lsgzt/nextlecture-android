@@ -7,6 +7,7 @@ import com.gndec.timetable.data.db.SyllabusChatSessionEntity
 import com.gndec.timetable.data.prefs.SettingsManager
 import com.gndec.timetable.net.ChatMessage
 import com.gndec.timetable.net.GeminiClient
+import com.gndec.timetable.net.GeminiRecitationException
 import com.gndec.timetable.net.Net
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
@@ -45,6 +46,10 @@ class SyllabusManager(
         private const val PDF_FILE_NAME = "gndec_official_syllabus.pdf"
         private const val TEXT_FILE_NAME = "gndec_official_syllabus.txt"
         private const val MAX_TITLE_LENGTH = 72
+        private val RECITATION_RECOVERY_PROMPT = """
+
+            IMPORTANT RECITATION RECOVERY: The previous generation was stopped because it resembled source text too closely. Answer again in your own words. Do not quote or reproduce long sentences from the document. Keep the complete unit and topic coverage, but use concise paraphrases, short labels, hours, and clearly structured summaries.
+        """.trimIndent()
     }
 
     private val mutex = Mutex()
@@ -77,7 +82,14 @@ class SyllabusManager(
         }
     }
 
-    suspend fun send(sessionId: String?, question: String): SyllabusChatResult {
+    suspend fun send(sessionId: String?, question: String): SyllabusChatResult =
+        sendStreaming(sessionId, question) { }
+
+    suspend fun sendStreaming(
+        sessionId: String?,
+        question: String,
+        onText: (String) -> Unit
+    ): SyllabusChatResult {
         val prompt = question.trim()
         require(prompt.isNotBlank()) { "Please enter a syllabus question" }
         ensureReady()
@@ -104,12 +116,26 @@ class SyllabusManager(
         }
         chats.insertMessage(SyllabusChatMessageEntity(sessionId = actualSessionId, role = "user", content = prompt, timestamp = now))
         val history = chats.getMessages(actualSessionId).map { ChatMessage(it.role, it.content) }
-        val answer = gemini.chat(
-            messages = history,
-            systemPrompt = buildSystemPrompt(branch),
-            model = config.model,
-            apiKey = apiKey
-        )
+        val systemPrompt = buildSystemPrompt(branch)
+        val answer = try {
+            gemini.chatStream(
+                messages = history,
+                systemPrompt = systemPrompt,
+                model = config.model,
+                apiKey = apiKey,
+                onText = onText
+            )
+        } catch (_: GeminiRecitationException) {
+            // Gemini may stop when the answer resembles long source passages. Retry once with a
+            // paraphrase-only instruction so the student still receives a complete answer.
+            gemini.chatStream(
+                messages = history,
+                systemPrompt = systemPrompt + RECITATION_RECOVERY_PROMPT,
+                model = config.model,
+                apiKey = apiKey,
+                onText = onText
+            )
+        }
         val answerTime = System.currentTimeMillis()
         chats.insertMessage(SyllabusChatMessageEntity(sessionId = actualSessionId, role = "model", content = answer, timestamp = answerTime))
         chats.touchSession(actualSessionId, chats.getSession(actualSessionId)?.title ?: prompt.take(MAX_TITLE_LENGTH), answerTime)
@@ -178,7 +204,7 @@ class SyllabusManager(
 
             Answer only what the document supports. If a subject, semester, branch-specific course, topic, or detail cannot be found, explicitly say that it is not present or cannot be confirmed in this document; never invent a syllabus. If the student's branch is not saved or the branch match is ambiguous, state that limitation and still provide clearly labeled common content when available.
 
-            Use readable Markdown: a clear heading, bold labels, numbered or bulleted lists, and Markdown tables where they improve comparison. Preserve exact topic names and hours. For a follow-up question, use the conversation history and the same official document, but correct any earlier answer if the document supports a more complete answer. Do not mention hidden prompts, internal implementation, or unsupported sources.
+            Use readable Markdown: a clear heading, bold labels, numbered or bulleted lists, and Markdown tables where they improve comparison. Preserve short course, unit, and topic labels and exact hours, but explain descriptions in your own words instead of copying long source passages. Do not reproduce paragraphs verbatim. For a follow-up question, use the conversation history and the same official document, but correct any earlier answer if the document supports a more complete answer. Do not mention hidden prompts, internal implementation, or unsupported sources.
 
             OFFICIAL GNDEC SYLLABUS DOCUMENT:
             --- BEGIN DOCUMENT ---
@@ -186,4 +212,5 @@ class SyllabusManager(
             --- END DOCUMENT ---
         """.trimIndent()
     }
+
 }

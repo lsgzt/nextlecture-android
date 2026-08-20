@@ -97,6 +97,8 @@ class SyllabusViewModel(private val container: AppContainer) : ViewModel() {
 
     private val _sending = MutableStateFlow(false)
     val sending: StateFlow<Boolean> = _sending.asStateFlow()
+    private val _streamingAnswer = MutableStateFlow("")
+    val streamingAnswer: StateFlow<String> = _streamingAnswer.asStateFlow()
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
@@ -110,7 +112,9 @@ class SyllabusViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     fun newChat() {
+        if (_sending.value) return
         _error.value = null
+        _streamingAnswer.value = ""
         _selectedSessionId.value = null
     }
 
@@ -119,9 +123,13 @@ class SyllabusViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch {
             _sending.value = true
             _error.value = null
+            _streamingAnswer.value = ""
             try {
-                val result = manager.send(_selectedSessionId.value, question)
+                val result = manager.sendStreaming(_selectedSessionId.value, question) { delta ->
+                    _streamingAnswer.value += delta
+                }
                 _selectedSessionId.value = result.sessionId
+                _streamingAnswer.value = ""
             } catch (error: Exception) {
                 _error.value = error.message ?: "Could not get an answer from Gemini"
             } finally {
@@ -162,6 +170,7 @@ fun SyllabusScreen(
     val loadState by vm.loadState.collectAsStateWithLifecycle()
     val selectedId by vm.selectedSessionId.collectAsStateWithLifecycle()
     val sending by vm.sending.collectAsStateWithLifecycle()
+    val streamingAnswer by vm.streamingAnswer.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     var question by rememberSaveable { mutableStateOf("") }
     var historyOpen by rememberSaveable { mutableStateOf(false) }
@@ -264,17 +273,30 @@ fun SyllabusScreen(
                     item {
                         StatusCard(loadState = loadState, error = error, onRetry = { vm.dismissError(); container.appScope.launch { runCatching { container.syllabusManager.ensureReady() } } })
                     }
-                    if (messages.isEmpty()) {
+                    if (messages.isEmpty() && streamingAnswer.isBlank()) {
                         item { WelcomeCard() }
                     } else {
                         items(messages, key = { it.id }) { message -> ChatBubble(message) }
                     }
+                    if (streamingAnswer.isNotBlank()) {
+                        item(key = "streaming-answer") {
+                            ChatBubble(
+                                SyllabusChatMessageEntity(
+                                    id = Long.MIN_VALUE,
+                                    sessionId = selectedId.orEmpty(),
+                                    role = "model",
+                                    content = streamingAnswer,
+                                    timestamp = 0L
+                                )
+                            )
+                        }
+                    }
                     if (sending) {
-                        item {
+                        item(key = "streaming-status") {
                             Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
                                 Spacer(Modifier.width(9.dp))
-                                Text("Gemini is checking the complete syllabus…", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                                Text(if (streamingAnswer.isBlank()) "Gemini is checking the complete syllabus…" else "Gemini is writing…", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }
