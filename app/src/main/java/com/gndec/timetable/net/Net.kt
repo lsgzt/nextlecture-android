@@ -24,7 +24,7 @@ data class ChatMessage(val role: String, val content: String)
 object Net {
     val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
         .build()
     val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
 }
@@ -79,8 +79,8 @@ class GeminiClient(private val client: OkHttpClient = Net.client) {
                     })
                 })
                 put("generationConfig", buildJsonObject {
-                    put("temperature", 0.0)
                     put("responseMimeType", "application/json")
+                    put("maxOutputTokens", 2048)
                 })
             }
             val req = Request.Builder()
@@ -93,11 +93,8 @@ class GeminiClient(private val client: OkHttpClient = Net.client) {
                 val body = resp.body?.string() ?: throw HttpException(resp.code, "empty body")
                 val root = json.parseToJsonElement(body) as? JsonObject
                     ?: throw HttpException(200, "unexpected Gemini payload")
-                val candidates = root["candidates"] as? JsonArray
-                val content = (candidates?.firstOrNull() as? JsonObject)?.get("content") as? JsonObject
-                val parts = content?.get("parts") as? JsonArray
-                val text = (parts?.firstOrNull() as? JsonObject)?.get("text") as? JsonPrimitive
-                AiCellParser.parse(text?.content ?: throw HttpException(200, "no Gemini content"))
+                val text = extractText(root)
+                AiCellParser.parse(text)
                     ?: throw HttpException(200, "AI output failed validation")
             }
         }
@@ -127,9 +124,9 @@ class GeminiClient(private val client: OkHttpClient = Net.client) {
                 }
             })
             put("generationConfig", buildJsonObject {
-                put("temperature", 0.2)
-                put("topP", 0.9)
-                put("maxOutputTokens", 4096)
+                // Gemini 3.6+ rejects the legacy temperature/topP sampling fields.
+                // Leave thinking at the model default and reserve enough output for all syllabus units.
+                put("maxOutputTokens", 32768)
             })
         }
         val req = Request.Builder()
@@ -145,14 +142,7 @@ class GeminiClient(private val client: OkHttpClient = Net.client) {
             val body = resp.body?.string() ?: throw HttpException(resp.code, "empty body")
             val root = json.parseToJsonElement(body) as? JsonObject
                 ?: throw HttpException(200, "unexpected Gemini payload")
-            val candidates = root["candidates"] as? JsonArray
-            val content = (candidates?.firstOrNull() as? JsonObject)?.get("content") as? JsonObject
-            val parts = content?.get("parts") as? JsonArray
-            parts?.mapNotNull { (it as? JsonObject)?.get("text") as? JsonPrimitive }
-                ?.joinToString("") { it.content }
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
-                ?: throw HttpException(200, "no Gemini chat content")
+            extractText(root)
         }
     }
 
@@ -162,6 +152,37 @@ class GeminiClient(private val client: OkHttpClient = Net.client) {
         true to models.any { it == normalizeModel(model) }
     } catch (_: Exception) {
         false to false
+    }
+
+    private fun extractText(root: JsonObject): String {
+        val texts = mutableListOf<String>()
+        val candidates = root["candidates"] as? JsonArray
+        candidates?.forEach { candidateElement ->
+            val candidate = candidateElement as? JsonObject ?: return@forEach
+            val content = candidate["content"] as? JsonObject ?: return@forEach
+            val parts = content["parts"] as? JsonArray ?: return@forEach
+            parts.forEach { partElement ->
+                val part = partElement as? JsonObject ?: return@forEach
+                val text = (part["text"] as? JsonPrimitive)?.content?.trim().orEmpty()
+                if (text.isNotBlank()) texts += text
+            }
+        }
+        val topLevelText = (root["text"] as? JsonPrimitive)?.content?.trim().orEmpty()
+        if (topLevelText.isNotBlank()) texts += topLevelText
+        val answer = texts.joinToString("\n").trim()
+        if (answer.isNotBlank()) return answer
+
+        val feedback = root["promptFeedback"] as? JsonObject
+        val blockReason = (feedback?.get("blockReason") as? JsonPrimitive)?.content.orEmpty()
+        val finishReasons = candidates?.mapNotNull { candidateElement ->
+            ((candidateElement as? JsonObject)?.get("finishReason") as? JsonPrimitive)?.content
+        }.orEmpty().distinct()
+        val diagnostic = buildString {
+            append("Gemini returned HTTP 200 without answer text")
+            if (blockReason.isNotBlank()) append(" (blockReason=$blockReason)")
+            if (finishReasons.isNotEmpty()) append(" (finishReason=${finishReasons.joinToString()})")
+        }
+        throw HttpException(200, diagnostic)
     }
 
     private fun generateUrl(model: String): String = "$base/models/${normalizeModel(model)}:generateContent"
