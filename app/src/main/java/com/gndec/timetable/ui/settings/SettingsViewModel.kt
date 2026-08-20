@@ -7,7 +7,7 @@ import com.gndec.timetable.data.prefs.AppSettings
 import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.domain.NotificationHelper
 import com.gndec.timetable.domain.RefreshResult
-import com.gndec.timetable.net.GroqClient
+import com.gndec.timetable.net.GeminiClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -98,28 +98,28 @@ class SettingsViewModel(private val c: AppContainer) {
         cfg.group?.let { g -> c.scheduler.rescheduleAll(c.db, g, com.gndec.timetable.domain.ReminderConfig.from(cfg)) }
     }
 
-    fun hasUserKey(): Boolean = c.keys.getGroqKey() != null
+    fun hasUserKey(): Boolean = c.keys.getGeminiKey() != null
 
     fun saveKey(key: String) {
         if (key.isBlank()) return
-        c.keys.setGroqKey(key) // encrypted at rest; never logged, never sent to our backend
+        c.keys.setGeminiKey(key) // encrypted at rest; never logged, never sent to our backend
         _message.value = "API key saved (stored encrypted on this device)"
     }
 
     fun removeKey() {
-        c.keys.removeGroqKey()
+        c.keys.removeGeminiKey()
         _message.value = "API key removed"
     }
 
     fun testKey() = scope.launch {
-        val key = c.keys.getGroqKey()
-        if (key == null) { _message.value = "Enter and save a Groq API key first"; return@launch }
+        val key = c.keys.getGeminiKey()
+        if (key == null) { _message.value = "Enter and save a Gemini API key first"; return@launch }
         val model = settings.value.model
         _busy.value = true
         _message.value = "Testing API key…"
-        val (keyOk, modelOk) = GroqClient().test(key, model)
+        val (keyOk, modelOk) = GeminiClient().test(key, model)
         _message.value = buildString {
-            append(if (keyOk) "✓ API key works" else "✕ API key rejected by Groq")
+            append(if (keyOk) "✓ API key works" else "✕ API key rejected by Gemini")
             if (keyOk) append("\n" + (if (modelOk) "✓ Model available ($model)"
             else "✕ Selected model unavailable — please choose another model"))
         }.trim()
@@ -128,14 +128,14 @@ class SettingsViewModel(private val c: AppContainer) {
     }
 
     fun refreshModels() = scope.launch {
-        val key = c.keys.getGroqKey()
+        val key = c.keys.getGeminiKey()
         if (key == null) {
-            _message.value = "A Groq API key is required to list available models"
+            _message.value = "A Gemini API key is required to list available models"
             return@launch
         }
         _busy.value = true
         try {
-            _models.value = GroqClient().listModels(key)
+            _models.value = GeminiClient().listModels(key)
             if (_models.value.isNotEmpty()) _message.value = "✓ ${_models.value.size} models loaded"
         } catch (e: Exception) {
             _message.value = "Couldn't fetch models (${e.message})"

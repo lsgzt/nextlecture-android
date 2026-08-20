@@ -51,7 +51,6 @@ import com.gndec.timetable.data.db.LectureEntity
 import com.gndec.timetable.data.prefs.AppSettings
 import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.domain.NotificationHelper
-import com.gndec.timetable.ui.PremiumBottomBar
 import com.gndec.timetable.ui.PremiumPageHeader
 import com.gndec.timetable.ui.IconBadge
 import com.gndec.timetable.ui.PremiumScreenBackground
@@ -79,7 +78,8 @@ fun AlertsScreen(
     onOpenToday: () -> Unit,
     onOpenNotice: () -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenLecture: (LectureEntity) -> Unit
+    onOpenLecture: (LectureEntity) -> Unit,
+    onBack: () -> Unit = {}
 ) {
     val settings by container.settings.flow.collectAsStateWithLifecycle(initialValue = AppSettings())
     val group = settings.group
@@ -103,10 +103,7 @@ fun AlertsScreen(
     val upcoming = lectures.filter { it.dayOfWeek == zdt.dayOfWeek.value && it.startMinutes > zdt.hour * 60 + zdt.minute }.take(4)
     val enabled = settings.remind15 || settings.remind30 || settings.remind5 || settings.remindAtStart
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = { PremiumBottomBar("alerts") { route -> when (route) { "home" -> onOpenHome(); "today" -> onOpenToday(); "notice" -> onOpenNotice() } } }
-    ) { padding ->
+    Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         PremiumScreenBackground {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
@@ -117,6 +114,7 @@ fun AlertsScreen(
                     PremiumPageHeader(
                         title = "Alerts",
                         subtitle = "${upcoming.size} scheduled lectures",
+                        onBack = onBack,
                         onSettings = onOpenSettings
                     )
                 }

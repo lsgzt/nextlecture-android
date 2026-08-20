@@ -5,10 +5,7 @@ import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 
-/**
- * Stores the user-provided Groq API key with Android Keystore-backed encryption.
- * The key is NEVER logged, never sent to our backend, never written to analytics.
- */
+/** Stores the user-provided Gemini API key with Android Keystore-backed encryption. */
 class SecureKeyStore(context: Context) {
 
     private val prefs: SharedPreferences by lazy {
@@ -24,16 +21,15 @@ class SecureKeyStore(context: Context) {
         )
     }
 
-    fun getGroqKey(): String? =
-        prefs.getString(KEY_GROQ, null)?.takeIf { it.isNotBlank() }
+    fun getGeminiKey(): String? = prefs.getString(KEY_GEMINI, null)?.takeIf { it.isNotBlank() }
 
-    fun setGroqKey(key: String) {
-        prefs.edit().putString(KEY_GROQ, key.trim()).apply()
+    fun setGeminiKey(key: String) {
+        prefs.edit().putString(KEY_GEMINI, key.trim()).apply()
     }
 
-    fun removeGroqKey() {
-        prefs.edit().remove(KEY_GROQ).apply()
+    fun removeGeminiKey() {
+        prefs.edit().remove(KEY_GEMINI).apply()
     }
 
-    companion object { private const val KEY_GROQ = "groq_api_key" }
+    companion object { private const val KEY_GEMINI = "gemini_api_key" }
 }

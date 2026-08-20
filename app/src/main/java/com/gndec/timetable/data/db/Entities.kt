@@ -1,6 +1,7 @@
 package com.gndec.timetable.data.db
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 @Entity(tableName = "lectures")
@@ -55,4 +56,26 @@ data class ScheduledAlarmEntity(
     val startMinutes: Int,
     val reminderType: String,
     val epochMillis: Long
+)
+
+@Entity(tableName = "syllabus_chat_sessions")
+data class SyllabusChatSessionEntity(
+    @PrimaryKey val id: String,
+    val title: String,
+    val createdAt: Long,
+    val updatedAt: Long,
+    val branch: String
+)
+
+@Entity(
+    tableName = "syllabus_chat_messages",
+    indices = [Index(value = ["sessionId", "timestamp"])]
+)
+data class SyllabusChatMessageEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val sessionId: String,
+    /** Gemini-compatible role: user or model. */
+    val role: String,
+    val content: String,
+    val timestamp: Long
 )

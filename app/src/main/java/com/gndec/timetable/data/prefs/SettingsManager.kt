@@ -16,7 +16,7 @@ data class AppSettings(
     val sourceUrl: String = DEFAULT_SOURCE_URL,
     val backendUrl: String = "",
     val aiEnabled: Boolean = true,
-    val model: String = "llama-3.1-8b-instant",
+    val model: String = "gemini-2.5-flash",
     val themeMode: String = "light", // light | dark | system
     val remind15: Boolean = true,
     val remind30: Boolean = false,
@@ -55,6 +55,7 @@ data class AppSettings(
     val lastReleaseNotifiedMarker: String = ""
 ) {
     companion object {
+        const val DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
         const val DEFAULT_SOURCE_URL =
             "https://appsc.gndec.ac.in/sites/default/files/2026-08/09_08_2026%20FINAL_FILE_subgroups_days_horizontal.html"
     }
@@ -112,7 +113,7 @@ class SettingsManager(private val context: Context) {
             sourceUrl = p[K.SOURCE_URL] ?: AppSettings.DEFAULT_SOURCE_URL,
             backendUrl = p[K.BACKEND_URL] ?: "",
             aiEnabled = p[K.AI_ENABLED] ?: true,
-            model = p[K.MODEL] ?: "llama-3.1-8b-instant",
+            model = normalizeGeminiModel(p[K.MODEL]),
             themeMode = p[K.THEME] ?: "light",
             remind15 = p[K.REMIND15] ?: true,
             remind30 = p[K.REMIND30] ?: false,
@@ -227,4 +228,11 @@ class SettingsManager(private val context: Context) {
         it[K.LAST_RELEASE_CHECKED_AT] = checkedAt
     }
     suspend fun setReleaseNotifiedMarker(marker: String) = context.dataStore.edit { it[K.LAST_RELEASE_NOTIFIED_MARKER] = marker.trim() }
+
+    private fun normalizeGeminiModel(value: String?): String {
+        val model = value?.trim().orEmpty()
+        return if (model.isBlank() || model.contains("llama", ignoreCase = true) || model.contains("mixtral", ignoreCase = true) || model.contains("gemma", ignoreCase = true) && !model.startsWith("gemini", ignoreCase = true)) {
+            AppSettings.DEFAULT_GEMINI_MODEL
+        } else model.removePrefix("models/")
+    }
 }

@@ -137,7 +137,7 @@ fun DayScreen(
             PremiumBottomBar("today") { route ->
                 when (route) {
                     "home" -> onOpenHome()
-                    "alerts" -> onOpenAlerts()
+                    "syllabus" -> onOpenAlerts()
                     "notice" -> onOpenNotice()
                 }
             }

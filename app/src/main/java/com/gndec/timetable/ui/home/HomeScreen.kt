@@ -92,7 +92,7 @@ fun HomeScreen(
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = { PremiumBottomBar("home") { route -> when (route) { "today" -> onOpenToday(); "notice" -> onOpenNotice(); "alerts" -> onOpenAlerts() } } }
+        bottomBar = { PremiumBottomBar("home") { route -> when (route) { "today" -> onOpenToday(); "notice" -> onOpenNotice(); "syllabus" -> onOpenAlerts() } } }
     ) { padding ->
         PremiumScreenBackground {
             LazyColumn(

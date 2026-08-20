@@ -10,9 +10,11 @@ import androidx.room.RoomDatabase
         LectureEntity::class,
         TimetableMetaEntity::class,
         AiCacheEntity::class,
-        ScheduledAlarmEntity::class
+        ScheduledAlarmEntity::class,
+        SyllabusChatSessionEntity::class,
+        SyllabusChatMessageEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -20,6 +22,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun metaDao(): MetaDao
     abstract fun aiCacheDao(): AiCacheDao
     abstract fun alarmDao(): AlarmDao
+    abstract fun syllabusChatDao(): SyllabusChatDao
 
     companion object {
         @Volatile private var instance: AppDatabase? = null

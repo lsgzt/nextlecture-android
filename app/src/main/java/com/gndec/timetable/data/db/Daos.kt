@@ -71,3 +71,34 @@ interface AlarmDao {
     @Query("DELETE FROM scheduled_alarms")
     suspend fun clear()
 }
+
+
+@Dao
+interface SyllabusChatDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSession(session: SyllabusChatSessionEntity)
+
+    @Query("SELECT * FROM syllabus_chat_sessions ORDER BY updatedAt DESC")
+    fun observeSessions(): Flow<List<SyllabusChatSessionEntity>>
+
+    @Query("SELECT * FROM syllabus_chat_sessions WHERE id = :sessionId LIMIT 1")
+    suspend fun getSession(sessionId: String): SyllabusChatSessionEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMessage(message: SyllabusChatMessageEntity)
+
+    @Query("SELECT * FROM syllabus_chat_messages WHERE sessionId = :sessionId ORDER BY timestamp ASC, id ASC")
+    fun observeMessages(sessionId: String): Flow<List<SyllabusChatMessageEntity>>
+
+    @Query("SELECT * FROM syllabus_chat_messages WHERE sessionId = :sessionId ORDER BY timestamp ASC, id ASC")
+    suspend fun getMessages(sessionId: String): List<SyllabusChatMessageEntity>
+
+    @Query("UPDATE syllabus_chat_sessions SET title = :title, updatedAt = :updatedAt WHERE id = :sessionId")
+    suspend fun touchSession(sessionId: String, title: String, updatedAt: Long)
+
+    @Query("DELETE FROM syllabus_chat_messages WHERE sessionId = :sessionId")
+    suspend fun deleteMessages(sessionId: String)
+
+    @Query("DELETE FROM syllabus_chat_sessions WHERE id = :sessionId")
+    suspend fun deleteSession(sessionId: String)
+}

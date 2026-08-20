@@ -13,7 +13,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 /**
  * Talks to the restricted developer backend (see /backend in the repo).
- * Used ONLY when the user has not provided their own Groq key.
+ * Used ONLY when the user has not provided their own Gemini key.
  * The user's key (when present) is NEVER sent here.
  */
 class BackendClient(private val client: OkHttpClient = Net.client) {

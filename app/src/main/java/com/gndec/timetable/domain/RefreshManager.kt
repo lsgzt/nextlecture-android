@@ -106,7 +106,7 @@ class RefreshManager(
         val cfg = settings.flow.first()
         val route = AiNormalizer.AiRoute(
             enabled = cfg.aiEnabled,
-            userApiKey = keys.getGroqKey(),
+            userApiKey = keys.getGeminiKey(),
             backendUrl = cfg.backendUrl,
             model = cfg.model
         )

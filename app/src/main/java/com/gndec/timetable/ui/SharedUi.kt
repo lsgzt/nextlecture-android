@@ -20,13 +20,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForwardIos
-import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -138,7 +139,7 @@ fun Header(
 private val BottomNavItems = listOf(
     Triple("home", "Home", Icons.Default.Home),
     Triple("today", "Today", Icons.Default.CalendarMonth),
-    Triple("alerts", "Alerts", Icons.Default.Notifications)
+    Triple("syllabus", "Syllabus", Icons.Default.MenuBook)
 )
 
 @Composable

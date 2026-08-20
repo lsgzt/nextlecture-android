@@ -74,7 +74,7 @@ private const val SOURCE_CODE_URL = "https://github.com/lsgzt/nextlecture-androi
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(container: AppContainer, onBack: () -> Unit) {
+fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onOpenAlerts: () -> Unit = {}) {
     val vm = remember { SettingsViewModel(container) }
     DisposableEffect(Unit) { onDispose { vm.clear() } }
     val settings by vm.settings.collectAsStateWithLifecycle()
@@ -152,6 +152,7 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit) {
                         ToggleRow("At lecture start", settings.remindAtStart, vm::setRemindAtStart)
                         Text("Reminders run locally and work offline.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth())
                         Text("Schedule a real test reminder, then close the app or lock your phone.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth())
+                        TealOutlineButton("Notification alerts", Icons.Default.Notifications, modifier = Modifier.fillMaxWidth(), onClick = onOpenAlerts)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                             androidx.compose.foundation.layout.Box {
                                 TealOutlineButton("${testDelay} min", modifier = Modifier.width(96.dp), onClick = { testDelayMenu = true })
@@ -218,18 +219,18 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit) {
                     }
                 }
                 item {
-                    SectionCard("AI & timetable parsing", Icons.Default.Tune) {
-                        ToggleRow("AI normalization (Groq)", settings.aiEnabled, vm::setAiEnabled)
+                    SectionCard("Gemini AI & timetable parsing", Icons.Default.Tune) {
+                        ToggleRow("AI normalization (Gemini)", settings.aiEnabled, vm::setAiEnabled)
                         Text("AI helps normalize ambiguous fields; timetable parsing stays authoritative.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth())
                         OutlinedTextField(backendInput, { backendInput = it }, label = { Text("Backend URL") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                         TealOutlineButton("Save backend URL", modifier = Modifier.fillMaxWidth(), onClick = { vm.setBackendUrl(backendInput) })
-                        OutlinedTextField(keyInput, { keyInput = it }, label = { Text(if (vm.hasUserKey()) "Groq API key · saved" else "Groq API key") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(keyInput, { keyInput = it }, label = { Text(if (vm.hasUserKey()) "Gemini API key · saved" else "Gemini API key") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
                         Row {
                             TextButton(onClick = { vm.saveKey(keyInput); keyInput = "" }) { Text("Save") }
                             TextButton(onClick = vm::testKey, enabled = !busy) { Text("Test") }
                             TextButton(onClick = vm::removeKey) { Text("Remove") }
                         }
-                        Text("AI model", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Gemini model", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             androidx.compose.foundation.layout.Box {
                                 TealOutlineButton(settings.model, modifier = Modifier, onClick = { modelMenu = true })

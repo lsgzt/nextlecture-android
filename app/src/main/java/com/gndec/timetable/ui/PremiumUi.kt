@@ -29,7 +29,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -356,7 +356,7 @@ fun PremiumBottomBar(selected: String, onNavigate: (String) -> Unit) {
         Triple("home", "Home", Icons.Default.Home),
         Triple("today", "Today", Icons.Default.Today),
         Triple("notice", "Notice", Icons.Default.Campaign),
-        Triple("alerts", "Alerts", Icons.Default.Notifications)
+        Triple("syllabus", "Syllabus", Icons.Default.MenuBook)
     )
     Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp, shadowElevation = 0.dp) {
         Row(

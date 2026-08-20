@@ -36,6 +36,7 @@ import com.gndec.timetable.ui.onboarding.OnboardingScreen
 import com.gndec.timetable.ui.notice.NoticeScreen
 import com.gndec.timetable.ui.profile.ProfileScreen
 import com.gndec.timetable.ui.settings.SettingsScreen
+import com.gndec.timetable.ui.syllabus.SyllabusScreen
 import com.gndec.timetable.ui.theme.GndecTheme
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -127,7 +128,7 @@ class MainActivity : ComponentActivity() {
                                 HomeScreen(
                                     container = container,
                                     onOpenToday = { navigate("today") },
-                                    onOpenAlerts = { navigate("alerts") },
+                                    onOpenAlerts = { navigate("syllabus") },
                                     onOpenNotice = { navigate("notice") },
                                     onOpenSettings = { navigate("settings") },
                                     onOpenProfile = { navigate("profile") },
@@ -142,10 +143,23 @@ class MainActivity : ComponentActivity() {
                                 DayScreen(
                                     container = container,
                                     onOpenHome = { navigate("home") },
-                                    onOpenAlerts = { navigate("alerts") },
+                                    onOpenAlerts = { navigate("syllabus") },
                                     onOpenNotice = { navigate("notice") },
                                     onOpenSettings = { navigate("settings") },
                                     onOpenLecture = { selectedLecture = it; navigate("detail") }
+                                )
+                            }
+                            composable(
+                                "syllabus",
+                                enterTransition = { fadeIn(tween(100)) },
+                                exitTransition = { fadeOut(tween(70)) }
+                            ) {
+                                SyllabusScreen(
+                                    container = container,
+                                    onOpenHome = { navigate("home") },
+                                    onOpenToday = { navigate("today") },
+                                    onOpenNotice = { navigate("notice") },
+                                    onOpenSettings = { navigate("settings") }
                                 )
                             }
                             composable(
@@ -159,7 +173,8 @@ class MainActivity : ComponentActivity() {
                                     onOpenToday = { navigate("today") },
                                     onOpenNotice = { navigate("notice") },
                                     onOpenSettings = { navigate("settings") },
-                                    onOpenLecture = { selectedLecture = it; navigate("detail") }
+                                    onOpenLecture = { selectedLecture = it; navigate("detail") },
+                                    onBack = { nav.popBackStack() }
                                 )
                             }
                             composable(
@@ -171,7 +186,7 @@ class MainActivity : ComponentActivity() {
                                     container = container,
                                     onOpenHome = { navigate("home") },
                                     onOpenToday = { navigate("today") },
-                                    onOpenAlerts = { navigate("alerts") },
+                                    onOpenAlerts = { navigate("syllabus") },
                                     onOpenSettings = { navigate("settings") }
                                 )
                             }
@@ -187,7 +202,7 @@ class MainActivity : ComponentActivity() {
                                         onBack = { nav.popBackStack() },
                                         onOpenHome = { navigate("home") },
                                         onOpenToday = { navigate("today") },
-                                        onOpenAlerts = { navigate("alerts") },
+                                        onOpenAlerts = { navigate("syllabus") },
                                         onOpenSettings = { navigate("settings") }
                                     )
                                 }
@@ -197,7 +212,7 @@ class MainActivity : ComponentActivity() {
                                 enterTransition = { fadeIn(tween(100)) },
                                 exitTransition = { fadeOut(tween(70)) }
                             ) {
-                                SettingsScreen(container = container, onBack = { nav.popBackStack() })
+                                SettingsScreen(container = container, onBack = { nav.popBackStack() }, onOpenAlerts = { navigate("alerts") })
                             }
                             composable(
                                 "profile",

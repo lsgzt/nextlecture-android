@@ -60,7 +60,7 @@ fun LectureDetailScreen(
     val reminderEnabled = settings.remind15 || settings.remind30 || settings.remind5 || settings.remindAtStart
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = { BottomBar("home") { route -> when (route) { "home" -> onOpenHome(); "today" -> onOpenToday(); "alerts" -> onOpenAlerts() } } }
+        bottomBar = { BottomBar("home") { route -> when (route) { "home" -> onOpenHome(); "today" -> onOpenToday(); "syllabus" -> onOpenAlerts() } } }
     ) { padding ->
         ScreenSurface {
             LazyColumn(

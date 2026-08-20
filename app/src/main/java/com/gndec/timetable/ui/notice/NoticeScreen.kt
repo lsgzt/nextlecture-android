@@ -71,7 +71,7 @@ fun NoticeScreen(
                 when (route) {
                     "home" -> onOpenHome()
                     "today" -> onOpenToday()
-                    "alerts" -> onOpenAlerts()
+                    "syllabus" -> onOpenAlerts()
                 }
             }
         }
