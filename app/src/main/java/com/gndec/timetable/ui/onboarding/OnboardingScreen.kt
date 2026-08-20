@@ -367,7 +367,7 @@ private fun ConfirmProfileStep(record: StudentDirectoryRecord?, onConfirm: () ->
                 DetailLine("CRN (Class Roll Number)", record.crn)
                 if (record.registrationNumber.isNotBlank()) DetailLine("Registration number", record.registrationNumber)
                 DetailLine("Permanent section", "${record.section}  ·  ${record.subsection}")
-                DetailLine("Timetable group", record.group)
+                DetailLine("Mentoring group", record.group)
                 DetailLine("Father name", record.fatherName)
                 DetailLine("Mother name", record.motherName)
                 DetailLine("Mentor", record.mentorName)
