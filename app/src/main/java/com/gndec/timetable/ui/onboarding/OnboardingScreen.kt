@@ -77,8 +77,10 @@ fun OnboardingScreen(container: AppContainer, onDone: () -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     var manualMode by remember { mutableStateOf(false) }
     var manualName by remember { mutableStateOf("") }
-    var manualRoll by remember { mutableStateOf("") }
+    var manualCrn by remember { mutableStateOf("") }
     var manualRegistration by remember { mutableStateOf("") }
+    var manualFather by remember { mutableStateOf("") }
+    var manualMother by remember { mutableStateOf("") }
     var manualMentor by remember { mutableStateOf("") }
     var manualSection by remember { mutableStateOf("") }
     var manualSubsection by remember { mutableStateOf("") }
@@ -88,14 +90,19 @@ fun OnboardingScreen(container: AppContainer, onDone: () -> Unit) {
         scope.launch {
             loading = true
             val name = record?.candidateName ?: manualName
-            val roll = record?.srNo ?: manualRoll
+            val crn = record?.crn ?: manualCrn
             val registration = record?.registrationNumber ?: manualRegistration
+            val father = record?.fatherName.orEmpty().ifBlank { manualFather }
+            val mother = record?.motherName.orEmpty().ifBlank { manualMother }
             val mentor = record?.mentorName ?: manualMentor
-            val section = record?.temporarySection ?: manualSection
-            val subsection = record?.temporarySubsection ?: manualSubsection
-            container.settings.saveStudentProfile(name, roll, branch, registration, mentor, section, subsection, source)
-            if (subsection.isNotBlank()) {
-                runCatching { container.refreshManager.changeGroup(subsection) }
+            val section = record?.section ?: manualSection
+            val subsection = record?.subsection ?: manualSubsection
+            val studentGroup = record?.group ?: subsection
+            val mentorMobile = record?.mentorMobile.orEmpty()
+            val mentorVenue = record?.venue.orEmpty()
+            container.settings.saveStudentProfile(name, crn, branch, registration, father, mother, mentor, section, subsection, studentGroup, mentorMobile, mentorVenue, source)
+            if (studentGroup.isNotBlank()) {
+                runCatching { container.refreshManager.changeGroup(studentGroup) }
             }
             loading = false
             step = 4
@@ -184,14 +191,18 @@ fun OnboardingScreen(container: AppContainer, onDone: () -> Unit) {
                             ManualProfileStep(
                                 branch = branch,
                                 name = manualName,
-                                roll = manualRoll,
+                                crn = manualCrn,
                                 registration = manualRegistration,
+                                father = manualFather,
+                                mother = manualMother,
                                 mentor = manualMentor,
                                 section = manualSection,
                                 subsection = manualSubsection,
                                 onName = { manualName = it },
-                                onRoll = { manualRoll = it },
+                                onCrn = { manualCrn = it },
                                 onRegistration = { manualRegistration = it },
+                                onFather = { manualFather = it },
+                                onMother = { manualMother = it },
                                 onMentor = { manualMentor = it },
                                 onSection = { manualSection = it },
                                 onSubsection = { manualSubsection = it },
@@ -199,7 +210,7 @@ fun OnboardingScreen(container: AppContainer, onDone: () -> Unit) {
                                 onBack = { manualMode = false; step = 2 }
                             )
                         } else {
-                            ConfirmProfileStep(selected, onConfirm = { finishProfile(selected, "gndec_pdf") }, onBack = { step = 2 })
+                            ConfirmProfileStep(selected, onConfirm = { finishProfile(selected, "gndec_permanent_pdf") }, onBack = { step = 2 })
                         }
                     }
                 }
@@ -261,7 +272,7 @@ private fun IntroStep(onContinue: () -> Unit) {
         Spacer(Modifier.height(20.dp))
         Text("Your timetable,\nproperly personalized", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
         Spacer(Modifier.height(10.dp))
-        Text("Choose your branch and we’ll match your name with GNDEC’s official 2026 temporary-section list. No typing roll numbers by hand unless you need the fallback.", color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge)
+        Text("Choose your branch and we’ll match your name with GNDEC’s official 2026 permanent-section list bundled inside the app. No internet download is needed.", color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge)
         Spacer(Modifier.height(26.dp))
         PrimaryAction("Get started", Icons.Default.ArrowForward, onClick = onContinue)
     }
@@ -272,7 +283,7 @@ private fun BranchStep(selectedBranch: String, onBranch: (String) -> Unit, loadi
     Column(Modifier.fillMaxWidth()) {
         Text("Which branch are you in?", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(5.dp))
-        Text("We’ll download only that branch’s 2026 student PDF and keep a private copy on this phone.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("We’ll read that branch’s official 2026 permanent student PDF bundled inside the app. Nothing is downloaded.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(16.dp))
         com.gndec.timetable.domain.StudentDirectoryManager.BRANCHES.forEach { branch ->
             Card(
@@ -297,7 +308,7 @@ private fun BranchStep(selectedBranch: String, onBranch: (String) -> Unit, loadi
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                 Spacer(Modifier.width(10.dp))
-                Text("Fetching timetable and student list…")
+                Text("Reading bundled permanent student list…")
             }
         }
         error?.let {
@@ -305,7 +316,7 @@ private fun BranchStep(selectedBranch: String, onBranch: (String) -> Unit, loadi
             Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
         Spacer(Modifier.height(12.dp))
-        PrimaryAction("Load ${selectedBranch.ifBlank { "branch" }} students", Icons.Default.CloudDone, enabled = selectedBranch.isNotBlank() && !loading, onClick = onContinue)
+        PrimaryAction("Read ${selectedBranch.ifBlank { "branch" }} students", Icons.Default.CloudDone, enabled = selectedBranch.isNotBlank() && !loading, onClick = onContinue)
         TextButton(onClick = onManual) { Text("Enter profile manually instead") }
     }
 }
@@ -329,7 +340,7 @@ private fun NameLookupStep(branch: String, query: String, onQuery: (String) -> U
                 Card(onClick = { onSelect(record) }, Modifier.fillMaxWidth().padding(vertical = 3.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), elevation = CardDefaults.cardElevation(0.dp)) {
                     Column(Modifier.padding(13.dp)) {
                         Text(studentDisplayName(record, matches), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("${record.temporarySubsection}  ·  Sr. No. ${record.srNo}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                        Text("${record.subsection}  ·  ${record.group}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -348,15 +359,20 @@ private fun ConfirmProfileStep(record: StudentDirectoryRecord?, onConfirm: () ->
     Column(Modifier.fillMaxWidth()) {
         Text("Is this you?", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(5.dp))
-        Text("We’ll save these details locally and use ${record.temporarySubsection} as your timetable group.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("We’ll save these permanent details locally and use ${record.group} as your timetable group.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(14.dp))
         Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer), shape = RoundedCornerShape(20.dp), elevation = CardDefaults.cardElevation(0.dp)) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(record.candidateName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                DetailLine("Registration", record.registrationNumber)
-                DetailLine("Roll number", record.srNo)
-                DetailLine("Temporary section", "${record.temporarySection}  ·  ${record.temporarySubsection}")
+                DetailLine("CRN (Class Roll Number)", record.crn)
+                if (record.registrationNumber.isNotBlank()) DetailLine("Registration number", record.registrationNumber)
+                DetailLine("Permanent section", "${record.section}  ·  ${record.subsection}")
+                DetailLine("Timetable group", record.group)
+                DetailLine("Father name", record.fatherName)
+                DetailLine("Mother name", record.motherName)
                 DetailLine("Mentor", record.mentorName)
+                if (record.mentorMobile.isNotBlank()) DetailLine("Mentor mobile", record.mentorMobile)
+                if (record.venue.isNotBlank()) DetailLine("Mentor venue", record.venue)
             }
         }
         Spacer(Modifier.height(16.dp))
@@ -366,18 +382,20 @@ private fun ConfirmProfileStep(record: StudentDirectoryRecord?, onConfirm: () ->
 }
 
 @Composable
-private fun ManualProfileStep(branch: String, name: String, roll: String, registration: String, mentor: String, section: String, subsection: String, onName: (String) -> Unit, onRoll: (String) -> Unit, onRegistration: (String) -> Unit, onMentor: (String) -> Unit, onSection: (String) -> Unit, onSubsection: (String) -> Unit, onSave: () -> Unit, onBack: () -> Unit) {
+private fun ManualProfileStep(branch: String, name: String, crn: String, registration: String, father: String, mother: String, mentor: String, section: String, subsection: String, onName: (String) -> Unit, onCrn: (String) -> Unit, onRegistration: (String) -> Unit, onFather: (String) -> Unit, onMother: (String) -> Unit, onMentor: (String) -> Unit, onSection: (String) -> Unit, onSubsection: (String) -> Unit, onSave: () -> Unit, onBack: () -> Unit) {
     Column(Modifier.fillMaxWidth()) {
         Text("Enter your details", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(5.dp))
-        Text("Manual entry stays available if GNDEC’s PDF cannot be reached or your record needs correction.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Manual entry stays available if your record needs correction.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(12.dp))
         ProfileInput("Full name", name, onName)
-        ProfileInput("Roll number / Sr. No.", roll, onRoll)
+        ProfileInput("CRN (Class Roll Number)", crn, onCrn)
         ProfileInput("Registration number", registration, onRegistration)
+        ProfileInput("Father name", father, onFather)
+        ProfileInput("Mother name", mother, onMother)
         ProfileInput("Mentor name", mentor, onMentor)
-        ProfileInput("Temporary section", section, onSection)
-        ProfileInput("Temporary subsection / timetable group", subsection, onSubsection)
+        ProfileInput("Permanent section", section, onSection)
+        ProfileInput("Permanent subsection / timetable group", subsection, onSubsection)
         Spacer(Modifier.height(7.dp))
         PrimaryAction("Save profile", Icons.Default.ArrowForward, enabled = name.isNotBlank(), onClick = onSave)
         TextButton(onClick = onBack) { Text("Back to official search") }

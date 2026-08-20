@@ -83,11 +83,13 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit) {
     var lookupOpen by remember(hasSavedProfile) { mutableStateOf(!hasSavedProfile) }
     var manualMode by remember { mutableStateOf(false) }
     var manualName by remember(settings.studentName) { mutableStateOf(settings.studentName) }
-    var manualRoll by remember(settings.rollNumber) { mutableStateOf(settings.rollNumber) }
+    var manualCrn by remember(settings.rollNumber) { mutableStateOf(settings.rollNumber) }
     var manualRegistration by remember(settings.registrationNumber) { mutableStateOf(settings.registrationNumber) }
+    var manualFather by remember(settings.fatherName) { mutableStateOf(settings.fatherName) }
+    var manualMother by remember(settings.motherName) { mutableStateOf(settings.motherName) }
     var manualMentor by remember(settings.mentorName) { mutableStateOf(settings.mentorName) }
-    var manualSection by remember(settings.temporarySection) { mutableStateOf(settings.temporarySection) }
-    var manualSubsection by remember(settings.temporarySubsection) { mutableStateOf(settings.temporarySubsection) }
+    var manualSection by remember(settings.studentSection) { mutableStateOf(settings.studentSection) }
+    var manualSubsection by remember(settings.studentSubsection.ifBlank { settings.studentGroup }) { mutableStateOf(settings.studentGroup.ifBlank { settings.studentSubsection }) }
     var savedMessage by remember { mutableStateOf<String?>(null) }
 
     suspend fun loadBranch(force: Boolean) {
@@ -115,15 +117,20 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit) {
         scope.launch {
             container.settings.saveStudentProfile(
                 record.candidateName,
-                record.srNo,
+                record.crn,
                 record.branch,
                 record.registrationNumber,
+                record.fatherName,
+                record.motherName,
                 record.mentorName,
-                record.temporarySection,
-                record.temporarySubsection,
-                "gndec_pdf"
+                record.section,
+                record.subsection,
+                record.group,
+                record.mentorMobile,
+                record.venue,
+                "gndec_permanent_pdf"
             )
-            runCatching { container.refreshManager.changeGroup(record.temporarySubsection) }
+            runCatching { container.refreshManager.changeGroup(record.group) }
             savedMessage = "Official details saved on this device"
             manualMode = false
             lookupOpen = false
@@ -132,7 +139,7 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit) {
 
     fun saveManual() {
         scope.launch {
-            container.settings.saveStudentProfile(manualName, manualRoll, branch, manualRegistration, manualMentor, manualSection, manualSubsection, "manual")
+            container.settings.saveStudentProfile(manualName, manualCrn, branch, manualRegistration, manualFather, manualMother, manualMentor, manualSection, manualSubsection, manualSubsection, "", "", "manual")
             runCatching { if (manualSubsection.isNotBlank()) container.refreshManager.changeGroup(manualSubsection) }
             savedMessage = "Manual profile saved on this device"
             manualMode = false
@@ -151,7 +158,7 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item { PremiumPageHeader("Profile", "Student identity", onBack = onBack) }
-            item { ProfileHero(initials, displayName, settings.temporarySubsection.ifBlank { settings.branch.ifBlank { "Add your branch" } }, settings.registrationNumber.ifBlank { "Not linked yet" }) }
+            item { ProfileHero(initials, displayName, settings.studentGroup.ifBlank { settings.studentSubsection.ifBlank { settings.branch.ifBlank { "Add your branch" } } }, settings.rollNumber.ifBlank { "CRN not added" }) }
             item { SourceStatus(settings.profileSource, loading, savedMessage) }
 
             if (hasSavedProfile && !lookupOpen) {
@@ -159,16 +166,35 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit) {
                     SavedProfileCard(
                         name = settings.studentName,
                         branch = settings.branch,
+                        crn = settings.rollNumber,
                         registration = settings.registrationNumber,
-                        roll = settings.rollNumber,
-                        section = settings.temporarySection,
-                        subsection = settings.temporarySubsection,
+                        section = settings.studentSection,
+                        subsection = settings.studentSubsection,
+                        studentGroup = settings.studentGroup,
+                        father = settings.fatherName,
+                        mother = settings.motherName,
                         mentor = settings.mentorName,
+                        mentorMobile = settings.mentorMobile,
+                        mentorVenue = settings.mentorVenue,
+                        onCopyCrn = {
+                            if (settings.rollNumber.isNotBlank()) {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("CRN (Class Roll Number)", settings.rollNumber))
+                                savedMessage = "CRN copied"
+                            }
+                        },
                         onCopyRegistration = {
                             if (settings.registrationNumber.isNotBlank()) {
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                 clipboard.setPrimaryClip(ClipData.newPlainText("Registration number", settings.registrationNumber))
                                 savedMessage = "Registration number copied"
+                            }
+                        },
+                        onCopyMentorMobile = {
+                            if (settings.mentorMobile.isNotBlank()) {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("Mentor mobile", settings.mentorMobile))
+                                savedMessage = "Mentor mobile copied"
                             }
                         }
                     )
@@ -181,7 +207,7 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit) {
                 }
             } else {
                 item {
-                    SectionTitle("Connect your official record", "Choose your branch, then search the GNDEC 2026 temporary-section PDF.")
+                    SectionTitle("Connect your official record", "Choose your branch, then search the bundled GNDEC 2026 permanent-section PDF.")
                 }
                 item {
                     BranchSelector(
@@ -199,7 +225,7 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit) {
                             if (matches.isNotEmpty() && !manualMode && query.trim().length >= 2) {
                                 matches.take(12).forEach { record -> CandidateRow(record, matches, onClick = { choose(record) }) }
                             } else if (directory.isEmpty() && !loading) {
-                                Text("Tap refresh to fetch the official student list for $branch.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                                Text("Tap refresh to read the bundled permanent student list for $branch.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }
@@ -214,14 +240,18 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit) {
                 item {
                     ManualFields(
                         name = manualName,
-                        roll = manualRoll,
+                        crn = manualCrn,
                         registration = manualRegistration,
+                        father = manualFather,
+                        mother = manualMother,
                         mentor = manualMentor,
                         section = manualSection,
                         subsection = manualSubsection,
                         onName = { manualName = it },
-                        onRoll = { manualRoll = it },
+                        onCrn = { manualCrn = it },
                         onRegistration = { manualRegistration = it },
+                        onFather = { manualFather = it },
+                        onMother = { manualMother = it },
                         onMentor = { manualMentor = it },
                         onSection = { manualSection = it },
                         onSubsection = { manualSubsection = it },
@@ -234,16 +264,21 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit) {
 }
 
 @Composable
-private fun SavedProfileCard(name: String, branch: String, registration: String, roll: String, section: String, subsection: String, mentor: String, onCopyRegistration: () -> Unit) {
+private fun SavedProfileCard(name: String, branch: String, crn: String, registration: String, section: String, subsection: String, studentGroup: String, father: String, mother: String, mentor: String, mentorMobile: String, mentorVenue: String, onCopyCrn: () -> Unit, onCopyRegistration: () -> Unit, onCopyMentorMobile: () -> Unit) {
     Card(Modifier.fillMaxWidth().padding(horizontal = 20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), shape = RoundedCornerShape(20.dp), elevation = CardDefaults.cardElevation(0.dp)) {
         Column(Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text("SAVED STUDENT DETAILS", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
             Text(name.ifBlank { "Name not added" }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Detail("Branch", branch.ifBlank { "Not added" })
-            CopyableDetail("Registration number", registration.ifBlank { "Not added" }, onCopyRegistration)
-            Detail("Roll number / Sr. No.", roll.ifBlank { "Not added" })
-            Detail("Temporary section", listOf(section, subsection).filter { it.isNotBlank() }.joinToString("  · ").ifBlank { "Not added" })
+            CopyableDetail("CRN (Class Roll Number)", crn.ifBlank { "Not added" }, onCopyCrn)
+            if (registration.isNotBlank()) CopyableDetail("Registration number", registration, onCopyRegistration)
+            Detail("Permanent section", listOf(section, subsection).filter { it.isNotBlank() }.joinToString("  · ").ifBlank { "Not added" })
+            Detail("Timetable group", studentGroup.ifBlank { "Not added" })
+            Detail("Father name", father.ifBlank { "Not added" })
+            Detail("Mother name", mother.ifBlank { "Not added" })
             Detail("Mentor", mentor.ifBlank { "Not added" })
+            if (mentorMobile.isNotBlank()) CopyableDetail("Mentor mobile", mentorMobile, onCopyMentorMobile)
+            if (mentorVenue.isNotBlank()) Detail("Mentor venue", mentorVenue)
         }
     }
 }
@@ -283,7 +318,7 @@ private fun SourceStatus(source: String, loading: Boolean, saved: String?) {
         Text(when {
             loading -> "Reading the official branch PDF…"
             saved != null -> saved
-            source == "gndec_pdf" -> "Linked to GNDEC’s official 2026 list"
+            source == "gndec_permanent_pdf" -> "Linked to GNDEC’s bundled permanent 2026 list"
             else -> "Manual profile details"
         }, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
     }
@@ -309,7 +344,7 @@ private fun BranchSelector(branch: String, onBranch: (String) -> Unit, onRefresh
             OutlinedButton(onClick = onRefresh, enabled = branch.isNotBlank() && !loading, modifier = Modifier.height(38.dp), contentPadding = PaddingValues(horizontal = 10.dp), shape = RoundedCornerShape(12.dp)) {
                 Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
-                Text("Refresh")
+                Text("Read list")
             }
         }
     }
@@ -335,7 +370,7 @@ private fun CandidateRow(record: StudentDirectoryRecord, matches: List<StudentDi
             Spacer(Modifier.width(9.dp))
             Column(Modifier.weight(1f)) {
                 Text(studentDisplayName(record, matches), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("${record.temporarySubsection}  ·  Sr. No. ${record.srNo}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                Text("${record.subsection}  ·  ${record.group}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
         }
     }
@@ -347,10 +382,15 @@ private fun OfficialRecordCard(record: StudentDirectoryRecord) {
         Column(Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("OFFICIAL RECORD", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
             Text(record.candidateName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Detail("Registration number", record.registrationNumber)
-            Detail("Roll number / Sr. No.", record.srNo)
-            Detail("Temporary section", "${record.temporarySection}  ·  ${record.temporarySubsection}")
+            Detail("CRN (Class Roll Number)", record.crn)
+            if (record.registrationNumber.isNotBlank()) Detail("Registration number", record.registrationNumber)
+            Detail("Permanent section", "${record.section}  ·  ${record.subsection}")
+            Detail("Timetable group", record.group)
+            Detail("Father name", record.fatherName)
+            Detail("Mother name", record.motherName)
             Detail("Mentor", record.mentorName)
+            if (record.mentorMobile.isNotBlank()) Detail("Mentor mobile", record.mentorMobile)
+            if (record.venue.isNotBlank()) Detail("Mentor venue", record.venue)
         }
     }
 }
@@ -366,16 +406,18 @@ private fun ErrorCard(message: String, hasCache: Boolean) {
 }
 
 @Composable
-private fun ManualFields(name: String, roll: String, registration: String, mentor: String, section: String, subsection: String, onName: (String) -> Unit, onRoll: (String) -> Unit, onRegistration: (String) -> Unit, onMentor: (String) -> Unit, onSection: (String) -> Unit, onSubsection: (String) -> Unit, onSave: () -> Unit) {
+private fun ManualFields(name: String, crn: String, registration: String, father: String, mother: String, mentor: String, section: String, subsection: String, onName: (String) -> Unit, onCrn: (String) -> Unit, onRegistration: (String) -> Unit, onFather: (String) -> Unit, onMother: (String) -> Unit, onMentor: (String) -> Unit, onSection: (String) -> Unit, onSubsection: (String) -> Unit, onSave: () -> Unit) {
     Card(Modifier.fillMaxWidth().padding(horizontal = 20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), elevation = CardDefaults.cardElevation(0.dp)) {
         Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Manual details", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Input("Full name", name, onName)
-            Input("Roll number / Sr. No.", roll, onRoll)
+            Input("CRN (Class Roll Number)", crn, onCrn)
             Input("Registration number", registration, onRegistration)
+            Input("Father name", father, onFather)
+            Input("Mother name", mother, onMother)
             Input("Mentor name", mentor, onMentor)
-            Input("Temporary section", section, onSection)
-            Input("Temporary subsection / timetable group", subsection, onSubsection)
+            Input("Permanent section", section, onSection)
+        Input("Permanent subsection / timetable group", subsection, onSubsection)
             Button(onClick = onSave, enabled = name.isNotBlank(), modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary)) {
                 Icon(Icons.Default.Badge, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(7.dp))
@@ -406,7 +448,7 @@ private fun CopyableDetail(label: String, value: String, onCopy: () -> Unit) {
             Text(value, Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
             if (value != "Not added") {
                 IconButton(onClick = onCopy, modifier = Modifier.size(30.dp)) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy registration number", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(17.dp))
+                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy $label", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(17.dp))
                 }
             }
         }

@@ -1,29 +1,31 @@
 package com.gndec.timetable.domain
 
 import android.content.Context
+import com.gndec.timetable.R
 import com.gndec.timetable.data.prefs.SettingsManager
-import com.gndec.timetable.net.Net
-import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
-import com.tom_roush.pdfbox.pdmodel.PDDocument
-import com.tom_roush.pdfbox.text.PDFTextStripper
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import okhttp3.Request
 
 @Serializable
 data class StudentDirectoryRecord(
-    val srNo: String,
-    val candidateName: String,
-    val registrationNumber: String,
-    val branch: String,
-    val temporarySection: String,
-    val temporarySubsection: String,
-    val mentorName: String
+    val crn: String = "",
+    val registrationNumber: String = "",
+    val candidateName: String = "",
+    val fatherName: String = "",
+    val motherName: String = "",
+    val branch: String = "",
+    val section: String = "",
+    val subsection: String = "",
+    val group: String = "",
+    val mentorName: String = "",
+    val mentorMobile: String = "",
+    val venue: String = ""
 )
 
 sealed class StudentDirectoryResult {
@@ -37,94 +39,113 @@ class StudentDirectoryManager(
 ) {
     companion object {
         val BRANCHES = listOf("CE", "CS", "EC", "EE", "IT", "ME", "RAI")
-        private const val BASE = "https://appsc.gndec.ac.in/sites/default/files/2026-08/"
-        private val PDF_URLS = mapOf(
-            "CE" to BASE + "CE%20Branch%20Temporary%20Sections%202026_0.pdf",
-            "CS" to BASE + "CS%20Branch%20Temporary%20Sections%202026_0.pdf",
-            "EC" to BASE + "EC%20Branch%20Temporary%20Sections%202026_0.pdf",
-            "EE" to BASE + "EE%20Branch%20Temporary%20Sections%202026_0.pdf",
-            "IT" to BASE + "IT%20Branch%20Temporary%20Sections%202026_0.pdf",
-            "ME" to BASE + "ME%20Branch%20Temporary%20Sections%202026_0.pdf",
-            "RAI" to BASE + "RAI%20Branch%20Temporary%20Sections%202026_0.pdf"
+        // The PDFs remain bundled as the official offline source documents. The generated
+        // JSON below is derived from those PDFs plus the bundled temporary-registration map.
+        private val PERMANENT_PDF_RESOURCES = mapOf(
+            "CE" to R.raw.ce_permanent_sections_2026,
+            "CS" to R.raw.cs_permanent_sections_2026,
+            "EC" to R.raw.ec_permanent_sections_2026,
+            "EE" to R.raw.ee_permanent_sections_2026,
+            "IT" to R.raw.it_permanent_sections_2026,
+            "ME" to R.raw.me_permanent_sections_2026,
+            "RAI" to R.raw.rai_permanent_sections_2026
         )
-        private val rowRegex = Regex("""^(\\d{1,3})\\s+(.+?)\\s+(\\d{8})\\s+([A-Z]+)\\s+([A-Z0-9]+)\\s+([A-Z0-9]+)\\s+(.+)$""")
-        private val registrationRegex = Regex("(?<!\\d)\\d{8}(?!\\d)")
+        private val DIRECTORY_RESOURCE = R.raw.student_directory_permanent_2026
     }
 
+    private val appContext = context.applicationContext
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
+    private val memoryCache = ConcurrentHashMap<String, List<StudentDirectoryRecord>>()
+    private val bundledDirectory: List<StudentDirectoryRecord> by lazy { readBundledDirectory() }
 
-    init {
-        PDFBoxResourceLoader.init(context.applicationContext)
-    }
-
+    /** Reads pre-parsed records bundled in the APK; no student-data network request is made. */
     suspend fun load(branch: String, force: Boolean = false): StudentDirectoryResult = withContext(Dispatchers.IO) {
         val normalizedBranch = branch.trim().uppercase()
         if (normalizedBranch !in BRANCHES) return@withContext StudentDirectoryResult.Failed("Choose a supported branch first.")
 
-        val current = settings.flow.first()
-        val cached = decode(current.studentDirectoryJson)
-        if (!force && current.studentDirectoryBranch == normalizedBranch && cached.isNotEmpty()) {
-            return@withContext StudentDirectoryResult.Ready(normalizedBranch, cached, fromCache = true)
+        val inMemory = memoryCache[normalizedBranch]
+        if (!force && inMemory != null) {
+            return@withContext StudentDirectoryResult.Ready(normalizedBranch, inMemory, fromCache = true)
         }
 
-        val url = PDF_URLS[normalizedBranch] ?: return@withContext StudentDirectoryResult.Failed("No PDF is configured for $normalizedBranch.", cached)
-        try {
-            val request = Request.Builder().url(url).header("Cache-Control", "no-cache").get().build()
-            Net.client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext StudentDirectoryResult.Failed("GNDEC PDF returned HTTP ${response.code}.", cached)
-                val body = response.body ?: return@withContext StudentDirectoryResult.Failed("The branch PDF was empty.", cached)
-                val text = body.byteStream().use { input ->
-                    PDDocument.load(input).use { document ->
-                        PDFTextStripper().getText(document)
-                    }
-                }
-                val records = parse(text, normalizedBranch)
-                if (records.isEmpty()) return@withContext StudentDirectoryResult.Failed("The PDF format could not be read.", cached)
-                settings.setStudentDirectoryCache(normalizedBranch, json.encodeToString(records))
-                StudentDirectoryResult.Ready(normalizedBranch, records, fromCache = false)
-            }
-        } catch (error: Exception) {
-            StudentDirectoryResult.Failed(error.message ?: "Could not download the branch PDF.", cached)
+        // Touch the resource map so every supplied branch PDF remains an explicit part of
+        // the offline directory contract even though lookup uses its pre-parsed companion.
+        if (PERMANENT_PDF_RESOURCES[normalizedBranch] == null) {
+            return@withContext StudentDirectoryResult.Failed("No bundled permanent PDF is configured for $normalizedBranch.")
         }
+        val records = bundledDirectory.filter { it.branch == normalizedBranch }
+        if (records.isEmpty()) {
+            return@withContext StudentDirectoryResult.Failed("The bundled permanent student list could not be read.")
+        }
+        memoryCache[normalizedBranch] = records
+        settings.setStudentDirectoryCache(normalizedBranch, json.encodeToString(records))
+        StudentDirectoryResult.Ready(normalizedBranch, records, fromCache = false)
     }
 
     suspend fun cachedFor(branch: String): List<StudentDirectoryRecord> {
+        val normalizedBranch = branch.trim().uppercase()
+        memoryCache[normalizedBranch]?.let { return it }
         val current = settings.flow.first()
-        return if (current.studentDirectoryBranch == branch.trim().uppercase()) decode(current.studentDirectoryJson) else emptyList()
+        return if (current.studentDirectoryBranch == normalizedBranch) decode(current.studentDirectoryJson) else emptyList()
     }
 
-    private fun parse(text: String, expectedBranch: String): List<StudentDirectoryRecord> {
-        return text.lineSequence()
-            .map { it.replace('\u00A0', ' ').trim().replace(Regex("\\s+"), " ") }
-            .mapNotNull { line ->
-                rowRegex.matchEntire(line)?.let { match ->
-                    StudentDirectoryRecord(
-                        srNo = match.groupValues[1],
-                        candidateName = match.groupValues[2].trim(),
-                        registrationNumber = match.groupValues[3],
-                        branch = match.groupValues[4],
-                        temporarySection = match.groupValues[5],
-                        temporarySubsection = match.groupValues[6],
-                        mentorName = match.groupValues[7].trim()
-                    )
-                } ?: parseFallback(line)
-            }
-            .filter { it.branch == expectedBranch }
-            .distinctBy { it.registrationNumber }
-            .sortedBy { it.srNo.toIntOrNull() ?: Int.MAX_VALUE }
-            .toList()
+    /** Upgrades profiles saved by older builds without changing manually entered profiles. */
+    suspend fun migrateSavedProfileIfNeeded(): Boolean = withContext(Dispatchers.IO) {
+        val current = settings.flow.first()
+        if (current.studentName.isBlank() || current.branch !in BRANCHES || current.profileSource == "manual") return@withContext false
+
+        val directory = when (val result = load(current.branch, force = false)) {
+            is StudentDirectoryResult.Ready -> result.records
+            is StudentDirectoryResult.Failed -> return@withContext false
+        }
+        val savedName = normalizeStudentName(current.studentName)
+        if (savedName.isBlank()) return@withContext false
+
+        val nameCandidates = directory.filter { candidate ->
+            val fullName = normalizeStudentName(candidate.candidateName)
+            fullName == savedName || fullName.startsWith("$savedName ")
+        }
+        val groupCandidates = nameCandidates.filter { it.group.equals(current.studentGroup, ignoreCase = true) }
+        val subsectionCandidates = nameCandidates.filter { it.subsection.equals(current.studentSubsection, ignoreCase = true) }
+        val sectionCandidates = nameCandidates.filter { it.section.equals(current.studentSection, ignoreCase = true) }
+        val match = when {
+            groupCandidates.size == 1 -> groupCandidates.single()
+            subsectionCandidates.size == 1 -> subsectionCandidates.single()
+            sectionCandidates.size == 1 -> sectionCandidates.single()
+            nameCandidates.size == 1 -> nameCandidates.single()
+            else -> null
+        } ?: return@withContext false
+
+        val needsUpgrade = current.studentName != match.candidateName ||
+            current.rollNumber != match.crn ||
+            current.registrationNumber == match.crn ||
+            current.fatherName.isBlank() ||
+            current.motherName.isBlank()
+        if (!needsUpgrade) return@withContext false
+
+        settings.saveStudentProfile(
+            name = match.candidateName,
+            rollNumber = match.crn,
+            branch = match.branch,
+            registrationNumber = match.registrationNumber,
+            fatherName = match.fatherName,
+            motherName = match.motherName,
+            mentorName = match.mentorName,
+            section = match.section,
+            subsection = match.subsection,
+            studentGroup = match.group,
+            mentorMobile = match.mentorMobile,
+            mentorVenue = match.venue,
+            source = "gndec_permanent_pdf"
+        )
+        true
     }
 
-    private fun parseFallback(line: String): StudentDirectoryRecord? {
-        val registration = registrationRegex.find(line) ?: return null
-        val prefix = line.substring(0, registration.range.first).trim()
-        val suffix = line.substring(registration.range.last + 1).trim().replace(Regex("\\s+"), " ")
-        val tokens = suffix.split(' ')
-        if (tokens.size < 4 || !prefix.matches(Regex("^\\d{1,3}\\s+.+$"))) return null
-        val sr = prefix.substringBefore(' ').trim()
-        val name = prefix.substringAfter(' ').trim()
-        return StudentDirectoryRecord(sr, name, registration.value, tokens[0], tokens[1], tokens[2], tokens.drop(3).joinToString(" "))
-    }
+    private fun readBundledDirectory(): List<StudentDirectoryRecord> = runCatching {
+        appContext.resources.openRawResource(DIRECTORY_RESOURCE).bufferedReader().use { reader ->
+            json.decodeFromString<List<StudentDirectoryRecord>>(reader.readText())
+        }
+    }.getOrDefault(emptyList())
 
     private fun decode(value: String): List<StudentDirectoryRecord> = runCatching {
         if (value.isBlank()) emptyList() else json.decodeFromString<List<StudentDirectoryRecord>>(value)
@@ -141,5 +162,5 @@ fun matchingStudents(records: List<StudentDirectoryRecord>, query: String): List
 
 fun studentDisplayName(record: StudentDirectoryRecord, matches: List<StudentDirectoryRecord>): String {
     val duplicate = matches.count { normalizeStudentName(it.candidateName) == normalizeStudentName(record.candidateName) } > 1
-    return if (duplicate) "${record.candidateName} (${record.registrationNumber})" else record.candidateName
+    return if (duplicate) "${record.candidateName} (${record.crn})" else record.candidateName
 }

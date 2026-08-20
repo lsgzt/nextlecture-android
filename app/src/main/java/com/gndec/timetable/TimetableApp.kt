@@ -24,6 +24,9 @@ class TimetableApp : Application() {
 
         // Refresh on app start when the cache is old enough (cheap: ETag-guarded)
         container.appScope.launch {
+            runCatching { container.studentDirectoryManager.migrateSavedProfileIfNeeded() }
+        }
+        container.appScope.launch {
             runCatching { container.refreshManager.refreshIfStale() }
         }
         container.appScope.launch {

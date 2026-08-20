@@ -28,9 +28,15 @@ data class AppSettings(
     val rollNumber: String = "",
     val branch: String = "",
     val registrationNumber: String = "",
+    val fatherName: String = "",
+    val motherName: String = "",
     val mentorName: String = "",
-    val temporarySection: String = "",
-    val temporarySubsection: String = "",
+    // Stored under the legacy preference keys so existing profiles remain readable.
+    val studentSection: String = "",
+    val studentSubsection: String = "",
+    val studentGroup: String = "",
+    val mentorMobile: String = "",
+    val mentorVenue: String = "",
     val profileSource: String = "manual",
     val studentDirectoryBranch: String = "",
     val studentDirectoryJson: String = "",
@@ -71,9 +77,15 @@ class SettingsManager(private val context: Context) {
         val ROLL_NUMBER = stringPreferencesKey("roll_number")
         val BRANCH = stringPreferencesKey("branch")
         val REGISTRATION_NUMBER = stringPreferencesKey("registration_number")
+        val FATHER_NAME = stringPreferencesKey("father_name")
+        val MOTHER_NAME = stringPreferencesKey("mother_name")
         val MENTOR_NAME = stringPreferencesKey("mentor_name")
-        val TEMPORARY_SECTION = stringPreferencesKey("temporary_section")
-        val TEMPORARY_SUBSECTION = stringPreferencesKey("temporary_subsection")
+        // Keep these legacy key names to migrate profiles created by older builds.
+        val STUDENT_SECTION = stringPreferencesKey("temporary_section")
+        val STUDENT_SUBSECTION = stringPreferencesKey("temporary_subsection")
+        val STUDENT_GROUP = stringPreferencesKey("student_group")
+        val MENTOR_MOBILE = stringPreferencesKey("mentor_mobile")
+        val MENTOR_VENUE = stringPreferencesKey("mentor_venue")
         val PROFILE_SOURCE = stringPreferencesKey("profile_source")
         val STUDENT_DIRECTORY_BRANCH = stringPreferencesKey("student_directory_branch")
         val STUDENT_DIRECTORY_JSON = stringPreferencesKey("student_directory_json")
@@ -108,9 +120,14 @@ class SettingsManager(private val context: Context) {
             rollNumber = p[K.ROLL_NUMBER] ?: "",
             branch = p[K.BRANCH] ?: "",
             registrationNumber = p[K.REGISTRATION_NUMBER] ?: "",
+            fatherName = p[K.FATHER_NAME] ?: "",
+            motherName = p[K.MOTHER_NAME] ?: "",
             mentorName = p[K.MENTOR_NAME] ?: "",
-            temporarySection = p[K.TEMPORARY_SECTION] ?: "",
-            temporarySubsection = p[K.TEMPORARY_SUBSECTION] ?: "",
+            studentSection = p[K.STUDENT_SECTION] ?: "",
+            studentSubsection = p[K.STUDENT_SUBSECTION] ?: "",
+            studentGroup = p[K.STUDENT_GROUP] ?: p[K.STUDENT_SUBSECTION] ?: "",
+            mentorMobile = p[K.MENTOR_MOBILE] ?: "",
+            mentorVenue = p[K.MENTOR_VENUE] ?: "",
             profileSource = p[K.PROFILE_SOURCE] ?: "manual",
             studentDirectoryBranch = p[K.STUDENT_DIRECTORY_BRANCH] ?: "",
             studentDirectoryJson = p[K.STUDENT_DIRECTORY_JSON] ?: "",
@@ -145,8 +162,11 @@ class SettingsManager(private val context: Context) {
     suspend fun setBranch(value: String) = context.dataStore.edit { it[K.BRANCH] = value.trim() }
     suspend fun setRegistrationNumber(value: String) = context.dataStore.edit { it[K.REGISTRATION_NUMBER] = value.trim() }
     suspend fun setMentorName(value: String) = context.dataStore.edit { it[K.MENTOR_NAME] = value.trim() }
-    suspend fun setTemporarySection(value: String) = context.dataStore.edit { it[K.TEMPORARY_SECTION] = value.trim() }
-    suspend fun setTemporarySubsection(value: String) = context.dataStore.edit { it[K.TEMPORARY_SUBSECTION] = value.trim() }
+    suspend fun setStudentSection(value: String) = context.dataStore.edit { it[K.STUDENT_SECTION] = value.trim() }
+    suspend fun setStudentSubsection(value: String) = context.dataStore.edit { it[K.STUDENT_SUBSECTION] = value.trim() }
+    suspend fun setStudentGroup(value: String) = context.dataStore.edit { it[K.STUDENT_GROUP] = value.trim() }
+    suspend fun setMentorMobile(value: String) = context.dataStore.edit { it[K.MENTOR_MOBILE] = value.trim() }
+    suspend fun setMentorVenue(value: String) = context.dataStore.edit { it[K.MENTOR_VENUE] = value.trim() }
     suspend fun setProfileSource(value: String) = context.dataStore.edit { it[K.PROFILE_SOURCE] = value.trim() }
     suspend fun setStudentDirectoryCache(branch: String, json: String, updatedAt: Long = System.currentTimeMillis()) = context.dataStore.edit {
         it[K.STUDENT_DIRECTORY_BRANCH] = branch
@@ -158,18 +178,28 @@ class SettingsManager(private val context: Context) {
         rollNumber: String,
         branch: String,
         registrationNumber: String,
+        fatherName: String,
+        motherName: String,
         mentorName: String,
-        temporarySection: String,
-        temporarySubsection: String,
+        section: String,
+        subsection: String,
+        studentGroup: String,
+        mentorMobile: String,
+        mentorVenue: String,
         source: String
     ) = context.dataStore.edit {
         it[K.STUDENT_NAME] = name.trim()
         it[K.ROLL_NUMBER] = rollNumber.trim()
         it[K.BRANCH] = branch.trim()
         it[K.REGISTRATION_NUMBER] = registrationNumber.trim()
+        it[K.FATHER_NAME] = fatherName.trim()
+        it[K.MOTHER_NAME] = motherName.trim()
         it[K.MENTOR_NAME] = mentorName.trim()
-        it[K.TEMPORARY_SECTION] = temporarySection.trim()
-        it[K.TEMPORARY_SUBSECTION] = temporarySubsection.trim()
+        it[K.STUDENT_SECTION] = section.trim()
+        it[K.STUDENT_SUBSECTION] = subsection.trim()
+        it[K.STUDENT_GROUP] = studentGroup.trim()
+        it[K.MENTOR_MOBILE] = mentorMobile.trim()
+        it[K.MENTOR_VENUE] = mentorVenue.trim()
         it[K.PROFILE_SOURCE] = source.trim()
     }
     suspend fun setAnnouncementNotifications(enabled: Boolean) = context.dataStore.edit { it[K.ANNOUNCEMENT_NOTIFICATIONS] = enabled }
