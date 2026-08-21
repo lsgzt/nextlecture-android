@@ -51,7 +51,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -85,7 +84,9 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 
 class SyllabusViewModel(private val container: AppContainer) : ViewModel() {
@@ -135,16 +136,22 @@ class SyllabusViewModel(private val container: AppContainer) : ViewModel() {
             val streamBuffer = StringBuilder()
             var lastUiUpdateNanos = 0L
             val uiIntervalNanos = 33_000_000L
+            val streamUpdates = Channel<String>(capacity = Channel.CONFLATED)
+            val streamCollector = launch(Dispatchers.Main.immediate) {
+                for (snapshot in streamUpdates) _streamingAnswer.value = snapshot
+            }
             try {
                 val result = manager.sendStreaming(_selectedSessionId.value, question) { delta ->
                     streamBuffer.append(delta)
                     val now = System.nanoTime()
                     if (lastUiUpdateNanos == 0L || now - lastUiUpdateNanos >= uiIntervalNanos) {
                         lastUiUpdateNanos = now
-                        _streamingAnswer.value = streamBuffer.toString()
+                        streamUpdates.trySend(streamBuffer.toString())
                     }
                 }
-                _streamingAnswer.value = result.answer
+                streamUpdates.trySend(result.answer)
+                streamUpdates.close()
+                streamCollector.join()
                 _selectedSessionId.value = result.sessionId
                 _streamingAnswer.value = ""
             } catch (_: CancellationException) {
@@ -152,6 +159,8 @@ class SyllabusViewModel(private val container: AppContainer) : ViewModel() {
             } catch (error: Exception) {
                 _error.value = error.message ?: "Could not get an answer from Gemini"
             } finally {
+                streamUpdates.close()
+                streamCollector.cancel()
                 _sending.value = false
                 requestJob = null
             }
@@ -194,17 +203,13 @@ fun SyllabusScreen(
     var historyOpen by rememberSaveable { mutableStateOf(false) }
     var deleteId by remember { mutableStateOf<String?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val sheetScope = rememberCoroutineScope()
 
     fun startNewChat() {
-        vm.newChat()
+        historyOpen = false
+        deleteId = null
         question = ""
         chatStarted = false
-        deleteId = null
-        sheetScope.launch {
-            runCatching { sheetState.hide() }
-            historyOpen = false
-        }
+        vm.newChat()
     }
 
     if (historyOpen) {
@@ -212,7 +217,7 @@ fun SyllabusScreen(
             Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).navigationBarsPadding()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Saved chats", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    IconButton(onClick = ::startNewChat) {
+                    IconButton(onClick = { startNewChat() }) {
                         Icon(Icons.Default.Add, contentDescription = "New chat")
                     }
                 }
@@ -259,7 +264,7 @@ fun SyllabusScreen(
         )
     }
 
-    val firstChat = !chatStarted && !sending && selectedId == null && messages.isEmpty() && streamingAnswer.isBlank()
+    val firstChat = !chatStarted && !sending && selectedId == null
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize().statusBarsPadding()) {

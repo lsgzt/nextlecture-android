@@ -509,6 +509,7 @@ private fun splitTableRow(line: String): List<String> {
 }
 
 private const val MAX_INLINE_DEPTH = 24
+private val AUTO_URL_REGEX = Regex("https?://[^\\s)]+", RegexOption.IGNORE_CASE)
 
 private fun inlineAnnotated(value: String): AnnotatedString = buildAnnotatedString {
     appendInline(this, value, depth = 0)
@@ -526,11 +527,20 @@ private fun appendInline(
     var i = 0
     while (i < source.length) {
         if (source[i] == '\\' && i + 1 < source.length) {
-            if (source.startsWith("\\(", i)) {
-                val end = source.indexOf("\\)", i + 2)
+            val mathDelimiter = when {
+                source.startsWith("\\(", i) -> "\\)"
+                source.startsWith("\\[", i) -> "\\]"
+                else -> null
+            }
+            if (mathDelimiter != null) {
+                val start = i + 2
+                val end = source.indexOf(mathDelimiter, start)
                 if (end >= 0) {
-                    builder.withStyle(SpanStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, color = Color(0xFF176B70))) { append(normalizeLatex(source.substring(i + 2, end))) }
-                    i = end + 2; continue
+                    builder.withStyle(
+                        SpanStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, color = Color(0xFF176B70))
+                    ) { append(normalizeLatex(source.substring(start, end))) }
+                    i = end + mathDelimiter.length
+                    continue
                 }
             }
             builder.append(source[i + 1]); i += 2; continue
@@ -554,8 +564,7 @@ private fun appendInline(
             }
         }
 
-        val linkStart = source.indexOf('[', i).takeIf { it == i }
-        if (linkStart != null) {
+        if (source[i] == '[') {
             val closeText = source.indexOf(']', i + 1)
             if (closeText >= 0 && source.startsWith("](", closeText)) {
                 val closeUrl = source.indexOf(')', closeText + 2)
@@ -609,7 +618,11 @@ private fun appendInline(
             }
         }
 
-        val autoUrl = Regex("https?://[^\\s)]+", RegexOption.IGNORE_CASE).find(source, i)
+        val autoUrl = if (source.startsWith("http://", i, ignoreCase = true) || source.startsWith("https://", i, ignoreCase = true)) {
+            AUTO_URL_REGEX.find(source, i)
+        } else {
+            null
+        }
         if (autoUrl?.range?.first == i) {
             builder.pushStringAnnotation("URL", autoUrl.value)
             builder.withStyle(SpanStyle(color = Color(0xFF176B70), textDecoration = TextDecoration.Underline)) { append(autoUrl.value) }
@@ -623,7 +636,7 @@ private fun appendInline(
 }
 
 private fun normalizeLatex(value: String): String {
-    var result = value.trim()
+    var result = value.trim().replace("\\\\", "\\")
         .replace("\\cdot", "·")
         .replace("\\times", "×")
         .replace("\\div", "÷")
@@ -648,14 +661,75 @@ private fun normalizeLatex(value: String): String {
         .replace("\\text", "")
         .replace("\\left", "")
         .replace("\\right", "")
-    result = Regex("\\\\frac\\s*\\{([^{}]*)}\\s*\\{([^{}]*)}").replace(result) { "${it.groupValues[1]}/${it.groupValues[2]}" }
-    result = Regex("\\\\sqrt(?:\\s*\\[([^]]*)])?\\s*\\{([^{}]*)}").replace(result) { match ->
-        val index = match.groupValues[1].takeIf { it.isNotBlank() }?.let { "^$it" }.orEmpty()
-        "√$index(${match.groupValues[2]})"
+    result = replaceLatexCommand(result, "frac", 2) { args -> "${args[0]}/${args[1]}" }
+    result = replaceLatexCommand(result, "dfrac", 2) { args -> "${args[0]}/${args[1]}" }
+    result = replaceLatexCommand(result, "tfrac", 2) { args -> "${args[0]}/${args[1]}" }
+    result = replaceLatexCommand(result, "sqrt", 1) { args -> "√(${args[0]})" }
+    result = Regex("\\\\sum(?:_\\{([^{}]*)})?(?:\\^\\{([^{}]*)})?").replace(result) { match ->
+        val lower = match.groupValues[1].takeIf { it.isNotBlank() }?.let { "₍$it₎" }.orEmpty()
+        val upper = match.groupValues[2].takeIf { it.isNotBlank() }?.let { "⁽$it⁾" }.orEmpty()
+        "Σ$lower$upper"
     }
+    result = result.replace("\\sum", "Σ").replace("\\int", "∫").replace("\\prod", "Π")
     result = result.replace("{", "").replace("}", "")
+    result = result.replace(Regex("\\\\([a-zA-Z]+)")) { it.groupValues[1] }
     result = result.replace("^", "˄").replace("_", "₋")
     return result.trim()
+}
+
+private fun replaceLatexCommand(
+    source: String,
+    command: String,
+    argumentCount: Int,
+    format: (List<String>) -> String
+): String {
+    val token = "\\" + command
+    val output = StringBuilder(source.length)
+    var i = 0
+    while (i < source.length) {
+        if (source.startsWith(token, i)) {
+            var cursor = i + token.length
+            val args = mutableListOf<String>()
+            repeat(argumentCount) {
+                while (cursor < source.length && source[cursor].isWhitespace()) cursor++
+                if (cursor >= source.length || source[cursor] != '{') return@repeat
+                val end = matchingBrace(source, cursor)
+                if (end <= cursor) return@repeat
+                args += source.substring(cursor + 1, end)
+                cursor = end + 1
+            }
+            if (args.size == argumentCount) {
+                output.append(format(args))
+                i = cursor
+                continue
+            }
+        }
+        output.append(source[i])
+        i++
+    }
+    return output.toString()
+}
+
+private fun matchingBrace(source: String, start: Int): Int {
+    var depth = 0
+    var escaped = false
+    for (index in start until source.length) {
+        val char = source[index]
+        if (escaped) {
+            escaped = false
+            continue
+        }
+        if (char == '\\') {
+            escaped = true
+            continue
+        }
+        if (char == '{') depth++
+        if (char == '}') {
+            depth--
+            if (depth == 0) return index
+        }
+    }
+    return -1
 }
 
 private fun detectCodeLanguage(code: String): String {
