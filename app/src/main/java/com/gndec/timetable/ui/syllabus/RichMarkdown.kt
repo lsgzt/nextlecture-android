@@ -267,13 +267,16 @@ private fun TableRow(
                 TableAlignment.CENTER -> androidx.compose.ui.text.style.TextAlign.Center
                 TableAlignment.RIGHT -> androidx.compose.ui.text.style.TextAlign.End
             }
-            Text(
-                text = values.getOrNull(index).orEmpty(),
-                modifier = Modifier.width(cellWidth).padding(horizontal = 11.dp, vertical = 10.dp),
-                textAlign = alignment,
-                style = MaterialTheme.typography.bodySmall.copy(lineHeight = 18.sp),
-                fontWeight = if (header) FontWeight.Bold else FontWeight.Normal
-            )
+            Box(Modifier.width(cellWidth).padding(horizontal = 11.dp, vertical = 10.dp)) {
+                RichInlineText(
+                    text = values.getOrNull(index).orEmpty(),
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        lineHeight = 18.sp,
+                        fontWeight = if (header) FontWeight.Bold else FontWeight.Normal,
+                        textAlign = alignment
+                    )
+                )
+            }
         }
     }
 }

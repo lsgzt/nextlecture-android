@@ -84,6 +84,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 class SyllabusViewModel(private val container: AppContainer) : ViewModel() {
@@ -103,6 +105,7 @@ class SyllabusViewModel(private val container: AppContainer) : ViewModel() {
     val streamingAnswer: StateFlow<String> = _streamingAnswer.asStateFlow()
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
+    private var requestJob: Job? = null
 
     init {
         viewModelScope.launch { runCatching { manager.ensureReady() }.onFailure { _error.value = it.message } }
@@ -114,7 +117,9 @@ class SyllabusViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     fun newChat() {
-        if (_sending.value) return
+        requestJob?.cancel()
+        requestJob = null
+        _sending.value = false
         _error.value = null
         _streamingAnswer.value = ""
         _selectedSessionId.value = null
@@ -122,20 +127,31 @@ class SyllabusViewModel(private val container: AppContainer) : ViewModel() {
 
     fun ask(question: String) {
         if (_sending.value || question.isBlank()) return
-        viewModelScope.launch {
+        requestJob?.cancel()
+        requestJob = viewModelScope.launch {
             _sending.value = true
             _error.value = null
             _streamingAnswer.value = ""
+            val streamBuffer = StringBuilder()
+            var lastUiUpdateNanos = 0L
             try {
                 val result = manager.sendStreaming(_selectedSessionId.value, question) { delta ->
-                    _streamingAnswer.value += delta
+                    streamBuffer.append(delta)
+                    val now = System.nanoTime()
+                    if (lastUiUpdateNanos == 0L || now - lastUiUpdateNanos >= 50_000_000L) {
+                        lastUiUpdateNanos = now
+                        _streamingAnswer.value = streamBuffer.toString()
+                    }
                 }
                 _selectedSessionId.value = result.sessionId
                 _streamingAnswer.value = ""
+            } catch (_: CancellationException) {
+                throw CancellationException()
             } catch (error: Exception) {
                 _error.value = error.message ?: "Could not get an answer from Gemini"
             } finally {
                 _sending.value = false
+                requestJob = null
             }
         }
     }
@@ -177,12 +193,20 @@ fun SyllabusScreen(
     var deleteId by remember { mutableStateOf<String?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
+    fun startNewChat() {
+        vm.newChat()
+        question = ""
+        chatStarted = false
+        deleteId = null
+        historyOpen = false
+    }
+
     if (historyOpen) {
         ModalBottomSheet(onDismissRequest = { historyOpen = false }, sheetState = sheetState) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).navigationBarsPadding()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Saved chats", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    IconButton(onClick = { vm.newChat(); chatStarted = false; historyOpen = false }) {
+                    IconButton(onClick = ::startNewChat) {
                         Icon(Icons.Default.Add, contentDescription = "New chat")
                     }
                 }
