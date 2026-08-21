@@ -46,7 +46,7 @@ class SyllabusManager(
         private const val PDF_FILE_NAME = "gndec_official_syllabus.pdf"
         private const val TEXT_FILE_NAME = "gndec_official_syllabus.txt"
         private const val MAX_TITLE_LENGTH = 72
-        private const val MAX_CONTINUATION_ROUNDS = 3
+        private const val MAX_CONTINUATION_ROUNDS = 8
         private val RECITATION_RECOVERY_PROMPT = """
 
             IMPORTANT RECITATION RECOVERY: The previous generation was stopped because it resembled source text too closely. Answer again in your own words. Do not quote or reproduce long sentences from the document. Keep the complete unit and topic coverage, but use concise paraphrases, short labels, hours, and clearly structured summaries.

@@ -120,7 +120,7 @@ private fun RichBlockView(block: RichBlock, key: String) {
 private fun RichInlineText(text: String, style: TextStyle) {
     val uriHandler = LocalUriHandler.current
     val annotated = remember(text, style) {
-        runCatching { inlineAnnotated(text) }.getOrElse { AnnotatedString(text) }
+        runCatching { inlineAnnotated(text) }.getOrElse { AnnotatedString(safeInlineFallback(text)) }
     }
     ClickableText(
         text = annotated,
@@ -517,9 +517,10 @@ private fun inlineAnnotated(value: String): AnnotatedString = buildAnnotatedStri
 
 private fun appendInline(
     builder: androidx.compose.ui.text.AnnotatedString.Builder,
-    source: String,
+    rawSource: String,
     depth: Int
 ) {
+    val source = rawSource.replace("\\\\", "\\").replace("\\$", "$")
     if (depth > MAX_INLINE_DEPTH) {
         builder.append(source)
         return
@@ -635,6 +636,10 @@ private fun appendInline(
     }
 }
 
+private fun safeInlineFallback(value: String): String = normalizeLatex(value)
+    .replace(Regex("\\*\\*|__|~~|`"), "")
+    .replace(Regex("(?m)^\\s*#{1,6}\\s+"), "")
+
 private fun normalizeLatex(value: String): String {
     var result = value.trim().replace("\\\\", "\\")
         .replace("\\cdot", "·")
@@ -658,6 +663,10 @@ private fun normalizeLatex(value: String): String {
         .replace("\\sigma", "σ")
         .replace("\\phi", "φ")
         .replace("\\omega", "ω")
+        .replace("\\nabla", "∇")
+        .replace("\\partial", "∂")
+        .replace("\\ell", "ℓ")
+        .replace("\\approx", "≈")
         .replace("\\text", "")
         .replace("\\left", "")
         .replace("\\right", "")
@@ -671,11 +680,26 @@ private fun normalizeLatex(value: String): String {
         "Σ$lower$upper"
     }
     result = result.replace("\\sum", "Σ").replace("\\int", "∫").replace("\\prod", "Π")
+    result = result.replace(Regex("\\^\\{([^{}]+)}")) { toSuperscript(it.groupValues[1]) }
+    result = result.replace(Regex("_\\{([^{}]+)}")) { toSubscript(it.groupValues[1]) }
+    result = result.replace(Regex("\\^([A-Za-z0-9+\\-=()])")) { toSuperscript(it.groupValues[1]) }
+    result = result.replace(Regex("_([A-Za-z0-9+\\-=()])")) { toSubscript(it.groupValues[1]) }
     result = result.replace("{", "").replace("}", "")
     result = result.replace(Regex("\\\\([a-zA-Z]+)")) { it.groupValues[1] }
-    result = result.replace("^", "˄").replace("_", "₋")
     return result.trim()
 }
+
+private fun toSuperscript(value: String): String = value.map { SUPERSCRIPT[it] ?: it }.joinToString("")
+private fun toSubscript(value: String): String = value.map { SUBSCRIPT[it] ?: it }.joinToString("")
+
+private val SUPERSCRIPT = mapOf(
+    '0' to '⁰', '1' to '¹', '2' to '²', '3' to '³', '4' to '⁴', '5' to '⁵', '6' to '⁶', '7' to '⁷', '8' to '⁸', '9' to '⁹',
+    '+' to '⁺', '-' to '⁻', '=' to '⁼', '(' to '⁽', ')' to '⁾', 'n' to 'ⁿ', 'i' to 'ⁱ'
+)
+private val SUBSCRIPT = mapOf(
+    '0' to '₀', '1' to '₁', '2' to '₂', '3' to '₃', '4' to '₄', '5' to '₅', '6' to '₆', '7' to '₇', '8' to '₈', '9' to '₉',
+    '+' to '₊', '-' to '₋', '=' to '₌', '(' to '₍', ')' to '₎', 'n' to 'ₙ', 'i' to 'ᵢ'
+)
 
 private fun replaceLatexCommand(
     source: String,
