@@ -44,6 +44,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.Locale
@@ -166,7 +168,20 @@ private fun RichList(items: List<RichListItem>) {
                     fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.bodyLarge
                 )
-                RichInlineText(item.text, MaterialTheme.typography.bodyLarge.copy(lineHeight = 24.sp))
+                val formulaParts = splitFormulaContinuation(item.text)
+                if (formulaParts == null) {
+                    RichInlineText(item.text, MaterialTheme.typography.bodyLarge.copy(lineHeight = 24.sp))
+                } else {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        RichInlineText(formulaParts.label, MaterialTheme.typography.bodyLarge.copy(lineHeight = 24.sp))
+                        Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                            MathLayout(formulaParts.formula, display = false)
+                        }
+                    }
+                }
             }
         }
     }
@@ -220,20 +235,316 @@ private fun CodeBlock(language: String, code: String) {
 
 @Composable
 private fun MathBlock(expression: String, display: Boolean) {
-    Card(
+    val clipboard = LocalClipboardManager.current
+    var copied by remember(expression) { mutableStateOf(false) }
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        elevation = CardDefaults.cardElevation(0.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(
-            safeNormalizeLatex(expression),
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(14.dp),
-            style = if (display) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge,
+        // High-fidelity rendered formula
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.15f)),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+            elevation = CardDefaults.cardElevation(0.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 20.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                MathLayout(expression, display)
+            }
+        }
+        
+        // Raw LaTeX code block (collapsible or small)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+            elevation = CardDefaults.cardElevation(0.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "latex",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    fontFamily = FontFamily.Monospace
+                )
+                IconButton(
+                    onClick = {
+                        clipboard.setText(AnnotatedString(expression))
+                        copied = true
+                    },
+                    modifier = Modifier.size(30.dp)
+                ) {
+                    Icon(
+                        if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Text(
+                expression,
+                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 10.dp),
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                )
+            )
+        }
+    }
+}
+
+@Composable
+private fun MathLayout(expression: String, display: Boolean) {
+    val formula = remember(expression) { parseFormula(expression) }
+    val style = if (display) {
+        MaterialTheme.typography.headlineSmall.copy(
             fontFamily = FontFamily.Serif,
-            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+            lineHeight = 34.sp
+        )
+    } else {
+        MaterialTheme.typography.titleMedium.copy(
+            fontFamily = FontFamily.Serif,
+            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+            lineHeight = 28.sp
         )
     }
+    if (formula.children.isEmpty()) {
+        Text(safeNormalizeLatex(expression), style = style, softWrap = false)
+    } else {
+        FormulaNodeView(formula, style)
+    }
+}
+
+@Composable
+private fun FormulaNodeView(node: FormulaNode, style: TextStyle) {
+    when (node) {
+        is FormulaNode.Sequence -> Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(1.dp)
+        ) {
+            node.children.forEach { FormulaNodeView(it, style) }
+        }
+        is FormulaNode.Text -> Text(node.value, style = style, softWrap = false)
+        is FormulaNode.Fraction -> FormulaFraction(node.numerator, node.denominator, style)
+        is FormulaNode.Root -> FormulaRoot(node.index, node.radicand, style)
+        is FormulaNode.Script -> Row(verticalAlignment = Alignment.CenterVertically) {
+            FormulaNodeView(node.base, style)
+            Column(
+                modifier = Modifier.padding(start = 1.dp),
+                verticalArrangement = Arrangement.Center
+            ) {
+                node.superscript?.let { FormulaNodeView(it, style.copy(fontSize = (style.fontSize.value * 0.58f).sp, lineHeight = 14.sp)) }
+                node.subscript?.let { FormulaNodeView(it, style.copy(fontSize = (style.fontSize.value * 0.58f).sp, lineHeight = 14.sp)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FormulaFraction(numerator: FormulaNode, denominator: FormulaNode, style: TextStyle) {
+    val barColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f)
+    Layout(
+        content = {
+            Box(Modifier.height(1.dp).background(barColor))
+            FormulaNodeView(numerator, style.copy(fontSize = (style.fontSize.value * 0.78f).sp, lineHeight = 20.sp))
+            FormulaNodeView(denominator, style.copy(fontSize = (style.fontSize.value * 0.78f).sp, lineHeight = 20.sp))
+        }
+    ) { measurables, constraints ->
+        val loose = constraints.copy(minWidth = 0, minHeight = 0, maxWidth = Constraints.Infinity, maxHeight = Constraints.Infinity)
+        val numeratorPlaceable = measurables[1].measure(loose)
+        val denominatorPlaceable = measurables[2].measure(loose)
+        val width = maxOf(numeratorPlaceable.width, denominatorPlaceable.width).coerceAtLeast(2.dp.roundToPx())
+        val barPlaceable = measurables[0].measure(Constraints.fixedWidth(width))
+        val gap = 2.dp.roundToPx()
+        val height = numeratorPlaceable.height + gap + barPlaceable.height + gap + denominatorPlaceable.height
+        layout(width, height) {
+            numeratorPlaceable.placeRelative((width - numeratorPlaceable.width) / 2, 0)
+            barPlaceable.placeRelative(0, numeratorPlaceable.height + gap)
+            denominatorPlaceable.placeRelative((width - denominatorPlaceable.width) / 2, numeratorPlaceable.height + gap + barPlaceable.height + gap)
+        }
+    }
+}
+
+@Composable
+private fun FormulaRoot(index: FormulaNode?, radicand: FormulaNode, style: TextStyle) {
+    Row(verticalAlignment = Alignment.Bottom) {
+        Box(contentAlignment = Alignment.TopStart) {
+            index?.let {
+                FormulaNodeView(it, style.copy(fontSize = (style.fontSize.value * 0.48f).sp, lineHeight = 12.sp))
+            }
+            Text("√", style = style.copy(fontSize = (style.fontSize.value * 1.28f).sp, lineHeight = style.lineHeight))
+        }
+        Column(
+            modifier = Modifier.padding(start = 2.dp),
+            verticalArrangement = Arrangement.spacedBy(1.dp)
+        ) {
+            HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f))
+            FormulaNodeView(radicand, style)
+        }
+    }
+}
+
+internal sealed interface FormulaNode {
+    data class Sequence(val children: List<FormulaNode>) : FormulaNode
+    data class Text(val value: String) : FormulaNode
+    data class Fraction(val numerator: FormulaNode, val denominator: FormulaNode) : FormulaNode
+    data class Root(val index: FormulaNode?, val radicand: FormulaNode) : FormulaNode
+    data class Script(
+        val base: FormulaNode,
+        val superscript: FormulaNode?,
+        val subscript: FormulaNode?
+    ) : FormulaNode
+}
+
+private data class FormulaContinuation(val label: String, val formula: String)
+
+private fun splitFormulaContinuation(text: String): FormulaContinuation? {
+    val lines = text.split('\n')
+    if (lines.size < 2) return null
+    val label = lines.first().trim()
+    if (!label.contains("rendered formula", ignoreCase = true)) return null
+    val formula = lines.drop(1).joinToString("\n").trim()
+    return formula.takeIf { it.isNotBlank() }?.let { FormulaContinuation(label, it) }
+}
+
+internal fun parseFormula(source: String): FormulaNode.Sequence {
+    return runCatching { FormulaParser(source).parse() }
+        .getOrElse { FormulaNode.Sequence(listOf(FormulaNode.Text(safeNormalizeLatex(source)))) }
+}
+
+private class FormulaParser(private val source: String) {
+    private var index = 0
+
+    fun parse(): FormulaNode.Sequence = parseSequence(stopAtClosingBrace = false)
+
+    private fun parseSequence(stopAtClosingBrace: Boolean): FormulaNode.Sequence {
+        val children = mutableListOf<FormulaNode>()
+        while (index < source.length) {
+            when (val char = source[index]) {
+                '}' -> {
+                    if (stopAtClosingBrace) {
+                        index++
+                        return FormulaNode.Sequence(children)
+                    }
+                    index++
+                }
+                '{' -> {
+                    index++
+                    children += parseSequence(stopAtClosingBrace = true)
+                }
+                '^', '_' -> {
+                    val isSuperscript = char == '^'
+                    index++
+                    val script = parseScriptArgument()
+                    val base = children.removeLastOrNull()
+                    if (base == null) {
+                        children += FormulaNode.Text(if (isSuperscript) "^" else "_")
+                    } else {
+                        val existing = base as? FormulaNode.Script
+                        if (existing != null) {
+                            children += if (isSuperscript) existing.copy(superscript = script) else existing.copy(subscript = script)
+                        } else {
+                            children += FormulaNode.Script(
+                                base = base,
+                                superscript = script.takeIf { isSuperscript },
+                                subscript = script.takeIf { !isSuperscript }
+                            )
+                        }
+                    }
+                }
+                '\\' -> children += parseCommand()
+                else -> {
+                    val start = index
+                    while (index < source.length && source[index] !in charArrayOf('\\', '{', '}', '^', '_')) index++
+                    children += FormulaNode.Text(source.substring(start, index))
+                }
+            }
+        }
+        return FormulaNode.Sequence(children)
+    }
+
+    private fun parseScriptArgument(): FormulaNode {
+        while (index < source.length && source[index].isWhitespace()) index++
+        if (index >= source.length) return FormulaNode.Text("")
+        return if (source[index] == '{') {
+            index++
+            parseSequence(stopAtClosingBrace = true)
+        } else if (source[index] == '\\') {
+            parseCommand()
+        } else {
+            FormulaNode.Text(source[index++].toString())
+        }
+    }
+
+    private fun parseCommand(): FormulaNode {
+        if (index >= source.length || source[index] != '\\') return FormulaNode.Text("")
+        index++
+        if (index >= source.length) return FormulaNode.Text("\\")
+        if (!source[index].isLetter()) return FormulaNode.Text(source[index++].toString())
+        val start = index
+        while (index < source.length && source[index].isLetter()) index++
+        val command = source.substring(start, index)
+        return when (command) {
+            "frac", "dfrac", "tfrac" -> FormulaNode.Fraction(parseRequiredGroup(), parseRequiredGroup())
+            "sqrt" -> {
+                skipWhitespace()
+                val optionalIndex = if (index < source.length && source[index] == '[') {
+                    index++
+                    val optionalStart = index
+                    while (index < source.length && source[index] != ']') index++
+                    val rawIndex = source.substring(optionalStart, index)
+                    if (index < source.length) index++
+                    parseFormula(rawIndex)
+                } else null
+                FormulaNode.Root(optionalIndex, parseRequiredGroup())
+            }
+            "mathbf", "boldsymbol", "mathrm", "mathit", "text", "operatorname", "vec", "overline", "bar", "underline", "mathbb" -> parseRequiredGroup()
+            "left", "right" -> FormulaNode.Text("")
+            else -> FormulaNode.Text(formulaSymbol(command))
+        }
+    }
+
+    private fun parseRequiredGroup(): FormulaNode {
+        skipWhitespace()
+        return if (index < source.length && source[index] == '{') {
+            index++
+            parseSequence(stopAtClosingBrace = true)
+        } else {
+            parseScriptArgument()
+        }
+    }
+
+    private fun skipWhitespace() {
+        while (index < source.length && source[index].isWhitespace()) index++
+    }
+}
+
+private fun formulaSymbol(command: String): String = when (command) {
+    "cdot" -> "·"; "cdots" -> "⋯"; "ldots" -> "…"; "times" -> "×"; "div" -> "÷"
+    "leq", "le" -> "≤"; "geq", "ge" -> "≥"; "neq" -> "≠"; "approx" -> "≈"; "equiv" -> "≡"
+    "pm" -> "±"; "mp" -> "∓"; "infty" -> "∞"; "rightarrow", "longrightarrow", "to" -> "→"; "leftarrow" -> "←"
+    "nabla" -> "∇"; "partial" -> "∂"; "ell" -> "ℓ"; "sum" -> "Σ"; "int" -> "∫"; "prod" -> "Π"
+    "alpha" -> "α"; "beta" -> "β"; "gamma" -> "γ"; "delta" -> "δ"; "epsilon", "varepsilon" -> "ε"
+    "theta", "vartheta" -> "θ"; "lambda" -> "λ"; "mu" -> "μ"; "nu" -> "ν"; "xi" -> "ξ"; "pi" -> "π"
+    "rho" -> "ρ"; "sigma" -> "σ"; "phi", "varphi" -> "φ"; "omega" -> "ω"
+    "Gamma" -> "Γ"; "Delta" -> "Δ"; "Theta" -> "Θ"; "Lambda" -> "Λ"; "Xi" -> "Ξ"; "Pi" -> "Π"; "Sigma" -> "Σ"; "Phi" -> "Φ"; "Psi" -> "Ψ"; "Omega" -> "Ω"
+    "in" -> "∈"; "notin" -> "∉"; "subseteq" -> "⊆"; "subset" -> "⊂"; "cup" -> "∪"; "cap" -> "∩"; "forall" -> "∀"; "exists" -> "∃"
+    "quad" -> " "; "qquad" -> "  "
+    "lim" -> "lim"
+    else -> command
 }
 
 @Composable

@@ -31,4 +31,17 @@ class RichMarkdownTest {
         assertTrue(rendered.contains("yₙ"))
         assertTrue(rendered.isNotBlank())
     }
+
+    @Test
+    fun formulaTreeBuildsStackedFraction() {
+        val formula = parseFormula("\\frac{a}{b}")
+        assertTrue(formula.children.single() is FormulaNode.Fraction)
+    }
+
+    @Test
+    fun formulaTreeBuildsIndexedRootAndScripts() {
+        val formula = parseFormula("\\sqrt[3]{x^2} + y_{n}")
+        assertTrue(formula.children.any { it is FormulaNode.Root })
+        assertTrue(formula.children.any { it is FormulaNode.Script })
+    }
 }
