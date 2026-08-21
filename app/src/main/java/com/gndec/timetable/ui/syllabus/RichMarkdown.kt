@@ -282,7 +282,9 @@ private fun TableRow(
 }
 
 private fun parseRichMarkdown(source: String): List<RichBlock> {
-    val lines = source
+    val normalizedSource = source
+        .replace(Regex("(?m)(---+|\\*\\*\\*+|___+)\\s*(?=#{1,6}\\s+)"), "$1\n")
+    val lines = normalizedSource
         .replace("\\r", "")
         .replace(Regex("(?i)<br\\s*/?>"), "\n")
         .split('\n')
