@@ -307,7 +307,8 @@ private fun MathBlock(expression: String, display: Boolean) {
 
 @Composable
 private fun MathLayout(expression: String, display: Boolean) {
-    val formula = remember(expression) { parseFormula(expression) }
+    val visualExpression = remember(expression) { cleanFormulaExpression(expression) }
+    val formula = remember(visualExpression) { parseFormula(visualExpression) }
     val style = if (display) {
         MaterialTheme.typography.headlineSmall.copy(
             fontFamily = FontFamily.Serif,
@@ -322,7 +323,7 @@ private fun MathLayout(expression: String, display: Boolean) {
         )
     }
     if (formula.children.isEmpty()) {
-        Text(safeNormalizeLatex(expression), style = style, softWrap = false)
+        Text(safeNormalizeLatex(visualExpression), style = style, softWrap = false)
     } else {
         FormulaNodeView(formula, style)
     }
@@ -410,6 +411,18 @@ internal sealed interface FormulaNode {
 }
 
 private data class FormulaContinuation(val label: String, val formula: String)
+
+internal fun cleanFormulaExpression(value: String): String {
+    var result = value.trim()
+    if (result.startsWith("$$") && result.endsWith("$$") && result.length >= 4) {
+        result = result.removePrefix("$$").removeSuffix("$$").trim()
+    } else if (result.startsWith("\\[") && result.endsWith("\\]") && result.length >= 4) {
+        result = result.removePrefix("\\[").removeSuffix("\\]").trim()
+    } else if (result.startsWith("\\(") && result.endsWith("\\)") && result.length >= 4) {
+        result = result.removePrefix("\\(").removeSuffix("\\)").trim()
+    }
+    return result
+}
 
 private fun splitFormulaContinuation(text: String): FormulaContinuation? {
     val lines = text.split('\n')
@@ -594,7 +607,13 @@ private fun TableRow(
     cellWidth: androidx.compose.ui.unit.Dp,
     header: Boolean
 ) {
-    Row(Modifier.width(cellWidth * columnCount)) {
+    Row(
+        Modifier
+            .width(cellWidth * columnCount)
+            .background(
+                if (header) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f) else Color.Transparent
+            )
+    ) {
         repeat(columnCount) { index ->
             val alignment = when (alignments.getOrNull(index) ?: TableAlignment.LEFT) {
                 TableAlignment.LEFT -> androidx.compose.ui.text.style.TextAlign.Start

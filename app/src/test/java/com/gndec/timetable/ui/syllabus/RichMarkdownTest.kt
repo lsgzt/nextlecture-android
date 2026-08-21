@@ -44,4 +44,11 @@ class RichMarkdownTest {
         assertTrue(formula.children.any { it is FormulaNode.Root })
         assertTrue(formula.children.any { it is FormulaNode.Script })
     }
+
+    @Test
+    fun visualFormulaRemovesOnlyOuterDelimiters() {
+        assertTrue(cleanFormulaExpression("\$\$x^2\$\$") == "x^2")
+        assertTrue(cleanFormulaExpression("\\[x^2\\]") == "x^2")
+        assertTrue(cleanFormulaExpression("\\(x^2\\)") == "x^2")
+    }
 }
