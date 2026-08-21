@@ -463,11 +463,23 @@ private fun parseRichMarkdown(source: String): List<RichBlock> {
 
 private fun isListLine(line: String): Boolean = Regex("^\\s*(?:[-*+]\\s+|\\d+[.)]\\s+).+").matches(line)
 
-private fun parseList(lines: List<String>): List<RichListItem> = lines.mapNotNull { line ->
-    val match = Regex("^(\\s*)([-*+]|\\d+[.)])\\s+(.+)$").find(line) ?: return@mapNotNull null
-    val indent = match.groupValues[1].replace("\t", "    ").length
-    val marker = match.groupValues[2]
-    RichListItem(indent / 2, marker.first().isDigit(), marker, match.groupValues[3])
+private fun parseList(lines: List<String>): List<RichListItem> {
+    val items = mutableListOf<RichListItem>()
+    val itemPattern = Regex("^(\\s*)([-*+]|\\d+[.)])\\s+(.+)$")
+    lines.forEach { line ->
+        val match = itemPattern.find(line)
+        if (match != null) {
+            val indent = match.groupValues[1].replace("\t", "    ").length
+            val marker = match.groupValues[2]
+            items += RichListItem(indent / 2, marker.first().isDigit(), marker, match.groupValues[3])
+        } else if (items.isNotEmpty() && line.isNotBlank()) {
+            // Gemini often places a displayed equation on an indented line below a label.
+            // Keep that continuation attached to the preceding list item instead of dropping it.
+            val previous = items.removeAt(items.lastIndex)
+            items += previous.copy(text = previous.text + "\n" + line.trim())
+        }
+    }
+    return items
 }
 
 private fun looksLikeTableHeader(line: String): Boolean = line.count { it == '|' } >= 1
@@ -549,10 +561,15 @@ private fun appendInline(
 
         val mathDollar = source[i] == '$' && i + 1 < source.length && source[i + 1] != ' '
         if (mathDollar) {
-            val end = source.indexOf('$', i + 1)
-            if (end > i + 1) {
-                builder.withStyle(SpanStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, color = Color(0xFF176B70))) { append(safeNormalizeLatex(source.substring(i + 1, end))) }
-                i = end + 1; continue
+            val delimiterLength = if (source.startsWith("$$", i)) 2 else 1
+            val delimiter = "$".repeat(delimiterLength)
+            val end = source.indexOf(delimiter, i + delimiterLength)
+            if (end > i + delimiterLength) {
+                builder.withStyle(SpanStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, color = Color(0xFF176B70))) {
+                    append(safeNormalizeLatex(source.substring(i + delimiterLength, end)))
+                }
+                i = end + delimiterLength
+                continue
             }
         }
 
