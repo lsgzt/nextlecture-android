@@ -227,7 +227,7 @@ private fun MathBlock(expression: String, display: Boolean) {
         elevation = CardDefaults.cardElevation(0.dp)
     ) {
         Text(
-            normalizeLatex(expression),
+            safeNormalizeLatex(expression),
             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(14.dp),
             style = if (display) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge,
             fontFamily = FontFamily.Serif,
@@ -539,7 +539,7 @@ private fun appendInline(
                 if (end >= 0) {
                     builder.withStyle(
                         SpanStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, color = Color(0xFF176B70))
-                    ) { append(normalizeLatex(source.substring(start, end))) }
+                    ) { append(safeNormalizeLatex(source.substring(start, end))) }
                     i = end + mathDelimiter.length
                     continue
                 }
@@ -551,7 +551,7 @@ private fun appendInline(
         if (mathDollar) {
             val end = source.indexOf('$', i + 1)
             if (end > i + 1) {
-                builder.withStyle(SpanStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, color = Color(0xFF176B70))) { append(normalizeLatex(source.substring(i + 1, end))) }
+                builder.withStyle(SpanStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, color = Color(0xFF176B70))) { append(safeNormalizeLatex(source.substring(i + 1, end))) }
                 i = end + 1; continue
             }
         }
@@ -636,9 +636,24 @@ private fun appendInline(
     }
 }
 
-private fun safeInlineFallback(value: String): String = normalizeLatex(value)
-    .replace(Regex("\\*\\*|__|~~|`"), "")
-    .replace(Regex("(?m)^\\s*#{1,6}\\s+"), "")
+private fun safeInlineFallback(value: String): String {
+    val plain = safeNormalizeLatex(value)
+        .replace("**", "")
+        .replace("__", "")
+        .replace("~~", "")
+        .replace("`", "")
+    return plain.lineSequence().joinToString("\n") { line ->
+        line.trimStart().let { current ->
+            if (current.startsWith("#")) current.dropWhile { it == '#' || it == ' ' } else current
+        }
+    }
+}
+
+private fun safeNormalizeLatex(value: String): String = try {
+    normalizeLatex(value)
+} catch (_: Exception) {
+    value.replace("\\\\", "\\").replace("\\$", "$")
+}
 
 private fun normalizeLatex(value: String): String {
     var result = value.trim().replace("\\\\", "\\")
