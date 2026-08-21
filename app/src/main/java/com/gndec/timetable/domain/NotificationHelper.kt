@@ -177,9 +177,9 @@ object NotificationHelper {
     }
 
     /**
-     * Post a lecture reminder. The caller reuses one notification ID for every
-     * stage of the same lecture, so countdowns are replaced rather than stacked.
-     * A new lecture also clears any older lecture/free-period reminder.
+     * Post a lecture reminder using a distinct ID for each stage. Android therefore
+     * treats countdown and start events as new audible notifications; older active
+     * lecture/free-period reminders are cleared before the new one is posted.
      */
     fun showLectureReminder(
         context: Context,
@@ -221,7 +221,7 @@ object NotificationHelper {
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setContentIntent(openIntent)
             .setAutoCancel(true)
-            .setOnlyAlertOnce(false)
+            .setOnlyAlertOnce(true)
             .setGroup(GROUP_LECTURE_REMINDERS)
             .setSortKey("lecture_${notificationId}")
             .setPriority(NotificationCompat.PRIORITY_HIGH)

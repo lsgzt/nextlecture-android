@@ -48,8 +48,20 @@ class MainActivity : ComponentActivity() {
         val app = application as TimetableApp
         app.container.appScope.launch {
             runCatching {
-                if (app.container.settings.flow.first().group != null) {
+                val beforeRefresh = app.container.settings.flow.first()
+                if (beforeRefresh.group != null) {
+                    // Always perform a conditional network check on foreground launch.
                     app.container.refreshManager.refresh(force = true)
+                    // Rebuild alarms even when the server returns 304, so upgrades use
+                    // the fresh per-stage notification IDs and bundled sound behavior.
+                    val refreshed = app.container.settings.flow.first()
+                    refreshed.group?.let { group ->
+                        app.container.scheduler.rescheduleAll(
+                            app.container.db,
+                            group,
+                            com.gndec.timetable.domain.ReminderConfig.from(refreshed)
+                        )
+                    }
                 }
             }
         }
@@ -156,10 +168,7 @@ class MainActivity : ComponentActivity() {
                             ) {
                                 SyllabusScreen(
                                     container = container,
-                                    onOpenHome = { navigate("home") },
-                                    onOpenToday = { navigate("today") },
-                                    onOpenNotice = { navigate("notice") },
-                                    onOpenSettings = { navigate("settings") }
+                                    onBack = { nav.popBackStack() }
                                 )
                             }
                             composable(

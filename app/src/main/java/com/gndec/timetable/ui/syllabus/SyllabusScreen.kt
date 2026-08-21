@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.History
@@ -63,6 +64,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -152,10 +154,7 @@ class SyllabusViewModel(private val container: AppContainer) : ViewModel() {
 @Composable
 fun SyllabusScreen(
     container: AppContainer,
-    onOpenHome: () -> Unit,
-    onOpenToday: () -> Unit,
-    onOpenNotice: () -> Unit,
-    onOpenSettings: () -> Unit
+    onBack: () -> Unit
 ) {
     val vm: SyllabusViewModel = viewModel(
         factory = remember(container) {
@@ -173,6 +172,7 @@ fun SyllabusScreen(
     val streamingAnswer by vm.streamingAnswer.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     var question by rememberSaveable { mutableStateOf("") }
+    var chatStarted by rememberSaveable { mutableStateOf(false) }
     var historyOpen by rememberSaveable { mutableStateOf(false) }
     var deleteId by remember { mutableStateOf<String?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -182,10 +182,8 @@ fun SyllabusScreen(
             Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).navigationBarsPadding()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Saved chats", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { vm.newChat(); historyOpen = false }) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(17.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("New chat")
+                    IconButton(onClick = { vm.newChat(); chatStarted = false; historyOpen = false }) {
+                        Icon(Icons.Default.Add, contentDescription = "New chat")
                     }
                 }
                 Spacer(Modifier.height(8.dp))
@@ -195,7 +193,7 @@ fun SyllabusScreen(
                     LazyColumn(contentPadding = PaddingValues(bottom = 26.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(sessions, key = { it.id }) { session ->
                             Card(
-                                onClick = { vm.selectSession(session.id); historyOpen = false },
+                                onClick = { vm.selectSession(session.id); chatStarted = true; historyOpen = false },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(16.dp),
                                 colors = CardDefaults.cardColors(containerColor = if (session.id == selectedId) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface),
@@ -231,98 +229,90 @@ fun SyllabusScreen(
         )
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = {
-            PremiumBottomBar("syllabus") { route ->
-                when (route) {
-                    "home" -> onOpenHome()
-                    "today" -> onOpenToday()
-                    "notice" -> onOpenNotice()
+    val firstChat = !chatStarted && !sending && selectedId == null && messages.isEmpty() && streamingAnswer.isBlank()
+
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Column(Modifier.fillMaxSize().statusBarsPadding()) {
+            Row(
+                Modifier.fillMaxWidth().height(54.dp).padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Exit syllabus AI")
+                }
+                Text(
+                    "Syllabus",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                IconButton(onClick = { historyOpen = true }) {
+                    Icon(Icons.Default.History, contentDescription = "Previous chats")
                 }
             }
-        }
-    ) { padding ->
-        PremiumScreenBackground {
-            Column(Modifier.fillMaxSize().padding(padding)) {
-                PremiumPageHeader(
-                    title = "Syllabus",
-                    subtitle = "Ask AI about your syllabus",
-                    onSettings = onOpenSettings
-                )
-                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TealOutlineButton(
-                        text = "New chat",
-                        icon = Icons.Default.Add,
-                        modifier = Modifier.weight(1f),
-                        onClick = { vm.newChat(); question = "" }
-                    )
-                    OutlinedButton(onClick = { historyOpen = true }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp)) {
-                        Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Saved chats")
+
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp)
+            ) {
+                if (firstChat) {
+                    item { WelcomeCard() }
+                } else {
+                    items(messages, key = { it.id }) { message -> ChatBubble(message) }
+                }
+                if (streamingAnswer.isNotBlank()) {
+                    item(key = "streaming-answer") {
+                        ChatBubble(
+                            SyllabusChatMessageEntity(
+                                id = Long.MIN_VALUE,
+                                sessionId = selectedId.orEmpty(),
+                                role = "model",
+                                content = streamingAnswer,
+                                timestamp = 0L
+                            )
+                        )
                     }
                 }
-                Spacer(Modifier.height(10.dp))
-
-                LazyColumn(
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    item {
-                        StatusCard(loadState = loadState, error = error, onRetry = { vm.dismissError(); container.appScope.launch { runCatching { container.syllabusManager.ensureReady() } } })
-                    }
-                    if (messages.isEmpty() && streamingAnswer.isBlank()) {
-                        item { WelcomeCard() }
-                    } else {
-                        items(messages, key = { it.id }) { message -> ChatBubble(message) }
-                    }
-                    if (streamingAnswer.isNotBlank()) {
-                        item(key = "streaming-answer") {
-                            ChatBubble(
-                                SyllabusChatMessageEntity(
-                                    id = Long.MIN_VALUE,
-                                    sessionId = selectedId.orEmpty(),
-                                    role = "model",
-                                    content = streamingAnswer,
-                                    timestamp = 0L
-                                )
-                            )
-                        }
-                    }
-                    if (sending) {
-                        item(key = "streaming-status") {
-                            Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-                                Spacer(Modifier.width(9.dp))
-                                Text(if (streamingAnswer.isBlank()) "Gemini is checking the complete syllabus…" else "Gemini is writing…", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                            }
+                if (sending) {
+                    item(key = "streaming-status") {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Gemini is writing…", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
+                error?.let { message ->
+                    item(key = "chat-error") {
+                        Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 4.dp))
+                    }
+                }
+            }
 
-                Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp, shadowElevation = 0.dp) {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).navigationBarsPadding()) {
-                        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(
-                                value = question,
-                                onValueChange = { question = it },
-                                modifier = Modifier.weight(1f),
-                                placeholder = { Text("Ask about a subject, semester, unit…") },
-                                maxLines = 4,
-                                shape = RoundedCornerShape(18.dp),
-                                enabled = !sending
-                            )
-                            IconButton(
-                                onClick = { val q = question.trim(); question = ""; vm.ask(q) },
-                                enabled = !sending && question.isNotBlank(),
-                                modifier = Modifier.size(52.dp)
-                            ) {
-                                Icon(Icons.Default.Send, contentDescription = "Send question", tint = if (question.isNotBlank() && !sending) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
+            Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp, shadowElevation = 0.dp) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).navigationBarsPadding()) {
+                    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = question,
+                            onValueChange = { question = it },
+                            modifier = Modifier.weight(1f),
+                            placeholder = { Text("Ask about a subject, semester, unit…") },
+                            maxLines = 4,
+                            shape = RoundedCornerShape(18.dp),
+                            enabled = !sending
+                        )
+                        IconButton(
+                            onClick = { val q = question.trim(); question = ""; chatStarted = true; vm.ask(q) },
+                            enabled = !sending && question.isNotBlank(),
+                            modifier = Modifier.size(52.dp)
+                        ) {
+                            Icon(Icons.Default.Send, contentDescription = "Send question", tint = if (question.isNotBlank() && !sending) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Spacer(Modifier.height(5.dp))
+                    }
+                    if (firstChat) {
+                        Spacer(Modifier.height(6.dp))
                         Text("Try an example", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                             EXAMPLE_PROMPTS.forEach { example ->
@@ -381,46 +371,51 @@ private fun StatusCard(loadState: SyllabusLoadState, error: String?, onRetry: ()
 
 @Composable
 private fun WelcomeCard() {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(22.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        elevation = CardDefaults.cardElevation(0.dp)
+    Column(
+        Modifier.fillMaxWidth().padding(top = 34.dp, bottom = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column(Modifier.padding(18.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(42.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.13f), RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                }
-                Spacer(Modifier.width(11.dp))
-                Column {
-                    Text("Ask AI about your syllabus", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text("Get complete units, topics, hours, and outcomes.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
-                }
-            }
-            Spacer(Modifier.height(13.dp))
-            Text("Ask a precise question about a subject and semester. Follow up in the same chat whenever you need clarification.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+        Box(
+            Modifier.size(52.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.13f), RoundedCornerShape(18.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
         }
+        Spacer(Modifier.height(14.dp))
+        Text("Ask AI about your syllabus", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(5.dp))
+        Text(
+            "Ask about a subject, semester, unit, hours, or outcomes.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium
+        )
     }
 }
 
 @Composable
 private fun ChatBubble(message: SyllabusChatMessageEntity) {
     val isUser = message.role == "user"
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start) {
-        Card(
-            modifier = Modifier.fillMaxWidth(if (isUser) 0.88f else 0.96f),
-            colors = CardDefaults.cardColors(containerColor = if (isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(18.dp),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-            elevation = CardDefaults.cardElevation(0.dp)
-        ) {
-            Column(Modifier.padding(14.dp)) {
-                Text(if (isUser) "You" else "GNDEC syllabus assistant", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(5.dp))
-                if (isUser) Text(message.content, style = MaterialTheme.typography.bodyLarge) else MarkdownText(message.content)
+    if (isUser) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            Card(
+                modifier = Modifier.fillMaxWidth(0.88f),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                elevation = CardDefaults.cardElevation(0.dp)
+            ) {
+                Column(Modifier.padding(14.dp)) {
+                    Text("You", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(5.dp))
+                    Text(message.content, style = MaterialTheme.typography.bodyLarge)
+                }
             }
+        }
+    } else {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
+            Text("GNDEC syllabus assistant", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(5.dp))
+            MarkdownText(message.content)
         }
     }
 }

@@ -89,7 +89,7 @@ class AlarmScheduler(private val context: Context) {
                     if (trigger <= nowMillis) continue
 
                     val alarmCode = alarmRequestCode(group, date.toEpochDay(), lec.startMinutes, type)
-                    val lectureNotificationId = lectureNotificationId(group, date.toEpochDay(), lec.startMinutes)
+                    val lectureNotificationId = lectureNotificationId(group, date.toEpochDay(), lec.startMinutes, type)
                     val previousFreeNotificationId = freeIdByEnd[lec.startMinutes] ?: 0
                     val intent = Intent(context, LectureAlarmReceiver::class.java).apply {
                         putExtra(LectureAlarmReceiver.EXTRA_GROUP, group)
@@ -235,9 +235,9 @@ class AlarmScheduler(private val context: Context) {
             return h and Int.MAX_VALUE
         }
 
-        /** One stable notification id is reused for BEFORE_15/30/5 and AT_START. */
-        fun lectureNotificationId(group: String, epochDay: Long, startMinutes: Int): Int =
-            alarmRequestCode(group, epochDay, startMinutes, "LECTURE_NOTIFICATION")
+        /** Distinct notification id for each lecture reminder stage, preventing in-place updates. */
+        fun lectureNotificationId(group: String, epochDay: Long, startMinutes: Int, reminderType: String = "AT_START"): Int =
+            alarmRequestCode(group, epochDay, startMinutes, "LECTURE_NOTIFICATION_$reminderType")
 
         fun freeNotificationId(group: String, epochDay: Long, startMinutes: Int): Int =
             alarmRequestCode(group, epochDay, startMinutes, "FREE_NOTIFICATION")
