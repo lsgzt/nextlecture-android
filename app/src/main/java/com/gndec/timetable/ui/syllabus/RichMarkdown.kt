@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.icons.Icons
@@ -157,10 +159,15 @@ private fun RichInlineText(text: String, style: TextStyle) {
     val annotated = remember(text, style) {
         runCatching { inlineAnnotated(text) }.getOrElse { AnnotatedString(safeInlineFallback(text)) }
     }
+    val resolvedStyle = if (style.color == Color.Unspecified) {
+        style.copy(color = MaterialTheme.colorScheme.onBackground)
+    } else {
+        style
+    }
     ClickableText(
         text = annotated,
         modifier = Modifier.fillMaxWidth(),
-        style = style,
+        style = resolvedStyle,
         onClick = { offset ->
             annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.let { annotation ->
                 runCatching { uriHandler.openUri(annotation.item) }
@@ -344,12 +351,14 @@ private fun MathLayout(expression: String, display: Boolean) {
     val formula = remember(visualExpression) { parseFormula(visualExpression) }
     val style = if (display) {
         MaterialTheme.typography.headlineSmall.copy(
+            color = MaterialTheme.colorScheme.onBackground,
             fontFamily = FontFamily.Serif,
             fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
             lineHeight = 34.sp
         )
     } else {
         MaterialTheme.typography.titleMedium.copy(
+            color = MaterialTheme.colorScheme.onBackground,
             fontFamily = FontFamily.Serif,
             fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
             lineHeight = 28.sp
@@ -623,12 +632,19 @@ private fun RichTable(table: RichBlock.Table) {
         border = BorderStroke(1.dp, palette.border),
         elevation = CardDefaults.cardElevation(0.dp)
     ) {
-        Column(Modifier.horizontalScroll(rememberScrollState())) {
-            TableRow(table.header, table.alignments, columnCount, cellWidth, header = true, palette = palette)
-            HorizontalDivider(color = palette.border)
-            table.rows.forEachIndexed { index, row ->
-                TableRow(row, table.alignments, columnCount, cellWidth, header = false, palette = palette)
-                if (index < table.rows.lastIndex) HorizontalDivider(color = palette.border.copy(alpha = 0.7f))
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val tableWidth = maxOf(cellWidth * columnCount, maxWidth)
+            Column(
+                Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .widthIn(min = maxWidth)
+            ) {
+                TableRow(table.header, table.alignments, columnCount, cellWidth, tableWidth, header = true, palette = palette)
+                HorizontalDivider(color = palette.border)
+                table.rows.forEachIndexed { index, row ->
+                    TableRow(row, table.alignments, columnCount, cellWidth, tableWidth, header = false, palette = palette)
+                    if (index < table.rows.lastIndex) HorizontalDivider(color = palette.border.copy(alpha = 0.7f))
+                }
             }
         }
     }
@@ -640,12 +656,13 @@ private fun TableRow(
     alignments: List<TableAlignment>,
     columnCount: Int,
     cellWidth: androidx.compose.ui.unit.Dp,
+    tableWidth: androidx.compose.ui.unit.Dp,
     header: Boolean,
     palette: TablePalette
 ) {
     Row(
         Modifier
-            .width(cellWidth * columnCount)
+            .width(tableWidth)
             .clip(if (header) RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp) else RoundedCornerShape(0.dp))
             .background(if (header) palette.header else palette.body)
     ) {
