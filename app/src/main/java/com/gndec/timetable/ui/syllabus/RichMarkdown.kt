@@ -527,6 +527,22 @@ private fun inlineAnnotated(value: String): AnnotatedString = buildAnnotatedStri
     appendInline(this, value, depth = 0)
 }
 
+private val BARE_LATEX_COMMANDS = setOf(
+    "frac", "dfrac", "tfrac", "sqrt", "mathbf", "boldsymbol", "mathrm", "mathit", "text", "operatorname", "vec",
+    "overline", "bar", "underline", "cdot", "cdots", "ldots", "times", "div", "leq", "le", "geq", "ge", "neq",
+    "approx", "equiv", "pm", "mp", "infty", "rightarrow", "longrightarrow", "to", "leftarrow", "nabla", "partial",
+    "ell", "sum", "int", "prod", "alpha", "beta", "gamma", "delta", "epsilon", "varepsilon", "theta", "lambda",
+    "mu", "nu", "xi", "pi", "rho", "sigma", "phi", "omega", "in", "notin", "subseteq", "subset", "cup", "cap",
+    "forall", "exists"
+)
+
+private fun looksLikeBareLatex(source: String, start: Int): Boolean {
+    if (start + 1 >= source.length || source[start] != '\\' || !source[start + 1].isLetter()) return false
+    var end = start + 1
+    while (end < source.length && source[end].isLetter()) end++
+    return source.substring(start + 1, end) in BARE_LATEX_COMMANDS
+}
+
 private fun appendInline(
     builder: androidx.compose.ui.text.AnnotatedString.Builder,
     rawSource: String,
@@ -540,6 +556,18 @@ private fun appendInline(
     var i = 0
     while (i < source.length) {
         if (source[i] == '\\' && i + 1 < source.length) {
+            val bareFormulaEnd = if (looksLikeBareLatex(source, i)) {
+                source.indexOf('\n', i).takeIf { it >= 0 } ?: source.length
+            } else {
+                -1
+            }
+            if (bareFormulaEnd > i) {
+                builder.withStyle(SpanStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, color = Color(0xFF176B70))) {
+                    append(safeNormalizeLatex(source.substring(i, bareFormulaEnd)))
+                }
+                i = bareFormulaEnd
+                continue
+            }
             val mathDelimiter = when {
                 source.startsWith("\\(", i) -> "\\)"
                 source.startsWith("\\[", i) -> "\\]"
@@ -672,53 +700,110 @@ private fun safeNormalizeLatex(value: String): String = try {
     value.replace("\\\\", "\\").replace("\\$", "$")
 }
 
-private fun normalizeLatex(value: String): String {
-    var result = value.trim().replace("\\\\", "\\")
-        .replace("\\cdot", "·")
-        .replace("\\times", "×")
-        .replace("\\div", "÷")
-        .replace("\\leq", "≤")
-        .replace("\\geq", "≥")
-        .replace("\\neq", "≠")
-        .replace("\\infty", "∞")
-        .replace("\\rightarrow", "→")
-        .replace("\\to", "→")
-        .replace("\\pm", "±")
-        .replace("\\alpha", "α")
-        .replace("\\beta", "β")
-        .replace("\\gamma", "γ")
-        .replace("\\delta", "δ")
-        .replace("\\theta", "θ")
-        .replace("\\lambda", "λ")
-        .replace("\\mu", "μ")
-        .replace("\\pi", "π")
-        .replace("\\sigma", "σ")
-        .replace("\\phi", "φ")
-        .replace("\\omega", "ω")
-        .replace("\\nabla", "∇")
-        .replace("\\partial", "∂")
-        .replace("\\ell", "ℓ")
-        .replace("\\approx", "≈")
-        .replace("\\text", "")
-        .replace("\\left", "")
-        .replace("\\right", "")
-    result = replaceLatexCommand(result, "frac", 2) { args -> "${args[0]}/${args[1]}" }
-    result = replaceLatexCommand(result, "dfrac", 2) { args -> "${args[0]}/${args[1]}" }
-    result = replaceLatexCommand(result, "tfrac", 2) { args -> "${args[0]}/${args[1]}" }
-    result = replaceLatexCommand(result, "sqrt", 1) { args -> "√(${args[0]})" }
-    result = Regex("\\\\sum(?:_\\{([^{}]*)})?(?:\\^\\{([^{}]*)})?").replace(result) { match ->
-        val lower = match.groupValues[1].takeIf { it.isNotBlank() }?.let { "₍$it₎" }.orEmpty()
-        val upper = match.groupValues[2].takeIf { it.isNotBlank() }?.let { "⁽$it⁾" }.orEmpty()
-        "Σ$lower$upper"
+internal fun normalizeLatex(value: String): String {
+    var result = value.trim()
+        .replace("\\\\", "\\")
+        .replace("\\$", "$")
+
+    // Consume brace-based commands before removing braces. This keeps \frac{a}{b},
+    // \sqrt{x}, and styled arguments intact even when the formula is streamed halfway.
+    result = replaceLatexCommand(result, "frac", 2) { args ->
+        "(${normalizeLatex(args[0])})⁄(${normalizeLatex(args[1])})"
     }
-    result = result.replace("\\sum", "Σ").replace("\\int", "∫").replace("\\prod", "Π")
-    result = result.replace(Regex("\\^\\{([^{}]+)}")) { toSuperscript(it.groupValues[1]) }
-    result = result.replace(Regex("_\\{([^{}]+)}")) { toSubscript(it.groupValues[1]) }
-    result = result.replace(Regex("\\^([A-Za-z0-9+\\-=()])")) { toSuperscript(it.groupValues[1]) }
-    result = result.replace(Regex("_([A-Za-z0-9+\\-=()])")) { toSubscript(it.groupValues[1]) }
+    result = replaceLatexCommand(result, "dfrac", 2) { args ->
+        "(${normalizeLatex(args[0])})⁄(${normalizeLatex(args[1])})"
+    }
+    result = replaceLatexCommand(result, "tfrac", 2) { args ->
+        "(${normalizeLatex(args[0])})⁄(${normalizeLatex(args[1])})"
+    }
+    result = replaceLatexCommand(result, "sqrt", 1) { args ->
+        "√(${normalizeLatex(args[0])})"
+    }
+    listOf("mathbf", "boldsymbol", "mathrm", "mathit", "text", "operatorname", "vec", "overline", "bar", "underline").forEach { command ->
+        result = replaceLatexCommand(result, command, 1) { args -> args[0] }
+    }
+
+    val symbols = linkedMapOf(
+        "\\cdot" to "·", "\\cdots" to "⋯", "\\ldots" to "…", "\\times" to "×", "\\div" to "÷",
+        "\\leq" to "≤", "\\le" to "≤", "\\geq" to "≥", "\\ge" to "≥", "\\neq" to "≠",
+        "\\approx" to "≈", "\\equiv" to "≡", "\\pm" to "±", "\\mp" to "∓", "\\infty" to "∞",
+        "\\rightarrow" to "→", "\\longrightarrow" to "⟶", "\\to" to "→", "\\leftarrow" to "←",
+        "\\nabla" to "∇", "\\partial" to "∂", "\\ell" to "ℓ", "\\sum" to "Σ", "\\int" to "∫", "\\prod" to "Π",
+        "\\alpha" to "α", "\\beta" to "β", "\\gamma" to "γ", "\\delta" to "δ", "\\epsilon" to "ε",
+        "\\varepsilon" to "ε", "\\zeta" to "ζ", "\\eta" to "η", "\\theta" to "θ", "\\vartheta" to "ϑ",
+        "\\iota" to "ι", "\\kappa" to "κ", "\\lambda" to "λ", "\\mu" to "μ", "\\nu" to "ν",
+        "\\xi" to "ξ", "\\omicron" to "ο", "\\pi" to "π", "\\varpi" to "ϖ", "\\rho" to "ρ",
+        "\\sigma" to "σ", "\\tau" to "τ", "\\upsilon" to "υ", "\\phi" to "φ", "\\varphi" to "ϕ",
+        "\\chi" to "χ", "\\psi" to "ψ", "\\omega" to "ω", "\\Gamma" to "Γ", "\\Delta" to "Δ",
+        "\\Theta" to "Θ", "\\Lambda" to "Λ", "\\Xi" to "Ξ", "\\Pi" to "Π", "\\Sigma" to "Σ",
+        "\\Phi" to "Φ", "\\Psi" to "Ψ", "\\Omega" to "Ω", "\\in" to "∈", "\\notin" to "∉",
+        "\\subseteq" to "⊆", "\\subset" to "⊂", "\\cup" to "∪", "\\cap" to "∩", "\\forall" to "∀",
+        "\\exists" to "∃", "\\quad" to " ", "\\qquad" to "  ", "\\," to " ", "\\;" to " ", "\\!" to ""
+    )
+    symbols.forEach { (command, replacement) -> result = result.replace(command, replacement) }
+    result = convertLatexScripts(result)
     result = result.replace("{", "").replace("}", "")
-    result = result.replace(Regex("\\\\([a-zA-Z]+)")) { it.groupValues[1] }
+    result = stripUnknownLatexCommands(result)
     return result.trim()
+}
+
+private fun convertLatexScripts(source: String): String {
+    val output = StringBuilder(source.length)
+    var index = 0
+    while (index < source.length) {
+        val marker = source[index]
+        if ((marker == '^' || marker == '_') && index + 1 < source.length) {
+            val next = index + 1
+            val content: String?
+            val endExclusive: Int
+            if (source[next] == '{') {
+                val close = matchingBrace(source, next)
+                if (close > next) {
+                    content = source.substring(next + 1, close)
+                    endExclusive = close + 1
+                } else {
+                    content = null
+                    endExclusive = next
+                }
+            } else if (!source[next].isWhitespace() && source[next] != '\\') {
+                content = source[next].toString()
+                endExclusive = next + 1
+            } else {
+                content = null
+                endExclusive = next
+            }
+            if (content != null) {
+                output.append(if (marker == '^') toSuperscript(content) else toSubscript(content))
+                index = endExclusive
+                continue
+            }
+        }
+        output.append(source[index])
+        index++
+    }
+    return output.toString()
+}
+
+private fun stripUnknownLatexCommands(source: String): String {
+    val output = StringBuilder(source.length)
+    var index = 0
+    while (index < source.length) {
+        if (source[index] == '\\' && index + 1 < source.length) {
+            val next = source[index + 1]
+            if (next.isLetter()) {
+                index++
+                continue
+            }
+            if (!next.isWhitespace()) {
+                output.append(next)
+                index += 2
+                continue
+            }
+        }
+        output.append(source[index])
+        index++
+    }
+    return output.toString()
 }
 
 private fun toSuperscript(value: String): String = value.map { SUPERSCRIPT[it] ?: it }.joinToString("")
