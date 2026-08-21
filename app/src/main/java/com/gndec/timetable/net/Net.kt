@@ -117,7 +117,8 @@ class GeminiClient(private val client: OkHttpClient = Net.client) {
         systemPrompt: String,
         model: String,
         apiKey: String,
-        onText: (String) -> Unit
+        onText: (String) -> Unit = {},
+        onFinishReason: (String?) -> Unit = {}
     ): String = withContext(Dispatchers.IO) {
         require(messages.any { it.content.isNotBlank() }) { "At least one chat message is required" }
         val payload = buildChatPayload(messages, systemPrompt)
@@ -135,22 +136,42 @@ class GeminiClient(private val client: OkHttpClient = Net.client) {
             val body = resp.body ?: throw HttpException(resp.code, "empty streaming body")
             val complete = StringBuilder()
             val finishReasons = mutableSetOf<String>()
-            body.charStream().buffered().useLines { lines ->
-                lines.forEach { line ->
-                    val data = line.trim().takeIf { it.startsWith("data:") }
-                        ?.removePrefix("data:")?.trim()
-                        ?.takeIf { it.isNotBlank() && it != "[DONE]" }
-                        ?: return@forEach
-                    val root = runCatching { json.parseToJsonElement(data) as? JsonObject }.getOrNull() ?: return@forEach
-                    finishReasons += finishReasons(root)
-                    val delta = extractTextOrNull(root).orEmpty()
-                    if (delta.isNotBlank()) {
-                        complete.append(delta)
-                        onText(delta)
-                    }
+
+            fun processEvent(data: String) {
+                if (data.isBlank() || data == "[DONE]") return
+                val root = runCatching { json.parseToJsonElement(data) as? JsonObject }.getOrNull() ?: return
+                finishReasons += finishReasons(root)
+                val delta = extractTextOrNull(root).orEmpty()
+                if (delta.isNotEmpty()) {
+                    complete.append(delta)
+                    onText(delta)
                 }
             }
-            val answer = complete.toString().trim()
+
+            body.charStream().buffered().use { reader ->
+                val eventData = StringBuilder()
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    when {
+                        line.isBlank() -> {
+                            if (eventData.isNotEmpty()) {
+                                processEvent(eventData.toString())
+                                eventData.clear()
+                            }
+                        }
+                        line.startsWith(":") -> Unit
+                        line.startsWith("data:") -> {
+                            if (eventData.isNotEmpty()) eventData.append('\n')
+                            eventData.append(line.removePrefix("data:").trimStart())
+                        }
+                    }
+                }
+                if (eventData.isNotEmpty()) processEvent(eventData.toString())
+            }
+
+            val finishReason = finishReasons.lastOrNull()
+            onFinishReason(finishReason)
+            val answer = complete.toString().trimEnd()
             if (answer.isNotBlank()) return@withContext answer
             if (finishReasons.contains("RECITATION")) {
                 throw GeminiRecitationException("Gemini stopped because the answer was too close to source text (RECITATION)")
@@ -198,13 +219,13 @@ class GeminiClient(private val client: OkHttpClient = Net.client) {
             val parts = content["parts"] as? JsonArray ?: return@forEach
             parts.forEach { partElement ->
                 val part = partElement as? JsonObject ?: return@forEach
-                val text = (part["text"] as? JsonPrimitive)?.content?.trim().orEmpty()
-                if (text.isNotBlank()) texts += text
+                val text = (part["text"] as? JsonPrimitive)?.content.orEmpty()
+                if (text.isNotEmpty()) texts += text
             }
         }
-        val topLevelText = (root["text"] as? JsonPrimitive)?.content?.trim().orEmpty()
-        if (topLevelText.isNotBlank()) texts += topLevelText
-        return texts.joinToString("\n").trim().takeIf { it.isNotBlank() }
+        val topLevelText = (root["text"] as? JsonPrimitive)?.content.orEmpty()
+        if (topLevelText.isNotEmpty()) texts += topLevelText
+        return texts.joinToString(separator = "").takeIf { it.isNotBlank() }
     }
 
     private fun finishReasons(root: JsonObject): List<String> =

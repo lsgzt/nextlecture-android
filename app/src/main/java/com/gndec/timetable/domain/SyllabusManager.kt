@@ -46,6 +46,7 @@ class SyllabusManager(
         private const val PDF_FILE_NAME = "gndec_official_syllabus.pdf"
         private const val TEXT_FILE_NAME = "gndec_official_syllabus.txt"
         private const val MAX_TITLE_LENGTH = 72
+        private const val MAX_CONTINUATION_ROUNDS = 3
         private val RECITATION_RECOVERY_PROMPT = """
 
             IMPORTANT RECITATION RECOVERY: The previous generation was stopped because it resembled source text too closely. Answer again in your own words. Do not quote or reproduce long sentences from the document. Keep the complete unit and topic coverage, but use concise paraphrases, short labels, hours, and clearly structured summaries.
@@ -117,25 +118,46 @@ class SyllabusManager(
         chats.insertMessage(SyllabusChatMessageEntity(sessionId = actualSessionId, role = "user", content = prompt, timestamp = now))
         val history = chats.getMessages(actualSessionId).map { ChatMessage(it.role, it.content) }
         val systemPrompt = buildSystemPrompt(branch)
-        val answer = try {
+        var finishReason: String? = null
+        suspend fun streamAnswer(requestMessages: List<ChatMessage>, promptSuffix: String = ""): String =
             gemini.chatStream(
-                messages = history,
-                systemPrompt = systemPrompt,
+                messages = requestMessages,
+                systemPrompt = systemPrompt + promptSuffix,
                 model = config.model,
                 apiKey = apiKey,
-                onText = onText
+                onText = onText,
+                onFinishReason = { finishReason = it }
             )
+
+        val answerBuilder = StringBuilder(try {
+            streamAnswer(history)
         } catch (_: GeminiRecitationException) {
             // Gemini may stop when the answer resembles long source passages. Retry once with a
             // paraphrase-only instruction so the student still receives a complete answer.
-            gemini.chatStream(
-                messages = history,
-                systemPrompt = systemPrompt + RECITATION_RECOVERY_PROMPT,
-                model = config.model,
-                apiKey = apiKey,
-                onText = onText
+            finishReason = null
+            streamAnswer(history, RECITATION_RECOVERY_PROMPT)
+        })
+
+        // A long syllabus answer may legitimately end at MAX_TOKENS. Ask for continuation
+        // using the already generated text as model history, then append each delta live.
+        var continuationRound = 0
+        while (finishReason == "MAX_TOKENS" && continuationRound < MAX_CONTINUATION_ROUNDS) {
+            continuationRound++
+            val continuationHistory = history + listOf(
+                ChatMessage("model", answerBuilder.toString()),
+                ChatMessage(
+                    "user",
+                    "Continue exactly where the previous answer stopped. Do not repeat any earlier text. " +
+                        "Finish every incomplete table, list, code block, or syllabus section and preserve valid Markdown."
+                )
             )
+            finishReason = null
+            val continuation = streamAnswer(continuationHistory)
+            if (continuation.isBlank()) break
+            answerBuilder.append(continuation)
         }
+
+        val answer = answerBuilder.toString()
         val answerTime = System.currentTimeMillis()
         chats.insertMessage(SyllabusChatMessageEntity(sessionId = actualSessionId, role = "model", content = answer, timestamp = answerTime))
         chats.touchSession(actualSessionId, chats.getSession(actualSessionId)?.title ?: prompt.take(MAX_TITLE_LENGTH), answerTime)

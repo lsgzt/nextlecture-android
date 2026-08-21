@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -5,6 +7,12 @@ plugins {
     id("com.google.devtools.ksp")
     id("org.jetbrains.kotlin.plugin.serialization")
 }
+
+val signingProperties = Properties().apply {
+    rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use(::load)
+}
+val persistentKeystore = signingProperties.getProperty("gndec.keystore.path")?.let(::file)
+val hasPersistentKeystore = persistentKeystore?.isFile == true
 
 android {
     namespace = "com.gndec.timetable"
@@ -22,12 +30,23 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (hasPersistentKeystore && persistentKeystore != null) {
+            create("gndecPersistent") {
+                storeFile = persistentKeystore
+                storePassword = signingProperties.getProperty("gndec.keystore.password", "android")
+                keyAlias = signingProperties.getProperty("gndec.keystore.alias", "androiddebugkey")
+                keyPassword = signingProperties.getProperty("gndec.keystore.keyPassword", "android")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             // Keep bundled notification audio in every release artifact; R8 code shrinking remains enabled.
             isShrinkResources = false
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (hasPersistentKeystore) signingConfigs.getByName("gndecPersistent") else signingConfigs.getByName("debug")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
         debug { }
