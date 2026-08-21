@@ -134,15 +134,17 @@ class SyllabusViewModel(private val container: AppContainer) : ViewModel() {
             _streamingAnswer.value = ""
             val streamBuffer = StringBuilder()
             var lastUiUpdateNanos = 0L
+            val uiIntervalNanos = 33_000_000L
             try {
                 val result = manager.sendStreaming(_selectedSessionId.value, question) { delta ->
                     streamBuffer.append(delta)
                     val now = System.nanoTime()
-                    if (lastUiUpdateNanos == 0L || now - lastUiUpdateNanos >= 50_000_000L) {
+                    if (lastUiUpdateNanos == 0L || now - lastUiUpdateNanos >= uiIntervalNanos) {
                         lastUiUpdateNanos = now
                         _streamingAnswer.value = streamBuffer.toString()
                     }
                 }
+                _streamingAnswer.value = result.answer
                 _selectedSessionId.value = result.sessionId
                 _streamingAnswer.value = ""
             } catch (_: CancellationException) {
@@ -192,13 +194,17 @@ fun SyllabusScreen(
     var historyOpen by rememberSaveable { mutableStateOf(false) }
     var deleteId by remember { mutableStateOf<String?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetScope = rememberCoroutineScope()
 
     fun startNewChat() {
         vm.newChat()
         question = ""
         chatStarted = false
         deleteId = null
-        historyOpen = false
+        sheetScope.launch {
+            runCatching { sheetState.hide() }
+            historyOpen = false
+        }
     }
 
     if (historyOpen) {

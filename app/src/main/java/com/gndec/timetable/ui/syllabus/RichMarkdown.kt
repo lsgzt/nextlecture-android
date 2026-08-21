@@ -78,7 +78,10 @@ private enum class TableAlignment { LEFT, CENTER, RIGHT }
  */
 @Composable
 fun RichMarkdownText(markdown: String, modifier: Modifier = Modifier) {
-    val blocks = remember(markdown) { parseRichMarkdown(markdown) }
+    val blocks = remember(markdown) {
+        runCatching { parseRichMarkdown(markdown) }
+            .getOrElse { listOf(RichBlock.Paragraph(markdown)) }
+    }
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         blocks.forEachIndexed { index, block ->
             RichBlockView(block, key = "rich-block-$index")
@@ -116,7 +119,9 @@ private fun RichBlockView(block: RichBlock, key: String) {
 @Composable
 private fun RichInlineText(text: String, style: TextStyle) {
     val uriHandler = LocalUriHandler.current
-    val annotated = remember(text, style) { inlineAnnotated(text) }
+    val annotated = remember(text, style) {
+        runCatching { inlineAnnotated(text) }.getOrElse { AnnotatedString(text) }
+    }
     ClickableText(
         text = annotated,
         modifier = Modifier.fillMaxWidth(),
@@ -233,7 +238,25 @@ private fun MathBlock(expression: String, display: Boolean) {
 
 @Composable
 private fun RichTable(table: RichBlock.Table) {
-    val columnCount = maxOf(table.header.size, table.rows.maxOfOrNull { it.size } ?: 0).coerceAtLeast(1)
+    val rawColumnCount = maxOf(table.header.size, table.rows.maxOfOrNull { it.size } ?: 0).coerceAtLeast(1)
+    if (rawColumnCount > 12) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            elevation = CardDefaults.cardElevation(0.dp)
+        ) {
+            RichInlineText(
+                buildString {
+                    append(table.header.joinToString(" | "))
+                    table.rows.forEach { append("\n").append(it.joinToString(" | ")) }
+                },
+                MaterialTheme.typography.bodySmall.copy(lineHeight = 18.sp)
+            )
+        }
+        return
+    }
+    val columnCount = rawColumnCount
     val cellWidth = 148.dp
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -390,11 +413,30 @@ private fun parseRichMarkdown(source: String): List<RichBlock> {
             }
             i += if (hasStandardTableDivider) 2 else 1
             val rows = mutableListOf<List<String>>()
-            while (i < lines.size && lines[i].trim().contains('|')) {
+            while (i < lines.size) {
                 val candidate = lines[i].trim()
                 if (candidate.isBlank() || isTableDivider(candidate)) break
-                rows += splitTableRow(candidate)
-                i++
+                if (candidate.contains('|')) {
+                    val parsedRow = splitTableRow(candidate)
+                    val looksLikeRow = parsedRow.size >= 2 && (header.size <= 1 || parsedRow.size >= header.size - 1)
+                    if (looksLikeRow) {
+                        rows += parsedRow
+                        i++
+                        continue
+                    }
+                }
+                val lastCell = rows.lastOrNull()?.lastOrNull().orEmpty()
+                if (isTableContinuation(candidate, lastCell)) {
+                    val previous = rows.removeLastOrNull()?.toMutableList()
+                    if (previous != null) {
+                        val cellIndex = continuationCellIndex(previous)
+                        previous[cellIndex] = listOf(previous[cellIndex], candidate).filter { it.isNotBlank() }.joinToString("\n")
+                        rows += previous
+                        i++
+                        continue
+                    }
+                }
+                break
             }
             blocks += RichBlock.Table(header, rows, alignments)
             continue
@@ -430,6 +472,21 @@ private fun parseList(lines: List<String>): List<RichListItem> = lines.mapNotNul
 
 private fun looksLikeTableHeader(line: String): Boolean = line.count { it == '|' } >= 1
 
+private fun isTableContinuation(line: String, previousCell: String): Boolean {
+    if (line.startsWith("#") || line.matches(Regex("^(---+|\\*\\*\\*+|___+)$"))) return false
+    val isBullet = line.startsWith("•") || line.matches(Regex("^(?:[-*+]\\s+|\\d+[.)]\\s+).+"))
+    val previousStartsList = previousCell.trimStart().matches(Regex("^(?:[-*+]\\s+|\\d+[.)]\\s+|•).+"))
+    return isBullet || previousStartsList
+}
+
+private fun continuationCellIndex(row: List<String>): Int {
+    val descriptiveIndex = row.drop(1).indexOfFirst { cell ->
+        val value = cell.trim()
+        value.isNotBlank() && value.firstOrNull()?.isDigit() != true
+    }
+    return if (descriptiveIndex >= 0) descriptiveIndex + 1 else row.lastIndex.coerceAtLeast(0)
+}
+
 private fun isTableDivider(line: String): Boolean {
     val cells = splitTableRow(line)
     return cells.size >= 2 && cells.all { it.trim().matches(Regex(":?-{3,}:?")) }
@@ -451,11 +508,21 @@ private fun splitTableRow(line: String): List<String> {
     return cells
 }
 
+private const val MAX_INLINE_DEPTH = 24
+
 private fun inlineAnnotated(value: String): AnnotatedString = buildAnnotatedString {
-    appendInline(this, value)
+    appendInline(this, value, depth = 0)
 }
 
-private fun appendInline(builder: androidx.compose.ui.text.AnnotatedString.Builder, source: String) {
+private fun appendInline(
+    builder: androidx.compose.ui.text.AnnotatedString.Builder,
+    source: String,
+    depth: Int
+) {
+    if (depth > MAX_INLINE_DEPTH) {
+        builder.append(source)
+        return
+    }
     var i = 0
     while (i < source.length) {
         if (source[i] == '\\' && i + 1 < source.length) {
@@ -496,7 +563,7 @@ private fun appendInline(builder: androidx.compose.ui.text.AnnotatedString.Build
                     val label = source.substring(i + 1, closeText)
                     val url = source.substring(closeText + 2, closeUrl)
                     builder.pushStringAnnotation("URL", url)
-                    builder.withStyle(SpanStyle(color = Color(0xFF176B70), textDecoration = TextDecoration.Underline)) { appendInline(builder, label) }
+                    builder.withStyle(SpanStyle(color = Color(0xFF176B70), textDecoration = TextDecoration.Underline)) { appendInline(builder, label, depth + 1) }
                     builder.pop()
                     i = closeUrl + 1; continue
                 }
@@ -507,7 +574,7 @@ private fun appendInline(builder: androidx.compose.ui.text.AnnotatedString.Build
         if (triple != null) {
             val end = source.indexOf(triple, i + 3)
             if (end > i + 3) {
-                builder.withStyle(SpanStyle(fontWeight = FontWeight.Bold, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)) { appendInline(builder, source.substring(i + 3, end)) }
+                builder.withStyle(SpanStyle(fontWeight = FontWeight.Bold, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)) { appendInline(builder, source.substring(i + 3, end), depth + 1) }
                 i = end + 3; continue
             }
         }
@@ -520,7 +587,7 @@ private fun appendInline(builder: androidx.compose.ui.text.AnnotatedString.Build
         if (strong != null) {
             val end = source.indexOf(strong, i + 2)
             if (end > i + 2) {
-                builder.withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { appendInline(builder, source.substring(i + 2, end)) }
+                builder.withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { appendInline(builder, source.substring(i + 2, end), depth + 1) }
                 i = end + 2; continue
             }
         }
@@ -528,7 +595,7 @@ private fun appendInline(builder: androidx.compose.ui.text.AnnotatedString.Build
         if (source.startsWith("~~", i)) {
             val end = source.indexOf("~~", i + 2)
             if (end > i + 2) {
-                builder.withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { appendInline(builder, source.substring(i + 2, end)) }
+                builder.withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { appendInline(builder, source.substring(i + 2, end), depth + 1) }
                 i = end + 2; continue
             }
         }
@@ -537,7 +604,7 @@ private fun appendInline(builder: androidx.compose.ui.text.AnnotatedString.Build
             val delimiter = source[i].toString()
             val end = source.indexOf(delimiter, i + 1)
             if (end > i + 1 && !source.substring(i + 1, end).contains('\n')) {
-                builder.withStyle(SpanStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)) { appendInline(builder, source.substring(i + 1, end)) }
+                builder.withStyle(SpanStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)) { appendInline(builder, source.substring(i + 1, end), depth + 1) }
                 i = end + 1; continue
             }
         }
