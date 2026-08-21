@@ -34,6 +34,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
@@ -48,6 +50,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.shape.RoundedCornerShape
 import java.util.Locale
 
 private sealed interface RichBlock {
@@ -73,6 +76,36 @@ private data class RichListItem(
 )
 
 private enum class TableAlignment { LEFT, CENTER, RIGHT }
+
+private data class TablePalette(
+    val body: Color,
+    val header: Color,
+    val bodyText: Color,
+    val headerText: Color,
+    val border: Color
+)
+
+@Composable
+private fun rememberTablePalette(): TablePalette {
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    return if (dark) {
+        TablePalette(
+            body = Color(0xFF142523),
+            header = Color(0xFF274742),
+            bodyText = Color(0xFFE5F1EF),
+            headerText = Color(0xFFF3FBF9),
+            border = Color(0xFF456B66)
+        )
+    } else {
+        TablePalette(
+            body = Color(0xFFF4F8F7),
+            header = Color(0xFFE0E7E6),
+            bodyText = Color(0xFF17201F),
+            headerText = Color(0xFF101817),
+            border = Color(0xFFD3DFDD)
+        )
+    }
+}
 
 /**
  * Mobile-first Markdown renderer. The parser deliberately accepts incomplete input:
@@ -562,12 +595,13 @@ private fun formulaSymbol(command: String): String = when (command) {
 
 @Composable
 private fun RichTable(table: RichBlock.Table) {
+    val palette = rememberTablePalette()
     val rawColumnCount = maxOf(table.header.size, table.rows.maxOfOrNull { it.size } ?: 0).coerceAtLeast(1)
     if (rawColumnCount > 12) {
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            colors = CardDefaults.cardColors(containerColor = palette.body),
+            border = BorderStroke(1.dp, palette.border),
             elevation = CardDefaults.cardElevation(0.dp)
         ) {
             RichInlineText(
@@ -575,7 +609,7 @@ private fun RichTable(table: RichBlock.Table) {
                     append(table.header.joinToString(" | "))
                     table.rows.forEach { append("\n").append(it.joinToString(" | ")) }
                 },
-                MaterialTheme.typography.bodySmall.copy(lineHeight = 18.sp)
+                MaterialTheme.typography.bodySmall.copy(lineHeight = 18.sp, color = palette.bodyText)
             )
         }
         return
@@ -584,16 +618,17 @@ private fun RichTable(table: RichBlock.Table) {
     val cellWidth = 148.dp
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = palette.body),
+        border = BorderStroke(1.dp, palette.border),
         elevation = CardDefaults.cardElevation(0.dp)
     ) {
         Column(Modifier.horizontalScroll(rememberScrollState())) {
-            TableRow(table.header, table.alignments, columnCount, cellWidth, header = true)
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            TableRow(table.header, table.alignments, columnCount, cellWidth, header = true, palette = palette)
+            HorizontalDivider(color = palette.border)
             table.rows.forEachIndexed { index, row ->
-                TableRow(row, table.alignments, columnCount, cellWidth, header = false)
-                if (index < table.rows.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+                TableRow(row, table.alignments, columnCount, cellWidth, header = false, palette = palette)
+                if (index < table.rows.lastIndex) HorizontalDivider(color = palette.border.copy(alpha = 0.7f))
             }
         }
     }
@@ -605,14 +640,14 @@ private fun TableRow(
     alignments: List<TableAlignment>,
     columnCount: Int,
     cellWidth: androidx.compose.ui.unit.Dp,
-    header: Boolean
+    header: Boolean,
+    palette: TablePalette
 ) {
     Row(
         Modifier
             .width(cellWidth * columnCount)
-            .background(
-                if (header) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f) else Color.Transparent
-            )
+            .clip(if (header) RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp) else RoundedCornerShape(0.dp))
+            .background(if (header) palette.header else palette.body)
     ) {
         repeat(columnCount) { index ->
             val alignment = when (alignments.getOrNull(index) ?: TableAlignment.LEFT) {
@@ -625,6 +660,7 @@ private fun TableRow(
                     text = values.getOrNull(index).orEmpty(),
                     style = MaterialTheme.typography.bodySmall.copy(
                         lineHeight = 18.sp,
+                        color = if (header) palette.headerText else palette.bodyText,
                         fontWeight = if (header) FontWeight.Bold else FontWeight.Normal,
                         textAlign = alignment
                     )
