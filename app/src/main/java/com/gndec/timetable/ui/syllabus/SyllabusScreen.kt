@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.AlertDialog
@@ -181,7 +182,8 @@ class SyllabusViewModel(private val container: AppContainer) : ViewModel() {
 @Composable
 fun SyllabusScreen(
     container: AppContainer,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenPreviousYearPapers: () -> Unit
 ) {
     val vm: SyllabusViewModel = viewModel(
         factory = remember(container) {
@@ -220,6 +222,15 @@ fun SyllabusScreen(
                     IconButton(onClick = { startNewChat() }) {
                         Icon(Icons.Default.Add, contentDescription = "New chat")
                     }
+                }
+                OutlinedButton(
+                    onClick = { historyOpen = false; onOpenPreviousYearPapers() },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Previous year papers")
                 }
                 Spacer(Modifier.height(8.dp))
                 if (sessions.isEmpty()) {
@@ -293,7 +304,7 @@ fun SyllabusScreen(
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
                 if (firstChat) {
-                    item { WelcomeCard() }
+                    item { WelcomeCard(onOpenPreviousYearPapers) }
                 } else {
                     items(messages, key = { it.id }) { message -> ChatBubble(message) }
                 }
@@ -405,7 +416,7 @@ private fun StatusCard(loadState: SyllabusLoadState, error: String?, onRetry: ()
 }
 
 @Composable
-private fun WelcomeCard() {
+private fun WelcomeCard(onOpenPreviousYearPapers: () -> Unit) {
     Column(
         Modifier.fillMaxWidth().padding(top = 34.dp, bottom = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -424,6 +435,15 @@ private fun WelcomeCard() {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium
         )
+        Spacer(Modifier.height(16.dp))
+        OutlinedButton(
+            onClick = onOpenPreviousYearPapers,
+            shape = RoundedCornerShape(14.dp)
+        ) {
+            Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Previous year papers")
+        }
     }
 }
 

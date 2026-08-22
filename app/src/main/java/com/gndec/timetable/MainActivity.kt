@@ -36,6 +36,7 @@ import com.gndec.timetable.ui.onboarding.OnboardingScreen
 import com.gndec.timetable.ui.notice.NoticeScreen
 import com.gndec.timetable.ui.profile.ProfileScreen
 import com.gndec.timetable.ui.settings.SettingsScreen
+import com.gndec.timetable.ui.syllabus.PreviousYearPapersScreen
 import com.gndec.timetable.ui.syllabus.SyllabusScreen
 import com.gndec.timetable.ui.theme.GndecTheme
 import kotlinx.coroutines.flow.first
@@ -168,6 +169,17 @@ class MainActivity : ComponentActivity() {
                             ) {
                                 SyllabusScreen(
                                     container = container,
+                                    onBack = { nav.popBackStack() },
+                                    onOpenPreviousYearPapers = { navigate("previous_year_papers") }
+                                )
+                            }
+                            composable(
+                                "previous_year_papers",
+                                enterTransition = { fadeIn(tween(100)) },
+                                exitTransition = { fadeOut(tween(70)) }
+                            ) {
+                                PreviousYearPapersScreen(
+                                    context = container.context,
                                     onBack = { nav.popBackStack() }
                                 )
                             }
