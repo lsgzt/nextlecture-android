@@ -204,8 +204,8 @@ private fun formatPyqText(raw: String): String {
     text = text.replace(Regex("\\s+(?=(?:\\(?[ivx]+\\)|[a-z]\\)))"), "\\n")
     text = text.replace(Regex("\\s+OR\\s+"), "\\nOR\\n")
     text = text.replace(Regex("\\s+([,.;:!?])"), "$1")
-    text = text.replace(Regex("([([{])\\s+"), "$1")
-    text = text.replace(Regex("\\s+([)\\]}])"), "$1")
+    text = text.replace(Regex("""([\\[\\(\\{])\\s+"""), "$1")
+    text = text.replace(Regex("""\\s+([\\]\\)\\}])"""), "$1")
     return text.trim()
 }
 
