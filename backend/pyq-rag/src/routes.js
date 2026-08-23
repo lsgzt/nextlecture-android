@@ -83,7 +83,7 @@ export function buildRouter() {
   const publicLimit = createRateLimiter(config.publicRateLimitPerMinute);
   const askLimit = createRateLimiter(config.askRateLimitPerMinute);
 
-  router.get('/api/admin/status', requireAdmin, async (_req, res) => {
+  router.get('/admin/status', requireAdmin, async (_req, res) => {
     try {
       const recovered = await resetStalePapers();
       return res.json({ ok: true, recoveredStalePapers: recovered, ...(await getStatusCounts()) });
@@ -92,7 +92,7 @@ export function buildRouter() {
     }
   });
 
-  router.post('/api/admin/seed', requireAdmin, async (req, res) => {
+  router.post('/admin/seed', requireAdmin, async (req, res) => {
     const parsed = z.object({ limit: z.number().int().min(1).max(1628).default(1628), offset: z.number().int().min(0).max(1627).default(0) }).safeParse(req.body || {});
     if (!parsed.success) return validationError(res, parsed);
     try {
@@ -110,7 +110,7 @@ export function buildRouter() {
     }
   });
 
-  router.post('/api/admin/retry-failed', requireAdmin, async (req, res) => {
+  router.post('/admin/retry-failed', requireAdmin, async (req, res) => {
     const parsed = z.object({ limit: z.number().int().min(1).max(config.batchMax).default(config.batchMax) }).safeParse(req.body || {});
     if (!parsed.success) return validationError(res, parsed);
     try {
@@ -121,7 +121,7 @@ export function buildRouter() {
     }
   });
 
-  router.post('/api/admin/process-one', requireAdmin, async (req, res) => {
+  router.post('/admin/process-one', requireAdmin, async (req, res) => {
     const parsed = z.object({ paperId: paperIdSchema, force: z.boolean().default(false) }).safeParse(req.body || {});
     if (!parsed.success) return validationError(res, parsed);
     try {
@@ -136,7 +136,7 @@ export function buildRouter() {
     }
   });
 
-  router.post('/api/admin/process-batch', requireAdmin, async (req, res) => {
+  router.post('/admin/process-batch', requireAdmin, async (req, res) => {
     const parsed = z.object({ limit: z.number().int().min(1).max(config.batchMax).default(Math.min(2, config.batchMax)), includeFailed: z.boolean().default(false) }).safeParse(req.body || {});
     if (!parsed.success) return validationError(res, parsed);
     try {
@@ -157,7 +157,7 @@ export function buildRouter() {
     }
   });
 
-  router.get('/api/pyq/frequently-asked', publicLimit, async (req, res) => {
+  router.get('/pyq/frequently-asked', publicLimit, async (req, res) => {
     const range = parseCourseRange(req.query);
     if (range.error) return validationError(res, range);
     try {
@@ -185,7 +185,7 @@ export function buildRouter() {
     }
   });
 
-  router.get('/api/pyq/frequently-asked/:groupId', publicLimit, async (req, res) => {
+  router.get('/pyq/frequently-asked/:groupId', publicLimit, async (req, res) => {
     const parsed = z.coerce.number().int().positive().safeParse(req.params.groupId);
     if (!parsed.success) return res.status(400).json({ error: 'invalid group id' });
     try {
@@ -199,7 +199,7 @@ export function buildRouter() {
     }
   });
 
-  router.post('/api/pyq/ask', askLimit, async (req, res) => {
+  router.post('/pyq/ask', askLimit, async (req, res) => {
     const parsed = z.object({ course: courseSchema, question: z.string().trim().min(3).max(1000), topK: z.number().int().min(1).max(5).default(5) }).safeParse(req.body || {});
     if (!parsed.success) return validationError(res, parsed);
     try {
