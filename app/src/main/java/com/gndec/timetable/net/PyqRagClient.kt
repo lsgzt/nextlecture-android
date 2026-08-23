@@ -72,8 +72,18 @@ data class PyqGroupOccurrence(
 )
 
 @Serializable
+data class PyqGroupDetailGroup(
+    @SerialName("id") val groupId: Long,
+    @SerialName("course_code") val courseCode: String,
+    @SerialName("representative_title") val title: String,
+    @SerialName("representative_description") val description: String? = null,
+    val frequency: Long = 0,
+    val confidence: Double? = null
+)
+
+@Serializable
 data class PyqGroupDetailResponse(
-    val group: PyqFrequencyGroup,
+    val group: PyqGroupDetailGroup,
     val frequency: Int,
     val occurrences: List<PyqGroupOccurrence> = emptyList()
 )

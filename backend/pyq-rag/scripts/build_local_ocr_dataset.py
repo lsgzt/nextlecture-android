@@ -253,7 +253,7 @@ def group_questions(questions):
             representative = max((course_questions[index] for index in members), key=lambda item: len(item["question_text"]))
             groups.append({
                 "course_code": course,
-                "representative_title": f"Repeated question: {representative['question_text'][:140]}",
+                "representative_title": f"Repeated question: {representative['question_text']}",
                 "representative_description": "Grouped locally from page-preserved OCR using conservative lexical overlap; no Gemini or embeddings were used.",
                 "frequency": len(paper_ids),
                 "confidence": round(min(member_scores), 4),
