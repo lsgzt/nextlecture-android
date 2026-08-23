@@ -91,6 +91,7 @@ class SettingsViewModel(private val c: AppContainer) {
         _busy.value = false
     }
     fun setBackendUrl(u: String) = scope.launch { c.settings.setBackendUrl(u); _message.value = "Backend URL saved" }
+    fun setPyqRagBackendUrl(u: String) = scope.launch { c.settings.setPyqRagBackendUrl(u); _message.value = "PYQ analysis URL saved" }
     fun setModel(m: String) = scope.launch { c.settings.setModel(m); _message.value = "Model set to $m" }
 
     private suspend fun reschedule() {

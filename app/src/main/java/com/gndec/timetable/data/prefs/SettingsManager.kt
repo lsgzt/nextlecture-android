@@ -15,6 +15,7 @@ data class AppSettings(
     val group: String? = null,
     val sourceUrl: String = DEFAULT_SOURCE_URL,
     val backendUrl: String = "",
+    val pyqRagBackendUrl: String = DEFAULT_PYQ_RAG_BACKEND_URL,
     val aiEnabled: Boolean = true,
     val model: String = "gemini-3.6-flash",
     val themeMode: String = "light", // light | dark | system
@@ -56,6 +57,7 @@ data class AppSettings(
 ) {
     companion object {
         const val DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"
+        const val DEFAULT_PYQ_RAG_BACKEND_URL = "https://gndec-pyq-rag-api.vercel.app"
         const val DEFAULT_SOURCE_URL =
             "https://appsc.gndec.ac.in/sites/default/files/2026-08/09_08_2026%20FINAL_FILE_subgroups_days_horizontal.html"
     }
@@ -67,6 +69,7 @@ class SettingsManager(private val context: Context) {
         val GROUP = stringPreferencesKey("group")
         val SOURCE_URL = stringPreferencesKey("source_url")
         val BACKEND_URL = stringPreferencesKey("backend_url")
+        val PYQ_RAG_BACKEND_URL = stringPreferencesKey("pyq_rag_backend_url")
         val AI_ENABLED = booleanPreferencesKey("ai_enabled")
         val MODEL = stringPreferencesKey("model")
         val THEME = stringPreferencesKey("theme_mode")
@@ -112,6 +115,7 @@ class SettingsManager(private val context: Context) {
             group = p[K.GROUP],
             sourceUrl = p[K.SOURCE_URL] ?: AppSettings.DEFAULT_SOURCE_URL,
             backendUrl = p[K.BACKEND_URL] ?: "",
+            pyqRagBackendUrl = p[K.PYQ_RAG_BACKEND_URL] ?: AppSettings.DEFAULT_PYQ_RAG_BACKEND_URL,
             aiEnabled = p[K.AI_ENABLED] ?: true,
             model = normalizeGeminiModel(p[K.MODEL]),
             themeMode = p[K.THEME] ?: "light",
@@ -155,6 +159,7 @@ class SettingsManager(private val context: Context) {
     suspend fun setGroup(g: String) = context.dataStore.edit { it[K.GROUP] = g }
     suspend fun setSourceUrl(u: String) = context.dataStore.edit { it[K.SOURCE_URL] = u }
     suspend fun setBackendUrl(u: String) = context.dataStore.edit { it[K.BACKEND_URL] = u.trim() }
+    suspend fun setPyqRagBackendUrl(u: String) = context.dataStore.edit { it[K.PYQ_RAG_BACKEND_URL] = u.trim().ifBlank { AppSettings.DEFAULT_PYQ_RAG_BACKEND_URL } }
     suspend fun setAiEnabled(b: Boolean) = context.dataStore.edit { it[K.AI_ENABLED] = b }
     suspend fun setModel(m: String) = context.dataStore.edit { it[K.MODEL] = m.trim() }
     suspend fun setThemeMode(m: String) = context.dataStore.edit { it[K.THEME] = m }

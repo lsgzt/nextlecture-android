@@ -36,6 +36,8 @@ import com.gndec.timetable.ui.onboarding.OnboardingScreen
 import com.gndec.timetable.ui.notice.NoticeScreen
 import com.gndec.timetable.ui.profile.ProfileScreen
 import com.gndec.timetable.ui.settings.SettingsScreen
+import com.gndec.timetable.ui.syllabus.FrequentlyAskedGroupScreen
+import com.gndec.timetable.ui.syllabus.FrequentlyAskedScreen
 import com.gndec.timetable.ui.syllabus.PreviousYearPapersScreen
 import com.gndec.timetable.ui.syllabus.SyllabusScreen
 import com.gndec.timetable.ui.theme.GndecTheme
@@ -180,8 +182,29 @@ class MainActivity : ComponentActivity() {
                             ) {
                                 PreviousYearPapersScreen(
                                     context = container.context,
-                                    onBack = { nav.popBackStack() }
+                                    onBack = { nav.popBackStack() },
+                                    onOpenFrequentlyAsked = { navigate("frequently_asked") }
                                 )
+                            }
+                            composable(
+                                "frequently_asked",
+                                enterTransition = { fadeIn(tween(100)) },
+                                exitTransition = { fadeOut(tween(70)) }
+                            ) {
+                                FrequentlyAskedScreen(
+                                    container = container,
+                                    onBack = { nav.popBackStack() },
+                                    onOpenGroup = { groupId -> navigate("frequently_asked_group/$groupId") }
+                                )
+                            }
+                            composable(
+                                "frequently_asked_group/{groupId}",
+                                enterTransition = { fadeIn(tween(100)) },
+                                exitTransition = { fadeOut(tween(70)) }
+                            ) { entry ->
+                                val groupId = entry.arguments?.getString("groupId")?.toLongOrNull()
+                                if (groupId == null) nav.popBackStack()
+                                else FrequentlyAskedGroupScreen(container = container, groupId = groupId, onBack = { nav.popBackStack() })
                             }
                             composable(
                                 "alerts",

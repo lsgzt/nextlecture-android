@@ -83,7 +83,8 @@ private fun loadPreviousYearPapers(context: Context): List<PreviousYearPaper> = 
 @Composable
 fun PreviousYearPapersScreen(
     context: Context,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenFrequentlyAsked: () -> Unit = {}
 ) {
     val papers by produceState<List<PreviousYearPaper>>(initialValue = emptyList(), context) {
         value = withContext(Dispatchers.IO) { loadPreviousYearPapers(context) }
@@ -121,6 +122,8 @@ fun PreviousYearPapersScreen(
                     )
                 }
             }
+
+            FrequentlyAskedEntryCard(onClick = onOpenFrequentlyAsked)
 
             OutlinedTextField(
                 value = query,

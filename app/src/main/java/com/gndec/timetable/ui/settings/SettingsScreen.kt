@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
@@ -91,6 +92,7 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onOpenAlerts: ()
     var keyInput by remember { mutableStateOf("") }
     var customModel by remember { mutableStateOf("") }
     var backendInput by remember(settings.backendUrl) { mutableStateOf(settings.backendUrl) }
+    var pyqBackendInput by remember(settings.pyqRagBackendUrl) { mutableStateOf(settings.pyqRagBackendUrl) }
     var modelMenu by remember { mutableStateOf(false) }
     var testDelay by remember { mutableStateOf(5) }
     var testDelayMenu by remember { mutableStateOf(false) }
@@ -216,6 +218,13 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onOpenAlerts: ()
                             TextButton(onClick = { context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }) { Text("Battery settings") }
                             if (Build.VERSION.SDK_INT >= 31) TextButton(onClick = { context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}"))) }) { Text("Exact alarms") }
                         }
+                    }
+                }
+                item {
+                    SectionCard("Previous-year paper analysis", Icons.Default.Description) {
+                        Text("Frequently Asked uses the secure GNDEC paper-analysis service. It is optional and the original Drive browser works without it.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        OutlinedTextField(pyqBackendInput, { pyqBackendInput = it }, label = { Text("PYQ analysis backend URL") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        TealOutlineButton("Save PYQ URL", modifier = Modifier.fillMaxWidth(), onClick = { vm.setPyqRagBackendUrl(pyqBackendInput) })
                     }
                 }
                 item {
