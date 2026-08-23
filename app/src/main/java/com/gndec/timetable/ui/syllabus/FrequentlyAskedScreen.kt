@@ -201,7 +201,7 @@ private fun formatPyqText(raw: String): String {
     text = text.replace(Regex("(?i)\\s+(?:page\\s+[0-9il]+(?:\\s+of\\s+[0-9il]+)?|morning|evening)\\b.*$"), "")
     text = text.replace(Regex("\\s+[RKHA]{5,}\\s*$"), "")
     text = text.replace(Regex("\\s+(?=Q\\.?\\s*[2-9]\\b)"), "\\n")
-    text = text.replace(Regex("\\s+(?=(?:\\(?[ivx]+\\)|[a-z]\\)))"), "\\n")
+    text = text.replace(Regex("(?i)\\s+(?=(?:\\(?[ivx]+\\)|[a-z]\\)))"), "\\n")
     text = text.replace(Regex("\\s+OR\\s+"), "\\nOR\\n")
     text = text.replace(Regex("\\s+([,.;:!?])"), "$1")
     text = text

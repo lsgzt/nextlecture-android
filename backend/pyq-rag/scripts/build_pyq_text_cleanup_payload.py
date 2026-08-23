@@ -16,7 +16,12 @@ query = f"""
 begin;
 with source as (
   select q.id,
-    translate(q.question_text, {from_expr}, {to_expr}) as mapped_text
+    regexp_replace(
+      translate(q.question_text, {from_expr}, {to_expr}),
+      '[[:space:]]+([(]?[ivxIVX]+[)]|[a-z][)])',
+      chr(10) || chr(92) || '1',
+      'gi'
+    ) as mapped_text
   from public.pyq_questions q
   join public.pyq_papers p on p.id = q.paper_id
   where q.extraction_method = 'ocr'
