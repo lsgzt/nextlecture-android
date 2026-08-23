@@ -1,7 +1,31 @@
 import { config } from './config.js';
 
 let pdfjsLibPromise;
+
+function installPdfRuntimeCompat() {
+  if (globalThis.DOMMatrix) return;
+  class NodeDOMMatrix {
+    constructor(values = [1, 0, 0, 1, 0, 0]) {
+      const input = Array.from(values);
+      [this.a, this.b, this.c, this.d, this.e, this.f] = input.length >= 6 ? input.slice(0, 6).map(Number) : [1, 0, 0, 1, 0, 0];
+    }
+    multiply(other) { return new NodeDOMMatrix([this.a * other.a + this.c * other.b, this.b * other.a + this.d * other.b, this.a * other.c + this.c * other.d, this.b * other.c + this.d * other.d, this.a * other.e + this.c * other.f + this.e, this.b * other.e + this.d * other.f + this.f]); }
+    multiplySelf(other) { return Object.assign(this, this.multiply(other)); }
+    preMultiplySelf(other) { return Object.assign(this, new NodeDOMMatrix([other.a, other.b, other.c, other.d, other.e, other.f]).multiply(this)); }
+    translate(x = 0, y = 0) { return this.multiply(new NodeDOMMatrix([1, 0, 0, 1, x, y])); }
+    scale(x = 1, y = x) { return this.multiply(new NodeDOMMatrix([x, 0, 0, y, 0, 0])); }
+    invertSelf() {
+      const determinant = this.a * this.d - this.b * this.c;
+      if (!determinant) return this;
+      const a = this.d / determinant; const b = -this.b / determinant; const c = -this.c / determinant; const d = this.a / determinant;
+      return Object.assign(this, new NodeDOMMatrix([a, b, c, d, (this.c * this.f - this.d * this.e) / determinant, (this.b * this.e - this.a * this.f) / determinant]));
+    }
+  }
+  globalThis.DOMMatrix = NodeDOMMatrix;
+}
+
 async function getPdfjs() {
+  installPdfRuntimeCompat();
   pdfjsLibPromise ||= import('pdfjs-dist/legacy/build/pdf.mjs');
   return pdfjsLibPromise;
 }
