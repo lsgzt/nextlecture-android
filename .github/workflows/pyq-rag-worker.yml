@@ -1,0 +1,26 @@
+name: PYQ RAG queue worker
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/15 * * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  process-one-paper:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Process one resumable paper
+        env:
+          PYQ_ADMIN_TOKEN: ${{ secrets.PYQ_ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "${PYQ_ADMIN_TOKEN}" || { echo "PYQ_ADMIN_TOKEN repository secret is not configured"; exit 1; }
+          curl --fail-with-body --silent --show-error --retry 2 --retry-delay 5 --max-time 290 \
+            -X POST "https://gndec-pyq-rag-api.vercel.app/api/admin/process-batch" \
+            -H "x-pyq-admin-token: ${PYQ_ADMIN_TOKEN}" \
+            -H "content-type: application/json" \
+            --data '{"limit":1,"includeFailed":false}'
