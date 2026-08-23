@@ -1,4 +1,5 @@
 import { config } from './config.js';
+import * as pdfjsWorker from 'pdfjs-dist/legacy/build/pdf.worker.mjs';
 
 let pdfjsLibPromise;
 
@@ -26,6 +27,7 @@ function installPdfRuntimeCompat() {
 
 async function getPdfjs() {
   installPdfRuntimeCompat();
+  globalThis.pdfjsWorker ||= pdfjsWorker;
   pdfjsLibPromise ||= import('pdfjs-dist/legacy/build/pdf.mjs');
   return pdfjsLibPromise;
 }
