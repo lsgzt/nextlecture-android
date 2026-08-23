@@ -19,12 +19,25 @@ data class PyqFrequencyGroup(
 )
 
 @Serializable
+data class PyqCoverage(
+    val total: Int = 0,
+    val pending: Int = 0,
+    val processing: Int = 0,
+    val completed: Int = 0,
+    val failed: Int = 0,
+    val skipped: Int = 0,
+    @SerialName("updatedAt") val updatedAt: String? = null
+)
+
+@Serializable
 data class PyqFrequentlyAskedResponse(
     val course: String,
     val from: Int? = null,
     val to: Int? = null,
     val groups: List<PyqFrequencyGroup> = emptyList(),
-    val servedFromCache: Boolean = false
+    val coverage: PyqCoverage = PyqCoverage(),
+    val servedFromCache: Boolean = false,
+    val generatedAt: String? = null
 )
 
 @Serializable

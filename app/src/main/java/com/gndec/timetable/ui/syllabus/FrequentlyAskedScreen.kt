@@ -18,9 +18,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -28,6 +30,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -46,8 +49,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gndec.timetable.domain.AppContainer
+import com.gndec.timetable.net.PyqCoverage
 import com.gndec.timetable.net.PyqFrequentlyAskedResponse
 import com.gndec.timetable.net.PyqGroupDetailResponse
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 @Composable
@@ -72,6 +78,90 @@ fun FrequentlyAskedEntryCard(onClick: () -> Unit) {
     }
 }
 
+private fun coverageHeadline(coverage: PyqCoverage): String = when {
+    coverage.total == 0 -> "No papers for this course are in the catalog."
+    coverage.failed > 0 && coverage.processing > 0 -> "Indexing is running, but ${coverage.failed} paper${if (coverage.failed == 1) " needs" else "s need"} a retry."
+    coverage.failed > 0 -> "${coverage.failed} paper${if (coverage.failed == 1) " needs" else "s need"} a retry."
+    coverage.processing > 0 -> "Indexing is running right now."
+    coverage.pending > 0 && coverage.completed == 0 -> "Queued for indexing; nothing has failed."
+    coverage.pending > 0 -> "Partially indexed; more papers are queued."
+    coverage.completed > 0 -> "All catalog papers for this course are indexed."
+    else -> "No processing activity has started for this course yet."
+}
+
+private fun coverageSupportingText(coverage: PyqCoverage): String = when {
+    coverage.total == 0 -> "Check the course code, then use the original Previous year papers browser to confirm the paper exists."
+    coverage.failed > 0 -> "Completed results remain available. Failed papers are isolated and can be retried by the administrator."
+    coverage.processing > 0 -> "This screen refreshes automatically while the server processes papers. You can also refresh manually."
+    coverage.pending > 0 -> "The remaining papers will appear as resumable batches finish."
+    else -> "The repeated-question list below is based on indexed papers only."
+}
+
+@Composable
+private fun CoverageCard(coverage: PyqCoverage, loading: Boolean, onRefresh: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(0.dp)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = if (coverage.processing > 0 || coverage.pending > 0) Icons.Default.Sync else if (coverage.failed > 0) Icons.Default.ErrorOutline else Icons.Default.Description,
+                    contentDescription = null,
+                    tint = if (coverage.failed > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(21.dp)
+                )
+                Spacer(Modifier.size(8.dp))
+                Text("Indexing status", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                if (loading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            }
+            Text(coverageHeadline(coverage), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+            Text(coverageSupportingText(coverage), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CoverageStat("Ready", coverage.completed, Modifier.weight(1f))
+                CoverageStat("Queued", coverage.pending, Modifier.weight(1f))
+                CoverageStat("Working", coverage.processing, Modifier.weight(1f))
+                CoverageStat("Failed", coverage.failed, Modifier.weight(1f), isError = coverage.failed > 0)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = if (coverage.total > 0) "${coverage.completed} of ${coverage.total} papers indexed" else "No matching catalog papers",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.weight(1f)
+                )
+                if (coverage.pending > 0 || coverage.processing > 0 || coverage.failed > 0) {
+                    OutlinedButton(onClick = onRefresh, enabled = !loading, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)) {
+                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.size(5.dp))
+                        Text("Refresh")
+                    }
+                }
+            }
+            coverage.updatedAt?.let {
+                Text("Last catalog activity: ${formatStatusTime(it)}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CoverageStat(label: String, value: Int, modifier: Modifier, isError: Boolean = false) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value.toString(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+private fun formatStatusTime(value: String): String = value
+    .replace('T', ' ')
+    .removeSuffix("+00:00")
+    .removeSuffix("Z")
+    .take(16)
+
 @Composable
 fun FrequentlyAskedScreen(container: AppContainer, onBack: () -> Unit, onOpenGroup: (Long) -> Unit) {
     val settings by container.settings.flow.collectAsStateWithLifecycle(initialValue = com.gndec.timetable.data.prefs.AppSettings())
@@ -92,8 +182,18 @@ fun FrequentlyAskedScreen(container: AppContainer, onBack: () -> Unit, onOpenGro
             error = null
             runCatching { container.pyqRagClient.frequentlyAsked(settings.pyqRagBackendUrl, cleanCourse) }
                 .onSuccess { response = it }
-                .onFailure { error = "Frequently Asked is temporarily unavailable. The original paper browser is still available below." }
+                .onFailure { error = "Couldn’t reach the analysis service. The original Previous year papers browser is still available below." }
             loading = false
+        }
+    }
+
+    LaunchedEffect(response?.course, response?.coverage?.pending, response?.coverage?.processing) {
+        val coverage = response?.coverage ?: return@LaunchedEffect
+        if (coverage.pending > 0 || coverage.processing > 0) {
+            while (isActive) {
+                delay(30_000)
+                load()
+            }
         }
     }
 
@@ -108,7 +208,7 @@ fun FrequentlyAskedScreen(container: AppContainer, onBack: () -> Unit, onOpenGro
             }
             OutlinedTextField(
                 value = course,
-                onValueChange = { course = it.uppercase() },
+                onValueChange = { course = it.uppercase(); if (error != null) error = null },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
                 singleLine = true,
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
@@ -119,14 +219,24 @@ fun FrequentlyAskedScreen(container: AppContainer, onBack: () -> Unit, onOpenGro
             )
             Text("Examples: PCME-110 · PCCE-111 · BBA-101", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 24.dp))
             Button(onClick = ::load, enabled = !loading, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)) { Text("Find repeated questions") }
-            error?.let { message -> Text(message, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) }
+            error?.let { message ->
+                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer), elevation = CardDefaults.cardElevation(0.dp)) {
+                    Text(message, color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.padding(14.dp))
+                }
+            }
             response?.let { result ->
-                if (result.groups.isEmpty()) {
-                    Box(Modifier.fillMaxSize().padding(28.dp), contentAlignment = Alignment.Center) {
-                        Text("No indexed repeated questions for ${result.course} yet. Processing is resumable and may still be in progress.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                } else {
-                    LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    item { CoverageCard(result.coverage, loading, ::load) }
+                    if (result.groups.isEmpty()) {
+                        item {
+                            Text(
+                                "No repeated-question groups are available yet for ${result.course}. The status above explains whether papers are missing, queued, processing, or need a retry.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.padding(vertical = 14.dp)
+                            )
+                        }
+                    } else {
                         item { Text("${result.groups.size} repeated groups · frequency means distinct papers", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium) }
                         items(result.groups, key = { it.groupId }) { group ->
                             Card(onClick = { onOpenGroup(group.groupId) }, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), elevation = CardDefaults.cardElevation(0.dp)) {
@@ -143,7 +253,11 @@ fun FrequentlyAskedScreen(container: AppContainer, onBack: () -> Unit, onOpenGro
                     }
                 }
             } ?: run {
-                if (!loading && error == null) Box(Modifier.fillMaxSize().padding(28.dp), contentAlignment = Alignment.Center) { Text("Enter a course code to see conservatively grouped repeated questions.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                if (!loading && error == null) {
+                    Box(Modifier.fillMaxWidth().padding(28.dp), contentAlignment = Alignment.Center) {
+                        Text("Enter a course code to see indexed coverage and conservatively grouped repeated questions.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
             }
         }
     }
@@ -199,4 +313,3 @@ fun FrequentlyAskedGroupScreen(container: AppContainer, groupId: Long, onBack: (
         }
     }
 }
-

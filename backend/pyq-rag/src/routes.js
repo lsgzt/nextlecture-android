@@ -8,6 +8,7 @@ import {
   claimPaperBatch,
   claimSpecificPaper,
   getCache,
+  getCourseCoverage,
   getFrequency,
   getGroup,
   getGroupQuestions,
@@ -177,8 +178,9 @@ export function buildRouter() {
           await writeCache(range.course, null, null, { groups: rows }, count);
         }
       }
+      const coverage = await getCourseCoverage(range.course);
       res.set('cache-control', 'public, max-age=60, stale-while-revalidate=300');
-      return res.json({ course: range.course, from: range.from, to: range.to, groups: rows, servedFromCache, generatedAt: new Date().toISOString() });
+      return res.json({ course: range.course, from: range.from, to: range.to, groups: rows, coverage, servedFromCache, generatedAt: new Date().toISOString() });
     } catch (error) {
       console.error('[PYQ] frequently-asked failed', error.message);
       return res.status(503).json({ error: 'analysis unavailable' });

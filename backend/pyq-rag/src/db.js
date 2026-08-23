@@ -114,6 +114,21 @@ export async function getFrequency(courseCode, yearFrom, yearTo, limit) {
   return data || [];
 }
 
+export async function getCourseCoverage(courseCode) {
+  const db = getDb();
+  const statuses = ['pending', 'processing', 'completed', 'failed', 'skipped'];
+  const counts = {};
+  await Promise.all(statuses.map(async (status) => {
+    const { count, error } = await db.from('pyq_papers').select('id', { count: 'exact', head: true }).eq('course_code', courseCode).eq('processing_status', status);
+    if (error) throw new Error(`Supabase course coverage read failed: ${error.message}`);
+    counts[status] = count || 0;
+  }));
+  const { data: latest, error: latestError } = await db.from('pyq_papers').select('updated_at').eq('course_code', courseCode).order('updated_at', { ascending: false }).limit(1).maybeSingle();
+  if (latestError && latestError.code !== 'PGRST116') throw new Error(`Supabase course coverage timestamp failed: ${latestError.message}`);
+  const total = statuses.reduce((sum, status) => sum + (counts[status] || 0), 0);
+  return { total, pending: counts.pending || 0, processing: counts.processing || 0, completed: counts.completed || 0, failed: counts.failed || 0, skipped: counts.skipped || 0, updatedAt: latest?.updated_at || null };
+}
+
 export async function getGroup(groupId) {
   const { data, error } = await getDb().from('pyq_question_groups').select('id,course_code,representative_title,representative_description,frequency,confidence,created_at,updated_at').eq('id', groupId).maybeSingle();
   if (error) throw new Error(`Supabase group read failed: ${error.message}`);
