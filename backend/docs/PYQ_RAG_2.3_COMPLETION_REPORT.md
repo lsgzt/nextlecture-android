@@ -16,7 +16,7 @@ The first release correctly returned an empty repeated-question list, but the UI
 
 The UI now distinguishes the following states: no matching papers in the catalog; all papers queued; active processing; partial indexing with more queued; completed indexing with no repeated groups; completed indexing with repeated groups; isolated failed papers that can be retried safely one paper at a time; and an unavailable analysis service. A manual **Refresh** action is shown whenever coverage is incomplete or failed. The **Retry one failed paper now** action calls a public server-controlled endpoint, while the server enforces a persistent per-course cooldown. While a course has queued or processing papers, the app automatically refreshes every 30 seconds. If the service cannot be reached, the app shows an explicit unavailable message and leaves the existing Previous year papers browser available as the fallback.
 
-For `HSMC-101`, the live API initially reported 4 completed and 7 quota-related failures. After the deployed public retry was called once with a rotated server-side Gemini slot, it reports `total: 11`, `pending: 0`, `processing: 0`, `completed: 5`, and `failed: 6`, with `failureReason: provider_quota`. A second immediate request returned a sanitized cooldown response rather than invoking Gemini again. For an indexed course such as `BTAM-101`, the live response reports indexed and pending counts separately, alongside any available repeated groups.
+For `HSMC-101`, the live API initially reported 4 completed and 7 quota-related failures. After the deployed public retry was called once with a rotated server-side Gemini slot, it reached 5 completed. At final verification, the scheduled worker had resumed another failed row, so the live snapshot is `total: 11`, `pending: 1`, `processing: 0`, `completed: 5`, and `failed: 5`, with `failureReason: provider_quota`; this is resumable progress, not data loss. A second immediate public request returned a sanitized cooldown response rather than invoking Gemini again. For an indexed course such as `BTAM-101`, the live response reports indexed and pending counts separately, alongside any available repeated groups.
 
 The status patch is published as [Android 2.3.1](https://github.com/lsgzt/nextlecture-android/releases/tag/2.3.1), and the retry/failover patch is published as [Android 2.3.3](https://github.com/lsgzt/nextlecture-android/releases/tag/2.3.3), both using the expected update asset name `gndec-timetable.apk`. The 2.3.3 signed APK SHA-256 is `985f0c5f35699f0fd5b846fcdef840d029b2c2e0fe5e0dcd84e6612726c50a79`.
 
@@ -90,10 +90,10 @@ The stable production alias passed the following checks after the final deployme
 | Public group detail | HTTP 200 with frequency, occurrences, source pages, sessions, and Drive links |
 | Live `/api/pyq/ask` | HTTP 200 with retrieved evidence and page citations |
 | Admin request without token | HTTP 401 `unauthorized` |
-| Admin status / database counts | Current state 19 completed, 1,602 pending, 1 processing, 6 failed, 0 skipped |
+| Admin status / database counts | Earlier query: 19 completed, 1,602 pending, 1 processing, 6 failed, 0 skipped; the live HSMC course snapshot was 5 completed, 5 failed, 1 pending at final verification |
 | Full catalog seed | HTTP 200; 1,628 selected and 1,628 idempotent upserts |
 | CORS policy | Disallowed browser origins return HTTP 403; native Android requests work without an Origin header |
-| Public HSMC-101 retry | HTTP 200 `accepted: true`, `status: processed`; coverage advanced to 5 completed / 6 failed |
+| Public HSMC-101 retry | HTTP 200 `accepted: true`, `status: processed`; coverage advanced to 5 completed / 6 failed before the worker resumed another row |
 | Immediate repeated HSMC-101 retry | HTTP 429 `status: cooldown`; no second Gemini attempt |
 | Backend unit tests | 5/5 passed |
 | Android debug build | Successful |
