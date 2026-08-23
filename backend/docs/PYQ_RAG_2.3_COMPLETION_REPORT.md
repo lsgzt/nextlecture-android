@@ -1,12 +1,12 @@
 # GNDEC Previous-Year-Papers RAG — Completion Report
 
-> **Update:** This report now includes the Android 2.3.1 status-visibility patch released after user feedback.
+> **Update:** This report now includes the Android 2.3.3 retry-action and server-side Gemini failover patch released after user feedback.
 
 ## Executive summary
 
-The production Previous-year-papers RAG add-on is implemented and released as Android **2.3**, with the follow-up status-visibility fix released as Android **2.3.1**. The existing **Previous year papers** browser was preserved: its bundled catalog, search behavior, session grouping, metadata, original Google Drive links, and fallback behavior remain independent of the analysis service. A compact **🔥 Frequently Asked** entry point has been added above that browser, with course filtering, repeated-question groups, distinct-paper frequency, exact source-page provenance, exam sessions, and original PDF opening.
+The production Previous-year-papers RAG add-on is implemented and released as Android **2.3**, with the follow-up status-visibility fix released as Android **2.3.1** and the retry/failover patch released as Android **2.3.3**. The existing **Previous year papers** browser was preserved: its bundled catalog, search behavior, session grouping, metadata, original Google Drive links, and fallback behavior remain independent of the analysis service. A compact **🔥 Frequently Asked** entry point has been added above that browser, with course filtering, repeated-question groups, distinct-paper frequency, exact source-page provenance, exam sessions, and original PDF opening.
 
-The production service is live at [https://gndec-pyq-rag-api.vercel.app](https://gndec-pyq-rag-api.vercel.app). The full catalog of **1,628 known Drive PDFs** has been imported idempotently into Supabase. The initial ten-paper validation gate passed before the full catalog seed: **10/10 validation papers completed, 171 questions extracted, 8 papers routed through vision extraction, and 2 through conventional text extraction**. Additional protected production batch checks completed four more papers. The current database state is **14 completed, 1,614 pending, 0 failed, and 0 skipped**, with 233 indexed questions. The remaining papers are intentionally pending for resumable batches; the system has not claimed that all 1,628 PDFs were processed.
+The production service is live at [https://gndec-pyq-rag-api.vercel.app](https://gndec-pyq-rag-api.vercel.app). The full catalog of **1,628 known Drive PDFs** has been imported idempotently into Supabase. The initial ten-paper validation gate passed before the full catalog seed: **10/10 validation papers completed, 171 questions extracted, 8 papers routed through vision extraction, and 2 through conventional text extraction**. Additional protected production batches and one user-triggered retry have completed more papers. The current database state is **19 completed, 1,602 pending, 1 processing, 6 failed, and 0 skipped**, with the remaining papers intentionally pending for resumable batches; the system has not claimed that all 1,628 PDFs were processed.
 
 > **Critical scanned-PDF behavior:** a paper is not failed merely because conventional text extraction is empty. The pipeline records the PDF’s page count and text quality, then sends low-text/image-only PDFs to a vision-capable Gemini document route. Every extracted question is validated against the PDF page count and stored with a required 1-indexed `source_page`.
 
@@ -14,11 +14,17 @@ The production service is live at [https://gndec-pyq-rag-api.vercel.app](https:/
 
 The first release correctly returned an empty repeated-question list, but the UI could not explain whether the course had no catalog papers, was still queued, was actively processing, or had failures. Android 2.3.1 fixes that ambiguity without changing the original paper browser. The API now returns a `coverage` object with `total`, `pending`, `processing`, `completed`, `failed`, `skipped`, and `updatedAt` fields. The app displays these as **Ready**, **Queued**, **Working**, and **Failed** counts in a dedicated Indexing status card.
 
-The UI now distinguishes the following states: no matching papers in the catalog; all papers queued; active processing; partial indexing with more queued; completed indexing with no repeated groups; completed indexing with repeated groups; isolated failed papers needing administrator retry; and an unavailable analysis service. A manual **Refresh** action is shown whenever coverage is incomplete or failed. While a course has queued or processing papers, the screen automatically refreshes every 30 seconds. If the service cannot be reached, the app shows an explicit unavailable message and leaves the existing Previous year papers browser available as the fallback.
+The UI now distinguishes the following states: no matching papers in the catalog; all papers queued; active processing; partial indexing with more queued; completed indexing with no repeated groups; completed indexing with repeated groups; isolated failed papers that can be retried safely one paper at a time; and an unavailable analysis service. A manual **Refresh** action is shown whenever coverage is incomplete or failed. The **Retry one failed paper now** action calls a public server-controlled endpoint, while the server enforces a persistent per-course cooldown. While a course has queued or processing papers, the app automatically refreshes every 30 seconds. If the service cannot be reached, the app shows an explicit unavailable message and leaves the existing Previous year papers browser available as the fallback.
 
-For the screenshot’s `HSMC-101` case, the live API now reports `total: 11`, `pending: 11`, `processing: 0`, `completed: 0`, and `failed: 0`, so the app can explicitly say **“Queued for indexing; nothing has failed.”** For an indexed course such as `BTAM-101`, the live response reports indexed and pending counts separately, alongside any available repeated groups.
+For `HSMC-101`, the live API initially reported 4 completed and 7 quota-related failures. After the deployed public retry was called once with a rotated server-side Gemini slot, it reports `total: 11`, `pending: 0`, `processing: 0`, `completed: 5`, and `failed: 6`, with `failureReason: provider_quota`. A second immediate request returned a sanitized cooldown response rather than invoking Gemini again. For an indexed course such as `BTAM-101`, the live response reports indexed and pending counts separately, alongside any available repeated groups.
 
-The status patch is published as [Android 2.3.1](https://github.com/lsgzt/nextlecture-android/releases/tag/2.3.1), with the expected update asset name [gndec-timetable.apk](https://github.com/lsgzt/nextlecture-android/releases/download/2.3.1/gndec-timetable.apk). Its signed APK SHA-256 is `02593dddb9c78534afbae4f46a687581ccd9a9829aaffd053687f1ec083a9529`.
+The status patch is published as [Android 2.3.1](https://github.com/lsgzt/nextlecture-android/releases/tag/2.3.1), and the retry/failover patch is published as [Android 2.3.3](https://github.com/lsgzt/nextlecture-android/releases/tag/2.3.3), both using the expected update asset name `gndec-timetable.apk`. The 2.3.3 signed APK SHA-256 is `985f0c5f35699f0fd5b846fcdef840d029b2c2e0fe5e0dcd84e6612726c50a79`.
+
+## Android 2.3.3 retry and Gemini failover patch
+
+The patch adds a user-visible **Retry one failed paper now** action to Frequently Asked. It accepts only a validated course code, claims one failed paper before pending papers, processes at most that one paper, invalidates the course cache, and returns refreshed sanitized coverage. A persistent Supabase cooldown limits each course to one accepted public retry every 20 minutes; repeated requests return HTTP 429 with `status: cooldown`, `cooldownUntil`, and `retryAfterSeconds`. The Android app never receives or stores an admin token, Gemini key, Supabase service-role key, paper ID, arbitrary URL, or model override.
+
+The backend now reads `GEMINI_API_KEY` plus optional `GEMINI_API_KEY1` through `GEMINI_API_KEY5` from Vercel Production variables, de-duplicates identical values, and rotates to the next configured key after quota, authentication, rate-limit, or resource-exhaustion responses. The primary key remains backward-compatible. Embedding quota failure is rethrown after the key pool is exhausted instead of triggering a serial fallback burst. `/health` exposes only `geminiKeysConfigured`, a numeric count; it never returns key material. The GitHub Actions worker remains protected and continues to process one paper per scheduled run.
 
 ## Delivered architecture
 
@@ -30,7 +36,7 @@ The status patch is published as [Android 2.3.1](https://github.com/lsgzt/nextle
 | Ingestion | Known-catalog URL validation, bounded download, content hashing, PDF page inspection, text-first extraction, Gemini vision fallback | Idempotent and resumable; no arbitrary URL ingestion and no all-corpus Gemini prompt |
 | Embeddings | Server-side `gemini-embedding-2`, 768 dimensions | One consistent vector dimension for indexed questions and retrieval; batch processing is bounded |
 | Grouping | Course-restricted vector RPC plus conservative similarity and keyword-overlap checks | Same-paper duplicates are excluded from cross-paper frequency; uncertain matches remain ungrouped |
-| Security | Vercel-only Gemini/Supabase/admin variables, protected admin routes, strict request validation, rate limits, strict browser-origin allowlisting | No server credential is included in the APK or GitHub source |
+| Security | Vercel-only Gemini/Supabase/admin variables, protected admin routes, strict request validation, persistent public retry cooldown, rate limits, strict browser-origin allowlisting | No server credential is included in the APK or GitHub source; health exposes only a numeric configured-key count |
 | Deployment | Git-linked Vercel production deployment with stable alias | GitHub `main` pushes trigger deployment; the existing `nextlecture` web project was not overwritten |
 
 The design follows Gemini’s documented native PDF understanding and Files/document-processing model, including support for text, images, diagrams, charts, and tables, with documented PDF limits of 50 MB or 1,000 pages.[1] Embeddings use the documented configurable 768-dimensional option for `gemini-embedding-2`.[2] Supabase similarity uses pgvector cosine distance and applies course metadata filtering inside the SQL RPC, rather than filtering after a limited result set.[3] [4]
@@ -41,10 +47,11 @@ The Android client uses the stable base URL `https://gndec-pyq-rag-api.vercel.ap
 
 | Method and path | Purpose | Protection |
 |---|---|---|
-| `GET /health` | Returns service version and non-secret dependency readiness | Public; reports only boolean readiness, never credentials |
+| `GET /health` | Returns service version, non-secret dependency readiness, and numeric `geminiKeysConfigured` | Public; never returns credentials |
 | `GET /api/pyq/frequently-asked?course=BTAM101&from=2021&to=2025&limit=50` | Returns repeated-question groups; hyphenated and non-hyphenated course inputs are canonicalized | Public, rate-limited, cached |
 | `GET /api/pyq/frequently-asked/:groupId` | Returns group details, distinct-paper frequency, source pages, sessions, similarity scores, and exact Drive URLs | Public, rate-limited |
 | `POST /api/pyq/ask` | Retrieves top evidence for one course question and asks Gemini to answer only from that evidence with page citations | Public, separately rate-limited |
+| `POST /api/pyq/retry-course` | Accepts one validated course code, enforces the persistent cooldown, and processes one failed or pending paper | Public, strict input, IP rate-limited, persistent 20-minute course cooldown |
 | `POST /api/admin/seed` | Imports a bounded catalog slice using idempotent upserts | `x-pyq-admin-token` or bearer token |
 | `GET /api/admin/status` | Returns processing counts and recovers stale processing rows | Protected |
 | `POST /api/admin/process-batch` | Claims and processes a bounded batch; production default is one paper per call on the Hobby plan | Protected |
@@ -78,40 +85,42 @@ The stable production alias passed the following checks after the final deployme
 
 | Check | Result |
 |---|---|
-| `GET /health` | HTTP 200; `supabase: true`, `gemini: true` |
+| `GET /health` | HTTP 200; `supabase: true`, `gemini: true`, `geminiKeysConfigured: 2` |
 | Public `/api/pyq/frequently-asked` | HTTP 200 with real BTAM-101 groups and canonicalized course code |
 | Public group detail | HTTP 200 with frequency, occurrences, source pages, sessions, and Drive links |
 | Live `/api/pyq/ask` | HTTP 200 with retrieved evidence and page citations |
 | Admin request without token | HTTP 401 `unauthorized` |
-| Admin status with token | HTTP 200; final observed state 14 completed, 1,614 pending, 0 failed |
+| Admin status / database counts | Current state 19 completed, 1,602 pending, 1 processing, 6 failed, 0 skipped |
 | Full catalog seed | HTTP 200; 1,628 selected and 1,628 idempotent upserts |
 | CORS policy | Disallowed browser origins return HTTP 403; native Android requests work without an Origin header |
+| Public HSMC-101 retry | HTTP 200 `accepted: true`, `status: processed`; coverage advanced to 5 completed / 6 failed |
+| Immediate repeated HSMC-101 retry | HTTP 429 `status: cooldown`; no second Gemini attempt |
 | Backend unit tests | 5/5 passed |
 | Android debug build | Successful |
 | Android signed release build | Successful with R8 enabled |
 | Published APK checksum | Local and GitHub release assets match |
 
-## Android 2.3 and 2.3.1 releases
+## Android 2.3, 2.3.1, and 2.3.3 releases
 
-The original RAG release is available at [GitHub release 2.3](https://github.com/lsgzt/nextlecture-android/releases/tag/2.3). The status-visibility patch is available at [GitHub release 2.3.1](https://github.com/lsgzt/nextlecture-android/releases/tag/2.3.1), with the stable direct update asset [gndec-timetable.apk](https://github.com/lsgzt/nextlecture-android/releases/download/2.3.1/gndec-timetable.apk).
+The original RAG release is available at [GitHub release 2.3](https://github.com/lsgzt/nextlecture-android/releases/tag/2.3). The status-visibility patch is available at [GitHub release 2.3.1](https://github.com/lsgzt/nextlecture-android/releases/tag/2.3.1). The retry/failover patch is available at [GitHub release 2.3.3](https://github.com/lsgzt/nextlecture-android/releases/tag/2.3.3), with the stable direct update asset [gndec-timetable.apk](https://github.com/lsgzt/nextlecture-android/releases/download/2.3.3/gndec-timetable.apk).
 
 | Release property | Value |
 |---|---|
 | Application ID | `com.gndec.timetable` |
-| Version name | `2.3.0` in the original RAG release; `2.3.1` in the status patch |
-| Version code | `23` in the original RAG release; `24` in the status patch |
-| GitHub release marker | `2.3` in the original RAG release; `2.3.1` in the status patch |
-| APK size | 15,416,890 bytes |
-| APK SHA-256 | `51ad88be13a539b5200b2c3d300b3687d690a90854c348afeddb97130077aa60` for 2.3; `02593dddb9c78534afbae4f46a687581ccd9a9829aaffd053687f1ec083a9529` for 2.3.1 |
+| Version name | `2.3.0` in the original RAG release; `2.3.1` in the status patch; `2.3.3` in the retry/failover patch |
+| Version code | `23` in the original RAG release; `24` in the status patch; `26` in the retry/failover patch |
+| GitHub release marker | `2.3` in the original RAG release; `2.3.1` in the status patch; `2.3.3` in the retry/failover patch |
+| APK size | 15,416,890 bytes for 2.3; 15,433,270 bytes for 2.3.3 |
+| APK SHA-256 | `51ad88be13a539b5200b2c3d300b3687d690a90854c348afeddb97130077aa60` for 2.3; `02593dddb9c78534afbae4f46a687581ccd9a9829aaffd053687f1ec083a9529` for 2.3.1; `985f0c5f35699f0fd5b846fcdef840d029b2c2e0fe5e0dcd84e6612726c50a79` for 2.3.3 |
 | Signature verification | APK Signature Scheme v2, one signer |
 | R8 | Enabled via `isMinifyEnabled = true` |
-| Latest source commit | `882a5a64f3b0decb10e5fe292d9c0013612aa5d2` |
+| Latest source commit | `7268a47973820a4c514015cf579ddcb33e882123` for backend; final Android metadata/release commit recorded below |
 
 The source is pushed to [https://github.com/lsgzt/nextlecture-android](https://github.com/lsgzt/nextlecture-android). The APK was downloaded again from the GitHub release and its SHA-256 matched the locally built artifact.
 
 ## Operating the remaining ingestion
 
-The full catalog is seeded, but only the validated subset and a few additional production batches are processed. This is intentional: processing the remaining 1,614 PDFs should be performed through repeated protected one-paper batch calls, with status checks and retries, rather than from one request or one Gemini prompt. The operational pattern is:
+The full catalog is seeded, but only a bounded subset is processed at a time. This is intentional: processing the remaining pending PDFs should be performed through repeated protected one-paper batch calls, with status checks and retries, rather than from one request or one Gemini prompt. The operational pattern is:
 
 ```text
 POST /api/admin/process-batch
