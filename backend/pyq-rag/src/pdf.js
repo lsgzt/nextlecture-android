@@ -49,7 +49,7 @@ function pageTextFromContent(content) {
 export async function inspectPdf(buffer) {
   assertPdfBytes(buffer);
   const pdfjsLib = await getPdfjs();
-  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer), useWorkerFetch: false, isEvalSupported: false });
+  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer), useWorkerFetch: false, isEvalSupported: false, disableWorker: true });
   const document = await loadingTask.promise;
   const pageCount = document.numPages;
   if (!Number.isInteger(pageCount) || pageCount < 1 || pageCount > config.maxPdfPages) {
