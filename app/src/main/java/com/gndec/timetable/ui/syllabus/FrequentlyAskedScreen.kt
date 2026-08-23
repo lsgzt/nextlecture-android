@@ -40,7 +40,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,14 +47,96 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.net.PyqCoverage
 import com.gndec.timetable.net.PyqFrequentlyAskedResponse
 import com.gndec.timetable.net.PyqGroupDetailResponse
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+
+class FrequentlyAskedViewModel(private val container: AppContainer) : ViewModel() {
+    private val _course = MutableStateFlow("")
+    val course: StateFlow<String> = _course.asStateFlow()
+    private val _response = MutableStateFlow<PyqFrequentlyAskedResponse?>(null)
+    val response: StateFlow<PyqFrequentlyAskedResponse?> = _response.asStateFlow()
+    private val _loading = MutableStateFlow(false)
+    val loading: StateFlow<Boolean> = _loading.asStateFlow()
+    private val _retrying = MutableStateFlow(false)
+    val retrying: StateFlow<Boolean> = _retrying.asStateFlow()
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error.asStateFlow()
+    private val _retryNotice = MutableStateFlow<String?>(null)
+    val retryNotice: StateFlow<String?> = _retryNotice.asStateFlow()
+
+    private var loadJob: Job? = null
+    private var retryJob: Job? = null
+
+    fun setCourse(value: String) {
+        _course.value = value.uppercase()
+        if (_error.value != null) _error.value = null
+    }
+
+    fun load(backendUrl: String) {
+        val cleanCourse = _course.value.trim()
+        if (cleanCourse.isBlank()) {
+            _error.value = "Enter a course code first, for example PCME-110."
+            return
+        }
+        if (_loading.value) return
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
+            _loading.value = true
+            _error.value = null
+            runCatching { container.pyqRagClient.frequentlyAsked(backendUrl, cleanCourse) }
+                .onSuccess { _response.value = it }
+                .onFailure { _error.value = "Couldn’t reach the analysis service. The original Previous year papers browser is still available below." }
+            _loading.value = false
+            loadJob = null
+        }
+    }
+
+    fun retryNow(backendUrl: String) {
+        val cleanCourse = (_response.value?.course ?: _course.value).trim()
+        if (cleanCourse.isBlank() || _retrying.value) return
+        retryJob?.cancel()
+        retryJob = viewModelScope.launch {
+            _retrying.value = true
+            _retryNotice.value = null
+            try {
+                val outcome = container.pyqRagClient.retryCourse(backendUrl, cleanCourse)
+                _response.value = container.pyqRagClient.frequentlyAsked(backendUrl, cleanCourse)
+                _retryNotice.value = when (outcome.status) {
+                    "processed" -> "Retry started and one paper completed successfully."
+                    "failed" -> "Retry was attempted, but Gemini still rejected this paper. The failure is recorded and will be retried again after quota recovery."
+                    "nothing_to_retry" -> "There is no eligible failed or pending paper for this course right now."
+                    "cooldown" -> "A retry was recently requested for this course. Try again in ${formatRetryWait(outcome.retryAfterSeconds)}."
+                    else -> "Retry request completed; the status above is current."
+                }
+            } catch (_: Exception) {
+                _retryNotice.value = "Retry could not reach the analysis service. Try again later."
+            } finally {
+                _retrying.value = false
+                retryJob = null
+            }
+        }
+    }
+
+    override fun onCleared() {
+        loadJob?.cancel()
+        retryJob?.cancel()
+        super.onCleared()
+    }
+}
 
 @Composable
 fun FrequentlyAskedEntryCard(onClick: () -> Unit) {
@@ -217,54 +298,21 @@ private fun formatPyqText(raw: String): String {
 @Composable
 fun FrequentlyAskedScreen(container: AppContainer, onBack: () -> Unit, onOpenGroup: (Long) -> Unit) {
     val settings by container.settings.flow.collectAsStateWithLifecycle(initialValue = com.gndec.timetable.data.prefs.AppSettings())
-    var course by rememberSaveable { mutableStateOf("") }
-    var response by remember { mutableStateOf<PyqFrequentlyAskedResponse?>(null) }
-    var loading by remember { mutableStateOf(false) }
-    var retrying by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var retryNotice by remember { mutableStateOf<String?>(null) }
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
-    val responseListState = rememberLazyListState()
-
-    fun load() {
-        val cleanCourse = course.trim()
-        if (cleanCourse.isBlank()) {
-            error = "Enter a course code first, for example PCME-110."
-            return
-        }
-        scope.launch {
-            loading = true
-            error = null
-            runCatching { container.pyqRagClient.frequentlyAsked(settings.pyqRagBackendUrl, cleanCourse) }
-                .onSuccess { response = it }
-                .onFailure { error = "Couldn’t reach the analysis service. The original Previous year papers browser is still available below." }
-            loading = false
-        }
-    }
-
-    fun retryNow() {
-        val cleanCourse = (response?.course ?: course).trim()
-        if (cleanCourse.isBlank() || retrying) return
-        scope.launch {
-            retrying = true
-            retryNotice = null
-            try {
-                val outcome = container.pyqRagClient.retryCourse(settings.pyqRagBackendUrl, cleanCourse)
-                response = container.pyqRagClient.frequentlyAsked(settings.pyqRagBackendUrl, cleanCourse)
-                retryNotice = when (outcome.status) {
-                    "processed" -> "Retry started and one paper completed successfully."
-                    "failed" -> "Retry was attempted, but Gemini still rejected this paper. The failure is recorded and will be retried again after quota recovery."
-                    "nothing_to_retry" -> "There is no eligible failed or pending paper for this course right now."
-                    "cooldown" -> "A retry was recently requested for this course. Try again in ${formatRetryWait(outcome.retryAfterSeconds)}."
-                    else -> "Retry request completed; the status above is current."
-                }
-            } catch (_: Exception) {
-                retryNotice = "Retry could not reach the analysis service. Try again later."
-            } finally {
-                retrying = false
+    val vm: FrequentlyAskedViewModel = viewModel(
+        factory = remember(container) {
+            object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T = FrequentlyAskedViewModel(container) as T
             }
         }
-    }
+    )
+    val course by vm.course.collectAsStateWithLifecycle()
+    val response by vm.response.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val retrying by vm.retrying.collectAsStateWithLifecycle()
+    val error by vm.error.collectAsStateWithLifecycle()
+    val retryNotice by vm.retryNotice.collectAsStateWithLifecycle()
+    val responseListState = rememberLazyListState()
 
     LaunchedEffect(response?.course, response?.groups?.map { it.groupId }) {
         responseListState.scrollToItem(0)
@@ -275,7 +323,7 @@ fun FrequentlyAskedScreen(container: AppContainer, onBack: () -> Unit, onOpenGro
         if (coverage.pending > 0 || coverage.processing > 0) {
             while (isActive) {
                 delay(30_000)
-                load()
+                vm.load(settings.pyqRagBackendUrl)
             }
         }
     }
@@ -291,7 +339,7 @@ fun FrequentlyAskedScreen(container: AppContainer, onBack: () -> Unit, onOpenGro
             }
             OutlinedTextField(
                 value = course,
-                onValueChange = { course = it.uppercase(); if (error != null) error = null },
+                onValueChange = { vm.setCourse(it) },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
                 singleLine = true,
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
@@ -301,7 +349,7 @@ fun FrequentlyAskedScreen(container: AppContainer, onBack: () -> Unit, onOpenGro
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
             )
             Text("Examples: PCME-110 · PCCE-111 · BBA-101", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 24.dp))
-            Button(onClick = ::load, enabled = !loading, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)) { Text("Find repeated questions") }
+            Button(onClick = { vm.load(settings.pyqRagBackendUrl) }, enabled = !loading, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)) { Text("Find repeated questions") }
             error?.let { message ->
                 Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer), elevation = CardDefaults.cardElevation(0.dp)) {
                     Text(message, color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.padding(14.dp))
@@ -317,7 +365,7 @@ fun FrequentlyAskedScreen(container: AppContainer, onBack: () -> Unit, onOpenGro
                     contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    item { CoverageCard(result.coverage, loading, ::load, retrying, ::retryNow) }
+                    item { CoverageCard(result.coverage, loading, { vm.load(settings.pyqRagBackendUrl) }, retrying, { vm.retryNow(settings.pyqRagBackendUrl) }) }
                     if (result.groups.isEmpty()) {
                         item {
                             Text(
