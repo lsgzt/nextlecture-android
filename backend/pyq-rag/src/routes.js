@@ -24,7 +24,7 @@ import {
 import { buildEvidence, processPaper } from './rag.js';
 
 const paperIdSchema = z.string().trim().min(5).max(200);
-const courseSchema = z.string().trim().toUpperCase().regex(/^[A-Z]{2,12}-\d{2,4}$/);
+const courseSchema = z.string().trim().toUpperCase().transform((value) => value.replace(/^([A-Z]{2,12})-?(\d{2,4})$/, '$1-$2')).pipe(z.string().regex(/^[A-Z]{2,12}-\d{2,4}$/));
 const yearSchema = z.coerce.number().int().min(1900).max(2100);
 function safeEqual(left, right) {
   if (!left || !right) return false;

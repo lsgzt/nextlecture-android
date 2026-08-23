@@ -9,9 +9,8 @@ app.disable('x-powered-by');
 app.set('trust proxy', true);
 app.use((req, res, next) => {
   const origin = req.get('origin');
-  if (!origin || config.allowedOrigins.length === 0 || config.allowedOrigins.includes(origin)) {
-    res.set('access-control-allow-origin', config.allowedOrigins.length ? (origin || config.allowedOrigins[0]) : '*');
-  }
+  if (origin && !config.allowedOrigins.includes(origin)) return res.status(403).json({ error: 'origin not allowed' });
+  if (origin) res.set('access-control-allow-origin', origin);
   res.set('access-control-allow-headers', 'content-type, authorization, x-pyq-admin-token');
   res.set('access-control-allow-methods', 'GET,POST,OPTIONS');
   if (req.method === 'OPTIONS') return res.sendStatus(204);

@@ -152,9 +152,14 @@ export async function invalidateCourseCache(courseCode) {
 }
 
 export async function retryFailedPapers(limit) {
-  const { data, error } = await getDb().from('pyq_papers').update({ processing_status: 'pending', processing_error: null }).eq('processing_status', 'failed').select('id').limit(limit);
+  const db = getDb();
+  const { data: failed, error: readError } = await db.from('pyq_papers').select('id').eq('processing_status', 'failed').order('updated_at', { ascending: true }).limit(limit);
+  if (readError) throw new Error(`Supabase failed-paper retry lookup failed: ${readError.message}`);
+  const ids = (failed || []).map((row) => row.id);
+  if (!ids.length) return 0;
+  const { error } = await db.from('pyq_papers').update({ processing_status: 'pending', processing_error: null }).in('id', ids);
   if (error) throw new Error(`Supabase failed-paper retry failed: ${error.message}`);
-  return data?.length || 0;
+  return ids.length;
 }
 
 export async function getStatusCounts() {
