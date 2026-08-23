@@ -64,6 +64,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+data class PyqListScrollPosition(val index: Int = 0, val offset: Int = 0)
+
 class FrequentlyAskedViewModel(private val container: AppContainer) : ViewModel() {
     private val _course = MutableStateFlow("")
     val course: StateFlow<String> = _course.asStateFlow()
@@ -77,6 +79,7 @@ class FrequentlyAskedViewModel(private val container: AppContainer) : ViewModel(
     val error: StateFlow<String?> = _error.asStateFlow()
     private val _retryNotice = MutableStateFlow<String?>(null)
     val retryNotice: StateFlow<String?> = _retryNotice.asStateFlow()
+    private val _listScroll = MutableStateFlow(PyqListScrollPosition())
 
     private var loadJob: Job? = null
     private var retryJob: Job? = null
@@ -98,11 +101,21 @@ class FrequentlyAskedViewModel(private val container: AppContainer) : ViewModel(
             _loading.value = true
             _error.value = null
             runCatching { container.pyqRagClient.frequentlyAsked(backendUrl, cleanCourse) }
-                .onSuccess { _response.value = it }
+                .onSuccess {
+                    if (_response.value?.course != it.course) _listScroll.value = PyqListScrollPosition()
+                    _response.value = it
+                }
                 .onFailure { _error.value = "Couldn’t reach the analysis service. The original Previous year papers browser is still available below." }
             _loading.value = false
             loadJob = null
         }
+    }
+
+    internal fun rememberedListScroll(): PyqListScrollPosition = _listScroll.value
+
+    internal fun rememberListScroll(index: Int, offset: Int) {
+        val next = PyqListScrollPosition(index.coerceAtLeast(0), offset.coerceAtLeast(0))
+        if (_listScroll.value != next) _listScroll.value = next
     }
 
     fun retryNow(backendUrl: String) {
@@ -315,7 +328,10 @@ fun FrequentlyAskedScreen(container: AppContainer, onBack: () -> Unit, onOpenGro
     val responseListState = rememberLazyListState()
 
     LaunchedEffect(response?.course, response?.groups?.map { it.groupId }) {
-        responseListState.scrollToItem(0)
+        val result = response ?: return@LaunchedEffect
+        val saved = vm.rememberedListScroll()
+        val lastItemIndex = if (result.groups.isEmpty()) 1 else result.groups.size + 1
+        responseListState.scrollToItem(saved.index.coerceAtMost(lastItemIndex), saved.offset)
     }
 
     LaunchedEffect(response?.course, response?.coverage?.pending, response?.coverage?.processing) {
@@ -378,7 +394,10 @@ fun FrequentlyAskedScreen(container: AppContainer, onBack: () -> Unit, onOpenGro
                     } else {
                         item { Text("${result.groups.size} repeated groups · frequency means distinct papers", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium) }
                         items(result.groups, key = { it.groupId }) { group ->
-                            Card(onClick = { onOpenGroup(group.groupId) }, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), elevation = CardDefaults.cardElevation(0.dp)) {
+                            Card(onClick = {
+                                vm.rememberListScroll(responseListState.firstVisibleItemIndex, responseListState.firstVisibleItemScrollOffset)
+                                onOpenGroup(group.groupId)
+                            }, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), elevation = CardDefaults.cardElevation(0.dp)) {
                                 Column(Modifier.fillMaxWidth().padding(15.dp)) {
                                     Text(formatPyqText(group.title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                     Spacer(Modifier.height(7.dp))
@@ -405,13 +424,20 @@ fun FrequentlyAskedScreen(container: AppContainer, onBack: () -> Unit, onOpenGro
 @Composable
 fun FrequentlyAskedGroupScreen(container: AppContainer, groupId: Long, onBack: () -> Unit) {
     val settings by container.settings.flow.collectAsStateWithLifecycle(initialValue = com.gndec.timetable.data.prefs.AppSettings())
-    var result by remember { mutableStateOf<PyqGroupDetailResponse?>(null) }
+    var result by remember(groupId) { mutableStateOf(container.pyqRagClient.cachedGroupDetails(groupId)) }
     var error by remember { mutableStateOf<String?>(null) }
     val uriHandler = LocalUriHandler.current
     LaunchedEffect(groupId, settings.pyqRagBackendUrl) {
-        runCatching { container.pyqRagClient.groupDetails(settings.pyqRagBackendUrl, groupId) }
-            .onSuccess { result = it }
-            .onFailure { error = "This repeated-question group is temporarily unavailable." }
+        val cached = container.pyqRagClient.cachedGroupDetails(groupId)
+        if (cached != null) {
+            result = cached
+            error = null
+        } else {
+            result = null
+            runCatching { container.pyqRagClient.groupDetails(settings.pyqRagBackendUrl, groupId) }
+                .onSuccess { result = it }
+                .onFailure { error = "This repeated-question group is temporarily unavailable." }
+        }
     }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {

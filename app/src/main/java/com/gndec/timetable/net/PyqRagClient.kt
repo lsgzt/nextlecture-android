@@ -11,6 +11,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.util.concurrent.ConcurrentHashMap
 
 @Serializable
 data class PyqFrequencyGroup(
@@ -105,7 +106,24 @@ data class PyqRetryResponse(
 )
 
 class PyqRagClient(private val client: OkHttpClient = Net.client) {
+    private data class CachedGroupDetail(val response: PyqGroupDetailResponse, val cachedAtMillis: Long)
+
+    private companion object {
+        const val GROUP_DETAIL_CACHE_MILLIS = 10 * 60 * 1000L
+    }
+
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
+    private val groupDetailCache = ConcurrentHashMap<Long, CachedGroupDetail>()
+
+    fun cachedGroupDetails(groupId: Long): PyqGroupDetailResponse? {
+        val cached = groupDetailCache[groupId] ?: return null
+        return if (System.currentTimeMillis() - cached.cachedAtMillis <= GROUP_DETAIL_CACHE_MILLIS) {
+            cached.response
+        } else {
+            groupDetailCache.remove(groupId, cached)
+            null
+        }
+    }
 
     suspend fun frequentlyAsked(baseUrl: String, course: String, from: Int? = null, to: Int? = null): PyqFrequentlyAskedResponse = withContext(Dispatchers.IO) {
         val url = buildUrl(baseUrl, "api/pyq/frequently-asked")?.newBuilder()
@@ -115,9 +133,12 @@ class PyqRagClient(private val client: OkHttpClient = Net.client) {
         execute(url, PyqFrequentlyAskedResponse.serializer())
     }
 
-    suspend fun groupDetails(baseUrl: String, groupId: Long): PyqGroupDetailResponse = withContext(Dispatchers.IO) {
+    suspend fun groupDetails(baseUrl: String, groupId: Long, forceRefresh: Boolean = false): PyqGroupDetailResponse = withContext(Dispatchers.IO) {
+        if (!forceRefresh) cachedGroupDetails(groupId)?.let { return@withContext it }
         val url = buildUrl(baseUrl, "api/pyq/frequently-asked/$groupId") ?: throw IllegalArgumentException("Invalid PYQ RAG backend URL")
-        execute(url, PyqGroupDetailResponse.serializer())
+        val loaded = execute(url, PyqGroupDetailResponse.serializer())
+        groupDetailCache[groupId] = CachedGroupDetail(loaded, System.currentTimeMillis())
+        loaded
     }
 
     suspend fun retryCourse(baseUrl: String, course: String): PyqRetryResponse = withContext(Dispatchers.IO) {
