@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Description
@@ -179,6 +180,35 @@ private fun formatStatusTime(value: String): String = value
     .removeSuffix("Z")
     .take(16)
 
+/**
+ * PDF text extraction can expose Symbol/MathType private-use glyphs instead of normal Unicode.
+ * Convert the known glyphs to readable Unicode/ASCII and make common OCR layout noise visible
+ * without attempting to alter the source PDF itself.
+ */
+private fun formatPyqText(raw: String): String {
+    val replacements = mapOf(
+        '\uF028' to '(', '\uF029' to ')', '\uF02B' to '+', '\uF02D' to '−', '\uF03D' to '=',
+        '\uF0A5' to '∞', '\uF0AE' to '→', '\uF0C2' to '·', '\uF0CC' to 'λ', '\uF0CD' to 'μ', '\uF0D0' to 'π',
+        '\uF126' to '(', '\uF127' to '(', '\uF128' to ')', '\uF129' to '(', '\uF12A' to '[', '\uF12B' to '[',
+        '\uF132' to '∫', '\uF136' to '[', '\uF137' to '−', '\uF138' to ']', '\uF139' to ')', '\uF13A' to ']', '\uF13B' to ']'
+    )
+    val mapped = buildString(raw.length) {
+        raw.forEach { character ->
+            append(replacements[character] ?: if (character.code in 0xE000..0xF8FF) '?' else character)
+        }
+    }
+    var text = mapped.replace(Regex("\\s+"), " ").trim()
+    text = text.replace(Regex("(?i)\\s+(?:page\\s+[0-9il]+(?:\\s+of\\s+[0-9il]+)?|morning|evening)\\b.*$"), "")
+    text = text.replace(Regex("\\s+[RKHA]{5,}\\s*$"), "")
+    text = text.replace(Regex("\\s+(?=Q\\.?\\s*[2-9]\\b)"), "\\n")
+    text = text.replace(Regex("\\s+(?=(?:\\(?[ivx]+\\)|[a-z]\\)))"), "\\n")
+    text = text.replace(Regex("\\s+OR\\s+"), "\\nOR\\n")
+    text = text.replace(Regex("\\s+([,.;:!?])"), "$1")
+    text = text.replace(Regex("([([{])\\s+"), "$1")
+    text = text.replace(Regex("\\s+([)\\]}])"), "$1")
+    return text.trim()
+}
+
 @Composable
 fun FrequentlyAskedScreen(container: AppContainer, onBack: () -> Unit, onOpenGroup: (Long) -> Unit) {
     val settings by container.settings.flow.collectAsStateWithLifecycle(initialValue = com.gndec.timetable.data.prefs.AppSettings())
@@ -189,6 +219,7 @@ fun FrequentlyAskedScreen(container: AppContainer, onBack: () -> Unit, onOpenGro
     var error by remember { mutableStateOf<String?>(null) }
     var retryNotice by remember { mutableStateOf<String?>(null) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val responseListState = rememberLazyListState()
 
     fun load() {
         val cleanCourse = course.trim()
@@ -228,6 +259,10 @@ fun FrequentlyAskedScreen(container: AppContainer, onBack: () -> Unit, onOpenGro
                 retrying = false
             }
         }
+    }
+
+    LaunchedEffect(response?.course, response?.groups?.map { it.groupId }) {
+        responseListState.scrollToItem(0)
     }
 
     LaunchedEffect(response?.course, response?.coverage?.pending, response?.coverage?.processing) {
@@ -270,8 +305,8 @@ fun FrequentlyAskedScreen(container: AppContainer, onBack: () -> Unit, onOpenGro
             retryNotice?.let { message ->
                 Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp))
             }
-            response?.let { result ->
-                LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                response?.let { result ->
+                LazyColumn(state = responseListState, contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     item { CoverageCard(result.coverage, loading, ::load, retrying, ::retryNow) }
                     if (result.groups.isEmpty()) {
                         item {
@@ -287,7 +322,7 @@ fun FrequentlyAskedScreen(container: AppContainer, onBack: () -> Unit, onOpenGro
                         items(result.groups, key = { it.groupId }) { group ->
                             Card(onClick = { onOpenGroup(group.groupId) }, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), elevation = CardDefaults.cardElevation(0.dp)) {
                                 Column(Modifier.fillMaxWidth().padding(15.dp)) {
-                                    Text(group.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                    Text(formatPyqText(group.title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                     Spacer(Modifier.height(7.dp))
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text("${group.frequency} distinct paper${if (group.frequency == 1L) "" else "s"}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
@@ -332,7 +367,7 @@ fun FrequentlyAskedGroupScreen(container: AppContainer, groupId: Long, onBack: (
             result?.let { detail ->
                 LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     item {
-                        Text(detail.group.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text(formatPyqText(detail.group.title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         Text("${detail.frequency} distinct paper${if (detail.frequency == 1) "" else "s"}", color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp))
                         detail.group.description?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 5.dp)) }
                     }
@@ -340,7 +375,7 @@ fun FrequentlyAskedGroupScreen(container: AppContainer, groupId: Long, onBack: (
                         occurrence.question?.let { question ->
                             Card(modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), elevation = CardDefaults.cardElevation(0.dp)) {
                                 Column(Modifier.fillMaxWidth().padding(15.dp)) {
-                                    Text(question.questionText, style = MaterialTheme.typography.bodyLarge)
+                                    Text(formatPyqText(question.questionText), style = MaterialTheme.typography.bodyLarge)
                                     Text("Page ${question.sourcePage} · ${question.paper?.examSession ?: "session unavailable"}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
                                     question.paper?.let { paper ->
                                         Text(paper.title, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))

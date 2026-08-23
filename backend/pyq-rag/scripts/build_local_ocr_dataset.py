@@ -45,6 +45,24 @@ def content_tokens(text):
     return {stem(token) for token in re.findall(r"[a-z][a-z0-9]{2,}", normalize_text(text)) if token not in STOP_WORDS}
 
 
+PRIVATE_SYMBOLS = str.maketrans({
+    "\uf028": "(", "\uf029": ")", "\uf02b": "+", "\uf02d": "−", "\uf03d": "=",
+    "\uf0a5": "∞", "\uf0ae": "→", "\uf0c2": "·", "\uf0cc": "λ", "\uf0cd": "μ", "\uf0d0": "π",
+    "\uf126": "(", "\uf127": "(", "\uf128": ")", "\uf129": "(", "\uf12a": "[", "\uf12b": "[",
+    "\uf132": "∫", "\uf136": "[", "\uf137": "−", "\uf138": "]", "\uf139": ")", "\uf13a": "]", "\uf13b": "]",
+})
+
+
+def format_ocr_text(value):
+    text = value.translate(PRIVATE_SYMBOLS)
+    text = re.sub(r"[\ue000-\uf8ff]", "?", text)
+    text = re.sub(r"\s+(?:page\s+[0-9il]+(?:\s*of\s*[0-9il]+)?|morning|evening)\b.*$", "", text, flags=re.I)
+    text = re.sub(r"\s+(?:R|K|H|A){5,}\s*$", "", text)
+    text = re.sub(r"\s+([,.;:!?])", r"\1", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
 def clean_line(line):
     line = re.sub(r"\b(?:P\.?T\.?O\.?|PAGE\s*\d+\s+OF\s+\d+)\b", " ", line, flags=re.I)
     line = re.sub(r"[|{}]+", " ", line)
@@ -163,7 +181,7 @@ def build_questions(row):
             raw_text = re.sub(r"\s+", " ", raw_text).strip(" -:;,.|")
             alternatives = re.split(r"\s+\bOR\b\s+", raw_text, flags=re.I)
             for alternative_index, alternative_text in enumerate(alternatives, 1):
-                question_text = re.sub(r"\s+", " ", alternative_text).strip(" -:;,.|")
+                question_text = format_ocr_text(re.sub(r"\s+", " ", alternative_text).strip(" -:;,.|"))
                 if not plausible_question(question_text):
                     continue
                 question_label = question_number if len(alternatives) == 1 else f"{question_number}-{alternative_index}"
