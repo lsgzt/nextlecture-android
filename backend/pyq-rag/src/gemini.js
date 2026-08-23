@@ -1,6 +1,7 @@
 import { config, hasGemini } from './config.js';
 
 const GEMINI_API_ROOT = 'https://generativelanguage.googleapis.com/v1beta/models';
+let keyCursor = 0;
 
 function modelPath(model) {
   const clean = String(model || '').replace(/^models\//, '').trim();
@@ -23,7 +24,10 @@ async function fetchJson(url, body, timeoutMs = 120_000) {
     try { data = raw ? JSON.parse(raw) : null; } catch { /* handled below */ }
     if (!response.ok) {
       const message = typeof data?.error?.message === 'string' ? data.error.message.slice(0, 500) : `Gemini HTTP ${response.status}`;
-      throw new Error(message);
+      const error = new Error(message);
+      error.status = response.status;
+      error.keyRotationEligible = response.status === 401 || response.status === 403 || response.status === 429 || /quota|rate limit|resource exhausted|too many requests/i.test(message);
+      throw error;
     }
     return data;
   } catch (error) {
@@ -32,6 +36,29 @@ async function fetchJson(url, body, timeoutMs = 120_000) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function shouldRotateKey(error) {
+  return Boolean(error?.keyRotationEligible || /quota|rate limit|resource exhausted|too many requests|invalid api key|api key not valid/i.test(String(error?.message || '')));
+}
+
+async function fetchGeminiJson(model, operation, body, timeoutMs) {
+  if (!hasGemini()) throw new Error('Gemini server configuration is missing');
+  const keys = config.geminiApiKeys;
+  let lastError;
+  for (let attempt = 0; attempt < keys.length; attempt += 1) {
+    const slot = (keyCursor + attempt) % keys.length;
+    try {
+      const data = await fetchJson(`${GEMINI_API_ROOT}/${modelPath(model)}:${operation}?key=${encodeURIComponent(keys[slot])}`, body, timeoutMs);
+      keyCursor = slot;
+      return data;
+    } catch (error) {
+      lastError = error;
+      if (attempt + 1 >= keys.length || !shouldRotateKey(error)) throw error;
+      console.warn(`[PYQ] Gemini key slot ${slot + 1} unavailable for ${operation}; trying the next configured key`);
+    }
+  }
+  throw lastError || new Error(`Gemini ${operation} failed`);
 }
 
 function extractText(data) {
@@ -96,7 +123,6 @@ const JSON_SCHEMA = {
 };
 
 export async function extractQuestionsFromText(pageBlocks, pageCount) {
-  if (!hasGemini()) throw new Error('Gemini server configuration is missing');
   const prompt = [
     'Extract every actual exam question from the following machine-readable pages of one university previous-year question paper.',
     'Do not summarize, merge, invent, or omit questions. Keep subparts as part of their parent question when they are printed together.',
@@ -104,19 +130,14 @@ export async function extractQuestionsFromText(pageBlocks, pageCount) {
     'Ignore cover-page metadata, instructions, blank pages, answer keys, and repeated headers unless they are actual questions.',
     pageBlocks,
   ].join('\n\n');
-  const data = await fetchJson(`${GEMINI_API_ROOT}/${modelPath(config.geminiDocumentModel)}:generateContent?key=${encodeURIComponent(config.geminiApiKey)}`, {
+  const data = await fetchGeminiJson(config.geminiDocumentModel, 'generateContent', {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    generationConfig: {
-      temperature: 0,
-      responseMimeType: 'application/json',
-      responseSchema: JSON_SCHEMA,
-    },
-  });
+    generationConfig: { temperature: 0, responseMimeType: 'application/json', responseSchema: JSON_SCHEMA },
+  }, 120_000);
   return normalizeQuestions(parseJsonObject(extractText(data)), pageCount);
 }
 
 export async function extractQuestionsFromPdfVision(pdfBuffer, pageCount) {
-  if (!hasGemini()) throw new Error('Gemini server configuration is missing');
   if (!Buffer.isBuffer(pdfBuffer) || pdfBuffer.length === 0) throw new Error('PDF bytes are empty');
   const prompt = [
     'Read this entire university previous-year question paper as a document, including scanned/image-only pages.',
@@ -125,22 +146,17 @@ export async function extractQuestionsFromPdfVision(pdfBuffer, pageCount) {
     `The PDF has exactly ${pageCount} pages. source_page must be an integer from 1 through ${pageCount}.`,
     'Ignore cover metadata, instructions, blank pages, answer keys, and repeated headers unless they are actual questions. Preserve question numbering, sections, marks, and unit information when visible.',
   ].join('\n');
-  const data = await fetchJson(`${GEMINI_API_ROOT}/${modelPath(config.geminiDocumentModel)}:generateContent?key=${encodeURIComponent(config.geminiApiKey)}`, {
+  const data = await fetchGeminiJson(config.geminiDocumentModel, 'generateContent', {
     contents: [{ role: 'user', parts: [
       { inline_data: { mime_type: 'application/pdf', data: pdfBuffer.toString('base64') } },
       { text: prompt },
     ] }],
-    generationConfig: {
-      temperature: 0,
-      responseMimeType: 'application/json',
-      responseSchema: JSON_SCHEMA,
-    },
+    generationConfig: { temperature: 0, responseMimeType: 'application/json', responseSchema: JSON_SCHEMA },
   }, 180_000);
   return normalizeQuestions(parseJsonObject(extractText(data)), pageCount);
 }
 
 export async function answerWithEvidence(question, evidence) {
-  if (!hasGemini()) throw new Error('Gemini server configuration is missing');
   const sourceText = evidence.map((item, index) => [
     `SOURCE ${index + 1}`,
     `Paper: ${item.paperTitle}`,
@@ -157,7 +173,7 @@ export async function answerWithEvidence(question, evidence) {
     'Evidence:',
     sourceText,
   ].join('\n\n');
-  const data = await fetchJson(`${GEMINI_API_ROOT}/${modelPath(config.geminiDocumentModel)}:generateContent?key=${encodeURIComponent(config.geminiApiKey)}`, {
+  const data = await fetchGeminiJson(config.geminiDocumentModel, 'generateContent', {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     generationConfig: { temperature: 0.1, maxOutputTokens: 1200 },
   }, 90_000);
@@ -170,16 +186,16 @@ export async function embedTexts(texts, taskType = 'CLUSTERING') {
   const cleanTexts = texts.map((text) => String(text || '').trim());
   if (!cleanTexts.length || cleanTexts.some((text) => !text)) throw new Error('Cannot batch-embed empty question text');
   if (cleanTexts.length > 50) throw new Error('Embedding batch exceeds 50 texts');
-  if (!hasGemini()) throw new Error('Gemini server configuration is missing');
   const model = modelPath(config.geminiEmbeddingModel);
   try {
-    const data = await fetchJson(`${GEMINI_API_ROOT}/${model}:batchEmbedContents?key=${encodeURIComponent(config.geminiApiKey)}`, {
+    const data = await fetchGeminiJson(model, 'batchEmbedContents', {
       requests: cleanTexts.map((text) => ({ model: `models/${model}`, content: { parts: [{ text }] }, taskType, outputDimensionality: config.geminiEmbeddingDimension })),
     }, 120_000);
     const embeddings = data?.embeddings;
     if (!Array.isArray(embeddings) || embeddings.length !== cleanTexts.length) throw new Error('Gemini batch embedding response length mismatch');
     return embeddings.map((item) => validateEmbedding(item?.values));
   } catch (error) {
+    if (shouldRotateKey(error)) throw error;
     console.warn(`[PYQ] batch embedding unavailable; falling back to bounded single embeddings: ${error.message}`);
     const results = [];
     for (const text of cleanTexts) results.push(await embedText(text, taskType));
@@ -195,11 +211,10 @@ function validateEmbedding(values) {
 }
 
 export async function embedText(text, taskType = 'CLUSTERING') {
-  if (!hasGemini()) throw new Error('Gemini server configuration is missing');
   const cleanText = String(text || '').trim();
   if (!cleanText) throw new Error('Cannot embed empty question text');
   const model = modelPath(config.geminiEmbeddingModel);
-  const data = await fetchJson(`${GEMINI_API_ROOT}/${model}:embedContent?key=${encodeURIComponent(config.geminiApiKey)}`, {
+  const data = await fetchGeminiJson(model, 'embedContent', {
     model: `models/${model}`,
     content: { parts: [{ text: cleanText }] },
     taskType,

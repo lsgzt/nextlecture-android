@@ -5,6 +5,8 @@ import { config } from './config.js';
 import { readCatalog } from './catalog.js';
 import { answerWithEvidence, embedText } from './gemini.js';
 import {
+  claimCoursePaper,
+  claimCourseRetry,
   claimPaperBatch,
   claimSpecificPaper,
   getCache,
@@ -62,6 +64,11 @@ function parseCourseRange(query) {
   return { course: course.data, from: from?.success ? from.data : null, to: to?.success ? to.data : null, limit: limit.data };
 }
 
+function retryFailureReason(error) {
+  const message = String(error?.message || '').toLowerCase();
+  return /quota|rate limit|resource exhausted|too many requests|invalid api key|api key not valid|unauthorized|forbidden/.test(message) ? 'provider_quota' : 'processing_error';
+}
+
 function createRateLimiter(maxPerMinute) {
   const hits = new Map();
   return (req, res, next) => {
@@ -83,6 +90,7 @@ export function buildRouter() {
   const router = express.Router();
   const publicLimit = createRateLimiter(config.publicRateLimitPerMinute);
   const askLimit = createRateLimiter(config.askRateLimitPerMinute);
+  const retryLimit = createRateLimiter(2);
 
   router.get('/admin/status', requireAdmin, async (_req, res) => {
     try {
@@ -118,6 +126,37 @@ export function buildRouter() {
       return res.json({ ok: true, reset: await retryFailedPapers(parsed.data.limit) });
     } catch (error) {
       console.error('[PYQ] retry failed', error.message);
+      return res.status(503).json({ error: 'retry unavailable' });
+    }
+  });
+
+  router.post('/pyq/retry-course', retryLimit, async (req, res) => {
+    const parsed = z.object({ course: courseSchema }).strict().safeParse(req.body || {});
+    if (!parsed.success) return validationError(res, parsed);
+    const course = parsed.data.course;
+    try {
+      const gate = await claimCourseRetry(course);
+      const cooldownUntil = gate.cooldownUntil;
+      const retryAfterSeconds = cooldownUntil ? Math.max(0, Math.ceil((new Date(cooldownUntil).getTime() - Date.now()) / 1000)) : 0;
+      if (!gate.accepted) {
+        return res.status(429).json({ ok: true, accepted: false, status: 'cooldown', cooldownUntil, retryAfterSeconds, coverage: await getCourseCoverage(course) });
+      }
+
+      const claimed = await claimCoursePaper(course);
+      if (!claimed) {
+        return res.json({ ok: true, accepted: true, status: 'nothing_to_retry', cooldownUntil, retryAfterSeconds, coverage: await getCourseCoverage(course) });
+      }
+
+      try {
+        await processPaper(claimed);
+        await invalidateCourseCache(claimed.course_code);
+        return res.json({ ok: true, accepted: true, status: 'processed', cooldownUntil, retryAfterSeconds, coverage: await getCourseCoverage(course) });
+      } catch (error) {
+        await invalidateCourseCache(claimed.course_code).catch((cacheError) => console.warn('[PYQ] retry cache invalidation failed', cacheError.message));
+        return res.json({ ok: true, accepted: true, status: 'failed', failureReason: retryFailureReason(error), cooldownUntil, retryAfterSeconds, coverage: await getCourseCoverage(course) });
+      }
+    } catch (error) {
+      console.error('[PYQ] public retry failed', error.message);
       return res.status(503).json({ error: 'retry unavailable' });
     }
   });

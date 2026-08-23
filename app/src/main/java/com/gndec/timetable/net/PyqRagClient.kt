@@ -4,7 +4,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -75,6 +78,22 @@ data class PyqGroupDetailResponse(
     val occurrences: List<PyqGroupOccurrence> = emptyList()
 )
 
+@Serializable
+data class PyqRetryRequest(val course: String)
+
+@Serializable
+data class PyqRetryResponse(
+    val ok: Boolean = false,
+    val accepted: Boolean = false,
+    val status: String = "unknown",
+    val cooldownUntil: String? = null,
+    val retryAfterSeconds: Int? = null,
+    val failureReason: String? = null,
+    val result: kotlinx.serialization.json.JsonObject? = null,
+    val error: String? = null,
+    val coverage: PyqCoverage = PyqCoverage()
+)
+
 class PyqRagClient(private val client: OkHttpClient = Net.client) {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
@@ -91,12 +110,27 @@ class PyqRagClient(private val client: OkHttpClient = Net.client) {
         execute(url, PyqGroupDetailResponse.serializer())
     }
 
+    suspend fun retryCourse(baseUrl: String, course: String): PyqRetryResponse = withContext(Dispatchers.IO) {
+        val url = buildUrl(baseUrl, "api/pyq/retry-course") ?: throw IllegalArgumentException("Invalid PYQ RAG backend URL")
+        val body = json.encodeToString(PyqRetryRequest.serializer(), PyqRetryRequest(course.trim().uppercase())).toRequestBody("application/json".toMediaType())
+        executePost(url, body, PyqRetryResponse.serializer())
+    }
+
     private fun buildUrl(baseUrl: String, path: String) = baseUrl.trimEnd('/').toHttpUrlOrNull()?.newBuilder()?.addPathSegments(path)?.build()
 
     private fun <T> execute(url: okhttp3.HttpUrl, serializer: kotlinx.serialization.KSerializer<T>): T {
         val request = Request.Builder().url(url).get().build()
+        return executeRequest(request, serializer)
+    }
+
+    private fun <T> executePost(url: okhttp3.HttpUrl, body: okhttp3.RequestBody, serializer: kotlinx.serialization.KSerializer<T>): T {
+        val request = Request.Builder().url(url).post(body).build()
+        return executeRequest(request, serializer, allowRateLimited = true)
+    }
+
+    private fun <T> executeRequest(request: Request, serializer: kotlinx.serialization.KSerializer<T>, allowRateLimited: Boolean = false): T {
         client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw HttpException(response.code, "PYQ RAG request failed")
+            if (!response.isSuccessful && !(allowRateLimited && response.code == 429)) throw HttpException(response.code, "PYQ RAG request failed")
             val body = response.body?.string() ?: throw HttpException(response.code, "empty PYQ RAG response")
             return json.decodeFromString(serializer, body)
         }

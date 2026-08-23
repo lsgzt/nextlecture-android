@@ -42,6 +42,19 @@ export async function claimPaperBatch(limit, includeFailed = false) {
   return data || [];
 }
 
+export async function claimCoursePaper(courseCode) {
+  const { data, error } = await getDb().rpc('claim_pyq_papers_for_course', { filter_course_code: courseCode, batch_size: 1, include_failed: true });
+  if (error) throw new Error(`Supabase course paper claim failed: ${error.message}`);
+  return data?.[0] || null;
+}
+
+export async function claimCourseRetry(courseCode) {
+  const { data, error } = await getDb().rpc('claim_pyq_course_retry', { filter_course_code: courseCode, cooldown_minutes: 20 });
+  if (error) throw new Error(`Supabase course retry cooldown failed: ${error.message}`);
+  const row = Array.isArray(data) ? data[0] : data;
+  return { accepted: Boolean(row?.accepted), cooldownUntil: row?.cooldown_until || null };
+}
+
 export async function resetStalePapers() {
   const { data, error } = await getDb().rpc('reset_stale_pyq_papers', { stale_minutes: 45 });
   if (error) throw new Error(`Supabase stale-paper recovery failed: ${error.message}`);

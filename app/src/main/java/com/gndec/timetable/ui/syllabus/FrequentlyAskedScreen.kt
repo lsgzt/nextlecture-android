@@ -90,17 +90,24 @@ private fun coverageHeadline(coverage: PyqCoverage): String = when {
     else -> "No processing activity has started for this course yet."
 }
 
+private fun formatRetryWait(seconds: Int?): String {
+    val total = seconds ?: 0
+    if (total < 60) return "less than a minute"
+    val minutes = total / 60
+    return if (minutes < 60) "about $minutes minute${if (minutes == 1) "" else "s"}" else "about ${minutes / 60} hour${if (minutes / 60 == 1) "" else "s"}"
+}
+
 private fun coverageSupportingText(coverage: PyqCoverage): String = when {
     coverage.total == 0 -> "Check the course code, then use the original Previous year papers browser to confirm the paper exists."
     coverage.failureReason == "provider_quota" -> "Gemini’s request quota was reached. Completed results remain available; failed papers will retry after quota recovery."
-    coverage.failed > 0 -> "Completed results remain available. Failed papers are isolated and can be retried by the administrator."
+    coverage.failed > 0 -> "Completed results remain available. Use the retry action below to attempt one more paper safely."
     coverage.processing > 0 -> "This screen refreshes automatically while the server processes papers. You can also refresh manually."
     coverage.pending > 0 -> "The remaining papers will appear as resumable batches finish."
     else -> "The repeated-question list below is based on indexed papers only."
 }
 
 @Composable
-private fun CoverageCard(coverage: PyqCoverage, loading: Boolean, onRefresh: () -> Unit) {
+private fun CoverageCard(coverage: PyqCoverage, loading: Boolean, onRefresh: () -> Unit, retrying: Boolean, onRetry: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
@@ -136,11 +143,19 @@ private fun CoverageCard(coverage: PyqCoverage, loading: Boolean, onRefresh: () 
                     modifier = Modifier.weight(1f)
                 )
                 if (coverage.pending > 0 || coverage.processing > 0 || coverage.failed > 0) {
-                    OutlinedButton(onClick = onRefresh, enabled = !loading, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)) {
+                    OutlinedButton(onClick = onRefresh, enabled = !loading && !retrying, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)) {
                         Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.size(5.dp))
                         Text("Refresh")
                     }
+                }
+            }
+            if (coverage.failed > 0) {
+                OutlinedButton(onClick = onRetry, enabled = !retrying && !loading, modifier = Modifier.fillMaxWidth()) {
+                    if (retrying) CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp)
+                    else Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.size(7.dp))
+                    Text(if (retrying) "Retrying one paper…" else "Retry one failed paper now")
                 }
             }
             coverage.updatedAt?.let {
@@ -170,7 +185,9 @@ fun FrequentlyAskedScreen(container: AppContainer, onBack: () -> Unit, onOpenGro
     var course by rememberSaveable { mutableStateOf("") }
     var response by remember { mutableStateOf<PyqFrequentlyAskedResponse?>(null) }
     var loading by remember { mutableStateOf(false) }
+    var retrying by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var retryNotice by remember { mutableStateOf<String?>(null) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     fun load() {
@@ -186,6 +203,30 @@ fun FrequentlyAskedScreen(container: AppContainer, onBack: () -> Unit, onOpenGro
                 .onSuccess { response = it }
                 .onFailure { error = "Couldn’t reach the analysis service. The original Previous year papers browser is still available below." }
             loading = false
+        }
+    }
+
+    fun retryNow() {
+        val cleanCourse = (response?.course ?: course).trim()
+        if (cleanCourse.isBlank() || retrying) return
+        scope.launch {
+            retrying = true
+            retryNotice = null
+            try {
+                val outcome = container.pyqRagClient.retryCourse(settings.pyqRagBackendUrl, cleanCourse)
+                response = container.pyqRagClient.frequentlyAsked(settings.pyqRagBackendUrl, cleanCourse)
+                retryNotice = when (outcome.status) {
+                    "processed" -> "Retry started and one paper completed successfully."
+                    "failed" -> "Retry was attempted, but Gemini still rejected this paper. The failure is recorded and will be retried again after quota recovery."
+                    "nothing_to_retry" -> "There is no eligible failed or pending paper for this course right now."
+                    "cooldown" -> "A retry was recently requested for this course. Try again in ${formatRetryWait(outcome.retryAfterSeconds)}."
+                    else -> "Retry request completed; the status above is current."
+                }
+            } catch (_: Exception) {
+                retryNotice = "Retry could not reach the analysis service. Try again later."
+            } finally {
+                retrying = false
+            }
         }
     }
 
@@ -226,9 +267,12 @@ fun FrequentlyAskedScreen(container: AppContainer, onBack: () -> Unit, onOpenGro
                     Text(message, color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.padding(14.dp))
                 }
             }
+            retryNotice?.let { message ->
+                Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp))
+            }
             response?.let { result ->
                 LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    item { CoverageCard(result.coverage, loading, ::load) }
+                    item { CoverageCard(result.coverage, loading, ::load, retrying, ::retryNow) }
                     if (result.groups.isEmpty()) {
                         item {
                             Text(

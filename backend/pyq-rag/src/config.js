@@ -10,11 +10,17 @@ const floatEnv = (name, fallback, min, max) => {
   return Math.max(min, Math.min(max, value));
 };
 
+const geminiApiKeys = [...new Set([
+  process.env.GEMINI_API_KEY,
+  ...Array.from({ length: 5 }, (_, index) => process.env[`GEMINI_API_KEY${index + 1}`]),
+].map((value) => value?.trim()).filter(Boolean))];
+
 export const config = Object.freeze({
   port: integerEnv('PORT', 8080, 1, 65535),
   supabaseUrl: process.env.SUPABASE_URL?.trim() || '',
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || '',
-  geminiApiKey: process.env.GEMINI_API_KEY?.trim() || '',
+  geminiApiKey: geminiApiKeys[0] || '',
+  geminiApiKeys,
   geminiDocumentModel: process.env.GEMINI_DOCUMENT_MODEL?.trim() || 'gemini-3.6-flash',
   geminiEmbeddingModel: process.env.GEMINI_EMBEDDING_MODEL?.trim() || 'gemini-embedding-2',
   geminiEmbeddingDimension: integerEnv('GEMINI_EMBEDDING_DIMENSION', 768, 768, 768),
@@ -41,5 +47,5 @@ export function hasSupabase() {
 }
 
 export function hasGemini() {
-  return Boolean(config.geminiApiKey);
+  return config.geminiApiKeys.length > 0;
 }
