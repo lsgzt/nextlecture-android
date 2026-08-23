@@ -54,7 +54,7 @@ function parseCourseRange(query) {
   if (!course.success) return { error: course };
   const from = query.from == null || query.from === '' ? null : yearSchema.safeParse(query.from);
   const to = query.to == null || query.to === '' ? null : yearSchema.safeParse(query.to);
-  const limit = query.limit == null || query.limit === '' ? 50 : z.coerce.number().int().min(1).max(100).safeParse(query.limit);
+  const limit = query.limit == null || query.limit === '' ? { success: true, data: 50 } : z.coerce.number().int().min(1).max(100).safeParse(query.limit);
   if ((from && !from.success) || (to && !to.success) || !limit.success || (from?.success && to?.success && from.data > to.data)) {
     return { error: { issues: [{ path: ['range'], message: 'invalid year range' }] } };
   }
