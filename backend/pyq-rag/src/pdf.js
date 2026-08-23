@@ -1,5 +1,10 @@
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { config } from './config.js';
+
+let pdfjsLibPromise;
+async function getPdfjs() {
+  pdfjsLibPromise ||= import('pdfjs-dist/legacy/build/pdf.mjs');
+  return pdfjsLibPromise;
+}
 
 function assertPdfBytes(buffer) {
   if (!Buffer.isBuffer(buffer) || buffer.length < 5 || buffer.subarray(0, 5).toString('ascii') !== '%PDF-') {
@@ -19,6 +24,7 @@ function pageTextFromContent(content) {
 
 export async function inspectPdf(buffer) {
   assertPdfBytes(buffer);
+  const pdfjsLib = await getPdfjs();
   const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer), useWorkerFetch: false, isEvalSupported: false });
   const document = await loadingTask.promise;
   const pageCount = document.numPages;
