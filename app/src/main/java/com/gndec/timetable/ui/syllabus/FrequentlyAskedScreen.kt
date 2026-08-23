@@ -306,7 +306,12 @@ fun FrequentlyAskedScreen(container: AppContainer, onBack: () -> Unit, onOpenGro
                 Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp))
             }
                 response?.let { result ->
-                LazyColumn(state = responseListState, contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                LazyColumn(
+                    state = responseListState,
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     item { CoverageCard(result.coverage, loading, ::load, retrying, ::retryNow) }
                     if (result.groups.isEmpty()) {
                         item {
@@ -365,7 +370,11 @@ fun FrequentlyAskedGroupScreen(container: AppContainer, groupId: Long, onBack: (
             }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(20.dp)) }
             result?.let { detail ->
-                LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     item {
                         Text(formatPyqText(detail.group.title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         Text("${detail.frequency} distinct paper${if (detail.frequency == 1) "" else "s"}", color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp))
