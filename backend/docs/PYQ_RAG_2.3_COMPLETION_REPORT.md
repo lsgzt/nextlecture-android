@@ -1,12 +1,24 @@
 # GNDEC Previous-Year-Papers RAG — Completion Report
 
+> **Update:** This report now includes the Android 2.3.1 status-visibility patch released after user feedback.
+
 ## Executive summary
 
-The production Previous-year-papers RAG add-on is implemented and released as Android **2.3**. The existing **Previous year papers** browser was preserved: its bundled catalog, search behavior, session grouping, metadata, original Google Drive links, and fallback behavior remain independent of the analysis service. A compact **🔥 Frequently Asked** entry point has been added above that browser, with course filtering, repeated-question groups, distinct-paper frequency, exact source-page provenance, exam sessions, and original PDF opening.
+The production Previous-year-papers RAG add-on is implemented and released as Android **2.3**, with the follow-up status-visibility fix released as Android **2.3.1**. The existing **Previous year papers** browser was preserved: its bundled catalog, search behavior, session grouping, metadata, original Google Drive links, and fallback behavior remain independent of the analysis service. A compact **🔥 Frequently Asked** entry point has been added above that browser, with course filtering, repeated-question groups, distinct-paper frequency, exact source-page provenance, exam sessions, and original PDF opening.
 
 The production service is live at [https://gndec-pyq-rag-api.vercel.app](https://gndec-pyq-rag-api.vercel.app). The full catalog of **1,628 known Drive PDFs** has been imported idempotently into Supabase. The initial ten-paper validation gate passed before the full catalog seed: **10/10 validation papers completed, 171 questions extracted, 8 papers routed through vision extraction, and 2 through conventional text extraction**. Additional protected production batch checks completed four more papers. The current database state is **14 completed, 1,614 pending, 0 failed, and 0 skipped**, with 233 indexed questions. The remaining papers are intentionally pending for resumable batches; the system has not claimed that all 1,628 PDFs were processed.
 
 > **Critical scanned-PDF behavior:** a paper is not failed merely because conventional text extraction is empty. The pipeline records the PDF’s page count and text quality, then sends low-text/image-only PDFs to a vision-capable Gemini document route. Every extracted question is validated against the PDF page count and stored with a required 1-indexed `source_page`.
+
+## Status-visibility update in Android 2.3.1
+
+The first release correctly returned an empty repeated-question list, but the UI could not explain whether the course had no catalog papers, was still queued, was actively processing, or had failures. Android 2.3.1 fixes that ambiguity without changing the original paper browser. The API now returns a `coverage` object with `total`, `pending`, `processing`, `completed`, `failed`, `skipped`, and `updatedAt` fields. The app displays these as **Ready**, **Queued**, **Working**, and **Failed** counts in a dedicated Indexing status card.
+
+The UI now distinguishes the following states: no matching papers in the catalog; all papers queued; active processing; partial indexing with more queued; completed indexing with no repeated groups; completed indexing with repeated groups; isolated failed papers needing administrator retry; and an unavailable analysis service. A manual **Refresh** action is shown whenever coverage is incomplete or failed. While a course has queued or processing papers, the screen automatically refreshes every 30 seconds. If the service cannot be reached, the app shows an explicit unavailable message and leaves the existing Previous year papers browser available as the fallback.
+
+For the screenshot’s `HSMC-101` case, the live API now reports `total: 11`, `pending: 11`, `processing: 0`, `completed: 0`, and `failed: 0`, so the app can explicitly say **“Queued for indexing; nothing has failed.”** For an indexed course such as `BTAM-101`, the live response reports indexed and pending counts separately, alongside any available repeated groups.
+
+The status patch is published as [Android 2.3.1](https://github.com/lsgzt/nextlecture-android/releases/tag/2.3.1), with the expected update asset name [gndec-timetable.apk](https://github.com/lsgzt/nextlecture-android/releases/download/2.3.1/gndec-timetable.apk). Its signed APK SHA-256 is `02593dddb9c78534afbae4f46a687581ccd9a9829aaffd053687f1ec083a9529`.
 
 ## Delivered architecture
 
@@ -79,21 +91,21 @@ The stable production alias passed the following checks after the final deployme
 | Android signed release build | Successful with R8 enabled |
 | Published APK checksum | Local and GitHub release assets match |
 
-## Android 2.3 release
+## Android 2.3 and 2.3.1 releases
 
-The signed release is available at [GitHub release 2.3](https://github.com/lsgzt/nextlecture-android/releases/tag/2.3). The direct APK download is [gndec-timetable.apk](https://github.com/lsgzt/nextlecture-android/releases/download/2.3/gndec-timetable.apk).
+The original RAG release is available at [GitHub release 2.3](https://github.com/lsgzt/nextlecture-android/releases/tag/2.3). The status-visibility patch is available at [GitHub release 2.3.1](https://github.com/lsgzt/nextlecture-android/releases/tag/2.3.1), with the stable direct update asset [gndec-timetable.apk](https://github.com/lsgzt/nextlecture-android/releases/download/2.3.1/gndec-timetable.apk).
 
 | Release property | Value |
 |---|---|
 | Application ID | `com.gndec.timetable` |
-| Version name | `2.3.0` |
-| Version code | `23` |
-| GitHub release marker | `2.3` |
+| Version name | `2.3.0` in the original RAG release; `2.3.1` in the status patch |
+| Version code | `23` in the original RAG release; `24` in the status patch |
+| GitHub release marker | `2.3` in the original RAG release; `2.3.1` in the status patch |
 | APK size | 15,416,890 bytes |
-| APK SHA-256 | `51ad88be13a539b5200b2c3d300b3687d690a90854c348afeddb97130077aa60` |
+| APK SHA-256 | `51ad88be13a539b5200b2c3d300b3687d690a90854c348afeddb97130077aa60` for 2.3; `02593dddb9c78534afbae4f46a687581ccd9a9829aaffd053687f1ec083a9529` for 2.3.1 |
 | Signature verification | APK Signature Scheme v2, one signer |
 | R8 | Enabled via `isMinifyEnabled = true` |
-| Latest source commit | `b312c1aac75df7db5526d2f5afc9de0581142423` |
+| Latest source commit | `882a5a64f3b0decb10e5fe292d9c0013612aa5d2` |
 
 The source is pushed to [https://github.com/lsgzt/nextlecture-android](https://github.com/lsgzt/nextlecture-android). The APK was downloaded again from the GitHub release and its SHA-256 matched the locally built artifact.
 
