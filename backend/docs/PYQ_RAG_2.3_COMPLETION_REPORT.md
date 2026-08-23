@@ -114,7 +114,7 @@ The original RAG release is available at [GitHub release 2.3](https://github.com
 | APK SHA-256 | `51ad88be13a539b5200b2c3d300b3687d690a90854c348afeddb97130077aa60` for 2.3; `02593dddb9c78534afbae4f46a687581ccd9a9829aaffd053687f1ec083a9529` for 2.3.1; `985f0c5f35699f0fd5b846fcdef840d029b2c2e0fe5e0dcd84e6612726c50a79` for 2.3.3 |
 | Signature verification | APK Signature Scheme v2, one signer |
 | R8 | Enabled via `isMinifyEnabled = true` |
-| Latest source commit | `665788d` (full commit `665788d` contains the final Android metadata/report; backend patch is its parent `7268a47`) |
+| Latest source commit | `e9a1672` (documentation snapshot; final Android metadata/release commit is `665788d`; backend patch is its parent `7268a47`) |
 
 The source is pushed to [https://github.com/lsgzt/nextlecture-android](https://github.com/lsgzt/nextlecture-android). The APK was downloaded again from the GitHub release and its SHA-256 matched the locally built artifact.
 
