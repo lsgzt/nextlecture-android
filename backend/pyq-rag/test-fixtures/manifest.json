@@ -1,5 +1,91 @@
 {
+  "repeatedCourseCode": "BTAM-101",
   "selected": [
+    {
+      "id": "1zST5rxW76Q4INmIliFrfRS_p8gLoC-5F",
+      "title": "BTAM-101 · May 2024 question paper",
+      "session": "May 2024",
+      "course": "BTAM-101",
+      "year": 2024,
+      "file": "1zST5rxW76Q4INmIliFrfRS_p8gLoC-5F.pdf",
+      "bytes": 921134,
+      "pageCount": 2,
+      "usableText": false,
+      "textStats": {
+        "normalizedLength": 0,
+        "letterCount": 0,
+        "meaningfulPageCount": 0
+      },
+      "driveUrl": "https://drive.google.com/file/d/1zST5rxW76Q4INmIliFrfRS_p8gLoC-5F/view?usp=sharing"
+    },
+    {
+      "id": "1rqfElKZTqRRca9epIpW1wrGmI0FYQuVG",
+      "title": "BTAM-101 · November 2023 question paper",
+      "session": "November 2023",
+      "course": "BTAM-101",
+      "year": 2023,
+      "file": "1rqfElKZTqRRca9epIpW1wrGmI0FYQuVG.pdf",
+      "bytes": 1093482,
+      "pageCount": 2,
+      "usableText": false,
+      "textStats": {
+        "normalizedLength": 0,
+        "letterCount": 0,
+        "meaningfulPageCount": 0
+      },
+      "driveUrl": "https://drive.google.com/file/d/1rqfElKZTqRRca9epIpW1wrGmI0FYQuVG/view?usp=sharing"
+    },
+    {
+      "id": "1ILBGQBCCoWG4klPYgxWGGqDBOaeXMxQ2",
+      "title": "BTAM-101 · May 2022 question paper",
+      "session": "May 2022",
+      "course": "BTAM-101",
+      "year": 2022,
+      "file": "1ILBGQBCCoWG4klPYgxWGGqDBOaeXMxQ2.pdf",
+      "bytes": 715355,
+      "pageCount": 2,
+      "usableText": false,
+      "textStats": {
+        "normalizedLength": 0,
+        "letterCount": 0,
+        "meaningfulPageCount": 0
+      },
+      "driveUrl": "https://drive.google.com/file/d/1ILBGQBCCoWG4klPYgxWGGqDBOaeXMxQ2/view?usp=sharing"
+    },
+    {
+      "id": "1cW3K6JPE_0XoLOYiX6P6tzbvT7hmheNH",
+      "title": "BTAM-101 · November 2021 question paper",
+      "session": "November 2021",
+      "course": "BTAM-101",
+      "year": 2021,
+      "file": "1cW3K6JPE_0XoLOYiX6P6tzbvT7hmheNH.pdf",
+      "bytes": 153475,
+      "pageCount": 2,
+      "usableText": true,
+      "textStats": {
+        "normalizedLength": 1172,
+        "letterCount": 947,
+        "meaningfulPageCount": 2
+      },
+      "driveUrl": "https://drive.google.com/file/d/1cW3K6JPE_0XoLOYiX6P6tzbvT7hmheNH/view?usp=sharing"
+    },
+    {
+      "id": "1gZ4PP2Kt0qXnDiX5pSppcEFqMSNK-fZ1",
+      "title": "BTAM-101 · May 2021 question paper",
+      "session": "May 2021",
+      "course": "BTAM-101",
+      "year": 2021,
+      "file": "1gZ4PP2Kt0qXnDiX5pSppcEFqMSNK-fZ1.pdf",
+      "bytes": 187135,
+      "pageCount": 2,
+      "usableText": true,
+      "textStats": {
+        "normalizedLength": 1150,
+        "letterCount": 873,
+        "meaningfulPageCount": 1
+      },
+      "driveUrl": "https://drive.google.com/file/d/1gZ4PP2Kt0qXnDiX5pSppcEFqMSNK-fZ1/view?usp=sharing"
+    },
     {
       "id": "1dCuyMtl8UymWaXUqSnjY0pfu2f4r_ke5",
       "title": "PCME-110 · Makeup · November 2025 question paper",
@@ -55,7 +141,7 @@
       "id": "1TR76WMDm5inSyxc1cf4Mnbsj_8aBCZpG",
       "title": "BBA-101 · Makeup · November 2024 question paper",
       "session": "Makeup · November 2024",
-      "course": "BBA101",
+      "course": "BBA-101",
       "year": 2024,
       "file": "1TR76WMDm5inSyxc1cf4Mnbsj_8aBCZpG.pdf",
       "bytes": 982444,
@@ -84,94 +170,42 @@
         "meaningfulPageCount": 0
       },
       "driveUrl": "https://drive.google.com/file/d/12Z6yMarcTiVQ8zcY_QKgBFTO6hRfHADl/view?usp=sharing"
-    },
-    {
-      "id": "1jn503AV2SN788FjV1wBXfbN8awNwIgwO",
-      "title": "BBA-201 · Makeup · May 2024 question paper",
-      "session": "Makeup · May 2024",
-      "course": "BBA201",
-      "year": 2024,
-      "file": "1jn503AV2SN788FjV1wBXfbN8awNwIgwO.pdf",
-      "bytes": 2258869,
-      "pageCount": 3,
-      "usableText": false,
-      "textStats": {
-        "normalizedLength": 0,
-        "letterCount": 0,
-        "meaningfulPageCount": 0
-      },
-      "driveUrl": "https://drive.google.com/file/d/1jn503AV2SN788FjV1wBXfbN8awNwIgwO/view?usp=sharing"
-    },
-    {
-      "id": "1b7j-MYfjXsjEYZDeT0yKXYT0ACjSRp9g",
-      "title": "BBA-631 · May 2024 question paper",
-      "session": "May 2024",
-      "course": "BBA-631",
-      "year": 2024,
-      "file": "1b7j-MYfjXsjEYZDeT0yKXYT0ACjSRp9g.pdf",
-      "bytes": 627813,
-      "pageCount": 1,
-      "usableText": false,
-      "textStats": {
-        "normalizedLength": 0,
-        "letterCount": 0,
-        "meaningfulPageCount": 0
-      },
-      "driveUrl": "https://drive.google.com/file/d/1b7j-MYfjXsjEYZDeT0yKXYT0ACjSRp9g/view?usp=sharing"
-    },
-    {
-      "id": "1VfuK5P1LFVLaJD14phMZZH9Vpoq7sGH4",
-      "title": "BBA-102 · Makeup · November 2023 question paper",
-      "session": "Makeup · November 2023",
-      "course": "BBA102",
-      "year": 2023,
-      "file": "1VfuK5P1LFVLaJD14phMZZH9Vpoq7sGH4.pdf",
-      "bytes": 2479107,
-      "pageCount": 4,
-      "usableText": false,
-      "textStats": {
-        "normalizedLength": 0,
-        "letterCount": 0,
-        "meaningfulPageCount": 0
-      },
-      "driveUrl": "https://drive.google.com/file/d/1VfuK5P1LFVLaJD14phMZZH9Vpoq7sGH4/view?usp=sharing"
-    },
-    {
-      "id": "1YKoTGZJFjYVrrkE09sV5XGyrF0V47GQo",
-      "title": "BBA-101 · November 2023 question paper",
-      "session": "November 2023",
-      "course": "BBA101",
-      "year": 2023,
-      "file": "1YKoTGZJFjYVrrkE09sV5XGyrF0V47GQo.pdf",
-      "bytes": 983979,
-      "pageCount": 2,
-      "usableText": false,
-      "textStats": {
-        "normalizedLength": 0,
-        "letterCount": 0,
-        "meaningfulPageCount": 0
-      },
-      "driveUrl": "https://drive.google.com/file/d/1YKoTGZJFjYVrrkE09sV5XGyrF0V47GQo/view?usp=sharing"
-    },
-    {
-      "id": "1a8ltKVpOKeETzR-MbosajRIckNuu-nBP",
-      "title": "BBA-101 · May 2023 question paper",
-      "session": "May 2023",
-      "course": "BBA-101",
-      "year": 2023,
-      "file": "1a8ltKVpOKeETzR-MbosajRIckNuu-nBP.pdf",
-      "bytes": 67809,
-      "pageCount": 2,
-      "usableText": false,
-      "textStats": {
-        "normalizedLength": 0,
-        "letterCount": 0,
-        "meaningfulPageCount": 0
-      },
-      "driveUrl": "https://drive.google.com/file/d/1a8ltKVpOKeETzR-MbosajRIckNuu-nBP/view?usp=sharing"
     }
   ],
   "scannedCandidates": [
+    {
+      "id": "1zST5rxW76Q4INmIliFrfRS_p8gLoC-5F",
+      "title": "BTAM-101 · May 2024 question paper",
+      "usableText": false,
+      "pageCount": 2,
+      "textStats": {
+        "normalizedLength": 0,
+        "letterCount": 0,
+        "meaningfulPageCount": 0
+      }
+    },
+    {
+      "id": "1rqfElKZTqRRca9epIpW1wrGmI0FYQuVG",
+      "title": "BTAM-101 · November 2023 question paper",
+      "usableText": false,
+      "pageCount": 2,
+      "textStats": {
+        "normalizedLength": 0,
+        "letterCount": 0,
+        "meaningfulPageCount": 0
+      }
+    },
+    {
+      "id": "1ILBGQBCCoWG4klPYgxWGGqDBOaeXMxQ2",
+      "title": "BTAM-101 · May 2022 question paper",
+      "usableText": false,
+      "pageCount": 2,
+      "textStats": {
+        "normalizedLength": 0,
+        "letterCount": 0,
+        "meaningfulPageCount": 0
+      }
+    },
     {
       "id": "1dCuyMtl8UymWaXUqSnjY0pfu2f4r_ke5",
       "title": "PCME-110 · Makeup · November 2025 question paper",
@@ -239,17 +273,6 @@
       }
     },
     {
-      "id": "1b7j-MYfjXsjEYZDeT0yKXYT0ACjSRp9g",
-      "title": "BBA-631 · May 2024 question paper",
-      "usableText": false,
-      "pageCount": 1,
-      "textStats": {
-        "normalizedLength": 0,
-        "letterCount": 0,
-        "meaningfulPageCount": 0
-      }
-    },
-    {
       "id": "1VfuK5P1LFVLaJD14phMZZH9Vpoq7sGH4",
       "title": "BBA-102 · Makeup · November 2023 question paper",
       "usableText": false,
@@ -261,52 +284,8 @@
       }
     },
     {
-      "id": "1YKoTGZJFjYVrrkE09sV5XGyrF0V47GQo",
-      "title": "BBA-101 · November 2023 question paper",
-      "usableText": false,
-      "pageCount": 2,
-      "textStats": {
-        "normalizedLength": 0,
-        "letterCount": 0,
-        "meaningfulPageCount": 0
-      }
-    },
-    {
       "id": "1a8ltKVpOKeETzR-MbosajRIckNuu-nBP",
       "title": "BBA-101 · May 2023 question paper",
-      "usableText": false,
-      "pageCount": 2,
-      "textStats": {
-        "normalizedLength": 0,
-        "letterCount": 0,
-        "meaningfulPageCount": 0
-      }
-    },
-    {
-      "id": "1ovOen2hemEBnFaYax_N2Fa5_6hsUvHc2",
-      "title": "BBA-301 · Makeup · November 2022 question paper",
-      "usableText": false,
-      "pageCount": 2,
-      "textStats": {
-        "normalizedLength": 0,
-        "letterCount": 0,
-        "meaningfulPageCount": 0
-      }
-    },
-    {
-      "id": "1rQao5It_wrTOieJ-HqJic5Cs3wLpdd7Z",
-      "title": "BBA-101 · November 2022 question paper",
-      "usableText": false,
-      "pageCount": 2,
-      "textStats": {
-        "normalizedLength": 0,
-        "letterCount": 0,
-        "meaningfulPageCount": 0
-      }
-    },
-    {
-      "id": "13R9qakyByt3l-lppVhyUyGYeu7l3BuJT",
-      "title": "BSC-101 · Makeup · May 2022 question paper",
       "usableText": false,
       "pageCount": 2,
       "textStats": {
