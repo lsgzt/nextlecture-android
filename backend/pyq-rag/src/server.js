@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
-import { config } from './config.js';
+import { config, hasGemini, hasSupabase } from './config.js';
 import { buildRouter } from './routes.js';
 
 const app = express();
@@ -18,7 +18,7 @@ app.use((req, res, next) => {
   return next();
 });
 app.use(express.json({ limit: '64kb', strict: true }));
-app.get('/health', (_req, res) => res.json({ ok: true, service: 'gndec-pyq-rag-api', version: '1.0.0' }));
+app.get('/health', (_req, res) => res.json({ ok: true, service: 'gndec-pyq-rag-api', version: '1.0.0', dependencies: { supabase: hasSupabase(), gemini: hasGemini() } }));
 const apiRouter = buildRouter();
 app.use('/api', apiRouter);
 app.use(apiRouter);
