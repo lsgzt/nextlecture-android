@@ -125,8 +125,12 @@ export async function getCourseCoverage(courseCode) {
   }));
   const { data: latest, error: latestError } = await db.from('pyq_papers').select('updated_at').eq('course_code', courseCode).order('updated_at', { ascending: false }).limit(1).maybeSingle();
   if (latestError && latestError.code !== 'PGRST116') throw new Error(`Supabase course coverage timestamp failed: ${latestError.message}`);
+  const { data: failures, error: failureError } = await db.from('pyq_papers').select('processing_error').eq('course_code', courseCode).eq('processing_status', 'failed').order('updated_at', { ascending: false }).limit(10);
+  if (failureError) throw new Error(`Supabase course failure reason read failed: ${failureError.message}`);
+  const failureText = (failures || []).map((row) => String(row.processing_error || '').toLowerCase()).join(' ');
+  const failureReason = failureText.includes('quota') || failureText.includes('rate limit') || failureText.includes('resource exhausted') ? 'provider_quota' : (failures || []).length ? 'processing_error' : null;
   const total = statuses.reduce((sum, status) => sum + (counts[status] || 0), 0);
-  return { total, pending: counts.pending || 0, processing: counts.processing || 0, completed: counts.completed || 0, failed: counts.failed || 0, skipped: counts.skipped || 0, updatedAt: latest?.updated_at || null };
+  return { total, pending: counts.pending || 0, processing: counts.processing || 0, completed: counts.completed || 0, failed: counts.failed || 0, skipped: counts.skipped || 0, failureReason, updatedAt: latest?.updated_at || null };
 }
 
 export async function getGroup(groupId) {

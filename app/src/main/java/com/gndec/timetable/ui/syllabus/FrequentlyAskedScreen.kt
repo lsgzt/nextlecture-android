@@ -80,6 +80,7 @@ fun FrequentlyAskedEntryCard(onClick: () -> Unit) {
 
 private fun coverageHeadline(coverage: PyqCoverage): String = when {
     coverage.total == 0 -> "No papers for this course are in the catalog."
+    coverage.failureReason == "provider_quota" -> "AI quota reached; ${coverage.failed} paper${if (coverage.failed == 1) " is" else "s are"} waiting to retry."
     coverage.failed > 0 && coverage.processing > 0 -> "Indexing is running, but ${coverage.failed} paper${if (coverage.failed == 1) " needs" else "s need"} a retry."
     coverage.failed > 0 -> "${coverage.failed} paper${if (coverage.failed == 1) " needs" else "s need"} a retry."
     coverage.processing > 0 -> "Indexing is running right now."
@@ -91,6 +92,7 @@ private fun coverageHeadline(coverage: PyqCoverage): String = when {
 
 private fun coverageSupportingText(coverage: PyqCoverage): String = when {
     coverage.total == 0 -> "Check the course code, then use the original Previous year papers browser to confirm the paper exists."
+    coverage.failureReason == "provider_quota" -> "Gemini’s request quota was reached. Completed results remain available; failed papers will retry after quota recovery."
     coverage.failed > 0 -> "Completed results remain available. Failed papers are isolated and can be retried by the administrator."
     coverage.processing > 0 -> "This screen refreshes automatically while the server processes papers. You can also refresh manually."
     coverage.pending > 0 -> "The remaining papers will appear as resumable batches finish."

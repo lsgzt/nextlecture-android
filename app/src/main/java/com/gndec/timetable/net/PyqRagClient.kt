@@ -26,6 +26,7 @@ data class PyqCoverage(
     val completed: Int = 0,
     val failed: Int = 0,
     val skipped: Int = 0,
+    val failureReason: String? = null,
     @SerialName("updatedAt") val updatedAt: String? = null
 )
 

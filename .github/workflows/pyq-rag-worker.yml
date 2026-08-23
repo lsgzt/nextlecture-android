@@ -19,6 +19,11 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${PYQ_ADMIN_TOKEN}" || { echo "PYQ_ADMIN_TOKEN repository secret is not configured"; exit 1; }
+          curl --fail-with-body --silent --show-error --retry 2 --retry-delay 5 --max-time 120 \
+            -X POST "https://gndec-pyq-rag-api.vercel.app/api/admin/retry-failed" \
+            -H "x-pyq-admin-token: ${PYQ_ADMIN_TOKEN}" \
+            -H "content-type: application/json" \
+            --data '{"limit":1}'
           curl --fail-with-body --silent --show-error --retry 2 --retry-delay 5 --max-time 290 \
             -X POST "https://gndec-pyq-rag-api.vercel.app/api/admin/process-batch" \
             -H "x-pyq-admin-token: ${PYQ_ADMIN_TOKEN}" \
