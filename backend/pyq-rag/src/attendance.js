@@ -122,12 +122,34 @@ export async function createAttendanceSession(input) {
     last_seen_at: new Date().toISOString(),
   };
   const db = getDb();
-  const { data: existing, error: existingError } = await db
+  const { data: installationExisting, error: installationError } = await db
     .from('attendance_students')
     .select('id')
     .eq('installation_hash', installationHash)
     .maybeSingle();
-  if (existingError) throw new Error(`attendance session read failed: ${existingError.message}`);
+  if (installationError) throw new Error(`attendance installation lookup failed: ${installationError.message}`);
+
+  // A reinstall receives a new installation ID. Reclaim the same server-side owner
+  // through the saved student profile fingerprint so its attendance records survive.
+  const profileLookup = installationExisting ? null : await db
+    .from('attendance_students')
+    .select('id,last_seen_at')
+    .eq('profile_fingerprint', parsed.profileFingerprint)
+    .order('last_seen_at', { ascending: false })
+    .limit(50);
+  if (profileLookup?.error) throw new Error(`attendance profile lookup failed: ${profileLookup.error.message}`);
+
+  let existing = installationExisting || null;
+  if (!existing && profileLookup?.data?.length) {
+    const candidateIds = profileLookup.data.map((candidate) => candidate.id);
+    const recordLookup = await db
+      .from('attendance_records')
+      .select('student_id')
+      .in('student_id', candidateIds)
+      .limit(5000);
+    if (recordLookup.error) throw new Error(`attendance profile records lookup failed: ${recordLookup.error.message}`);
+    existing = chooseAttendanceOwner(profileLookup.data, recordLookup.data || []);
+  }
 
   const result = existing
     ? await db.from('attendance_students').update(row).eq('id', existing.id).select('id').single()
@@ -188,6 +210,16 @@ export async function removeAttendance(studentId, attendanceDate, lectureKey) {
     .eq('attendance_date', parsedDate)
     .eq('lecture_key', parsedKey);
   if (error) throw new Error(`attendance record delete failed: ${error.message}`);
+}
+
+export function chooseAttendanceOwner(candidates, records) {
+  const counts = new Map();
+  for (const record of records || []) counts.set(record.student_id, (counts.get(record.student_id) || 0) + 1);
+  return [...(candidates || [])].sort((left, right) => {
+    const countDifference = (counts.get(right.id) || 0) - (counts.get(left.id) || 0);
+    if (countDifference !== 0) return countDifference;
+    return new Date(right.last_seen_at || 0).getTime() - new Date(left.last_seen_at || 0).getTime();
+  })[0] || null;
 }
 
 export { summarize };

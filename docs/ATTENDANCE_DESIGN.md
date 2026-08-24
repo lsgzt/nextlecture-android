@@ -6,13 +6,13 @@ Attendance is an additive feature. Existing timetable, notifications, PYQ RAG, a
 
 ## Identity and privacy
 
-The current app has no Supabase Auth session. Attendance therefore uses a device-linked, high-entropy bearer session issued by the existing Vercel API. The app generates a random installation ID, registers the saved student profile fingerprint, receives an access token, and stores the token only in Android Keystore-backed encrypted preferences. Supabase stores only a SHA-256 hash of the installation ID and access token, plus branch/subsection and a profile fingerprint; it does not store the student name, registration number, or CRN in the attendance tables.
+The current app has no Supabase Auth session. Attendance therefore uses a high-entropy bearer session issued by the existing Vercel API. The app generates a random installation ID, registers the saved student profile fingerprint, receives an access token, and stores the token only in Android Keystore-backed encrypted preferences. Supabase stores only a SHA-256 hash of the installation ID and access token, plus branch/subsection and the opaque profile fingerprint; it does not store the student name, registration number, or CRN in the attendance tables.
 
-This permits one app installation to read/write only its own attendance records. It is not an account system and does not synchronize attendance across phones. A future authenticated account/OTP flow can replace it without changing the attendance-record schema.
+The server first recognizes an existing installation and otherwise recovers the same attendance owner by the saved profile fingerprint. This means a reinstall can reclaim the student's existing server-side attendance records after the same saved profile is entered again, while the records remain associated with the opaque student-profile identity rather than a plaintext name. It is still not an account system and does not synchronize attendance across phones. A future authenticated account/OTP flow can replace it without changing the attendance-record schema.
 
 ## Supabase tables
 
-`attendance_students` stores one server-side attendance owner per app installation. `attendance_records` stores one immutable lecture identity per student/date/lecture key, with an upsertable `status` of `present` or `absent`. Unmarked lectures are not counted as present or absent.
+`attendance_students` stores one server-side attendance owner per saved student profile, with the current installation's rotated bearer session. `attendance_records` stores one immutable lecture identity per student/date/lecture key, with an upsertable `status` of `present` or `absent`. Unmarked lectures are not counted as present or absent.
 
 The unique key is `(student_id, attendance_date, lecture_key)`. The client derives `lecture_key` deterministically from subsection, date, start/end minutes, subject, and venue. Each record also stores subject, teacher, venue, and start/end minutes so history remains readable even after a timetable refresh.
 
@@ -31,7 +31,7 @@ Percentage is `present / (present + absent) * 100`; unmarked lectures are exclud
 
 - Profile gets a `View attendance` action.
 - Lecture details gets a `Mark attendance` card with `Present` and `Absent` choices; updating an existing mark is allowed.
-- Attendance screen shows percentage, present/absent/unmarked meaning, target percentage controls, maximum affordable misses, and recovery guidance.
+- Attendance screen shows percentage, present/absent/unmarked meaning, target percentage controls, maximum affordable misses, and recovery guidance. The selected target is persisted locally in DataStore and restored whenever the attendance screen is reopened.
 - A date selector and date-wise lecture list allow backfilling previous lectures. The list is generated from the locally saved subsection timetable for the selected weekday, while the marked state comes from the server.
 - A compact calendar/history section shows marked dates with present/absent color states and opens the selected date’s lecture list.
 - Marking requires connectivity so the server remains authoritative. Failed writes remain visible as an error and never pretend that a mark was stored.

@@ -89,22 +89,27 @@ fun AttendanceScreen(
     val today = LocalDate.now()
     val historyDates = remember(today) { (0L..13L).map { today.minusDays(it) }.reversed() }
 
-    fun reload() {
-        scope.launch {
-            loading = true
-            error = null
-            runCatching {
-                val cfg = container.settings.flow.first()
-                activeGroup = cfg.studentSubsection.ifBlank { cfg.group.orEmpty() }
-                lectures = if (activeGroup.isBlank()) emptyList() else container.db.lectureDao().getForGroup(activeGroup)
-                container.attendanceManager.load(today.minusDays(365), today, target.toDouble())
-            }.onSuccess { loaded -> response = loaded }
-                .onFailure { error = it.message ?: "Could not load attendance from the server" }
-            loading = false
-        }
+    suspend fun reloadNow() {
+        loading = true
+        error = null
+        runCatching {
+            val cfg = container.settings.flow.first()
+            activeGroup = cfg.studentSubsection.ifBlank { cfg.group.orEmpty() }
+            lectures = if (activeGroup.isBlank()) emptyList() else container.db.lectureDao().getForGroup(activeGroup)
+            container.attendanceManager.load(today.minusDays(365), today, target.toDouble())
+        }.onSuccess { loaded -> response = loaded }
+            .onFailure { error = it.message ?: "Could not load attendance from the server" }
+        loading = false
     }
 
-    LaunchedEffect(Unit) { reload() }
+    fun reload() {
+        scope.launch { reloadNow() }
+    }
+
+    LaunchedEffect(Unit) {
+        target = container.settings.flow.first().attendanceTarget
+        reloadNow()
+    }
 
     val dayLectures = lectures.filter { it.dayOfWeek == selectedDate.dayOfWeek.value }
         .sortedBy { it.startMinutes }
@@ -120,7 +125,14 @@ fun AttendanceScreen(
         ) {
             item { PremiumPageHeader("Attendance", "Your server-synced lecture record", onBack = onBack) }
             item {
-                AttendanceSummaryCard(response, target, onTargetChange = { target = it })
+                AttendanceSummaryCard(
+                    response = response,
+                    target = target,
+                    onTargetChange = { value ->
+                        target = value
+                        scope.launch { container.settings.setAttendanceTarget(value) }
+                    }
+                )
             }
             item {
                 Card(

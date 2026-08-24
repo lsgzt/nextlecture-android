@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { attendanceRecordSchema, summarize } from './attendance.js';
+import { attendanceRecordSchema, chooseAttendanceOwner, summarize } from './attendance.js';
 
 test('attendance summary excludes unmarked lectures and calculates affordable misses', () => {
   const records = [
@@ -22,6 +22,17 @@ test('attendance summary reports one affordable absence at exactly 80 percent', 
   assert.equal(summary.percentage, 100);
   assert.equal(summary.affordableMisses, 1);
   assert.equal(summary.lecturesToAttend, null);
+});
+
+test('profile recovery chooses the candidate that already owns attendance records', () => {
+  const selected = chooseAttendanceOwner(
+    [
+      { id: 'empty', last_seen_at: '2026-08-24T10:00:00.000Z' },
+      { id: 'marked', last_seen_at: '2026-08-23T10:00:00.000Z' },
+    ],
+    [{ student_id: 'marked' }]
+  );
+  assert.equal(selected.id, 'marked');
 });
 
 test('attendance record schema rejects future-shaped invalid dates and reversed times', () => {

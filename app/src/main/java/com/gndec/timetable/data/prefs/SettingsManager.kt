@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -53,7 +54,8 @@ data class AppSettings(
     val lastReleaseName: String = "",
     val lastReleaseNotes: String = "",
     val lastReleaseCheckedAt: Long = 0L,
-    val lastReleaseNotifiedMarker: String = ""
+    val lastReleaseNotifiedMarker: String = "",
+    val attendanceTarget: Float = 75f
 ) {
     companion object {
         const val DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"
@@ -108,6 +110,7 @@ class SettingsManager(private val context: Context) {
         val LAST_RELEASE_NOTES = stringPreferencesKey("last_release_notes")
         val LAST_RELEASE_CHECKED_AT = longPreferencesKey("last_release_checked_at")
         val LAST_RELEASE_NOTIFIED_MARKER = stringPreferencesKey("last_release_notified_marker")
+        val ATTENDANCE_TARGET = floatPreferencesKey("attendance_target")
     }
 
     val flow: Flow<AppSettings> = context.dataStore.data.map { p ->
@@ -152,7 +155,8 @@ class SettingsManager(private val context: Context) {
             lastReleaseName = p[K.LAST_RELEASE_NAME] ?: "",
             lastReleaseNotes = p[K.LAST_RELEASE_NOTES] ?: "",
             lastReleaseCheckedAt = p[K.LAST_RELEASE_CHECKED_AT] ?: 0L,
-            lastReleaseNotifiedMarker = p[K.LAST_RELEASE_NOTIFIED_MARKER] ?: ""
+            lastReleaseNotifiedMarker = p[K.LAST_RELEASE_NOTIFIED_MARKER] ?: "",
+            attendanceTarget = (p[K.ATTENDANCE_TARGET] ?: 75f).coerceIn(50f, 100f)
         )
     }
 
@@ -233,6 +237,7 @@ class SettingsManager(private val context: Context) {
         it[K.LAST_RELEASE_CHECKED_AT] = checkedAt
     }
     suspend fun setReleaseNotifiedMarker(marker: String) = context.dataStore.edit { it[K.LAST_RELEASE_NOTIFIED_MARKER] = marker.trim() }
+    suspend fun setAttendanceTarget(value: Float) = context.dataStore.edit { it[K.ATTENDANCE_TARGET] = value.coerceIn(50f, 100f) }
 
     private fun normalizeGeminiModel(value: String?): String {
         val model = value?.trim().orEmpty()
