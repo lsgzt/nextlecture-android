@@ -105,9 +105,6 @@ fun AttendanceScreen(
     }
 
     LaunchedEffect(Unit) { reload() }
-    LaunchedEffect(target) {
-        if (response != null) reload()
-    }
 
     val dayLectures = lectures.filter { it.dayOfWeek == selectedDate.dayOfWeek.value }
         .sortedBy { it.startMinutes }
@@ -218,7 +215,7 @@ fun AttendanceScreen(
 
 @Composable
 private fun AttendanceSummaryCard(response: AttendanceResponse?, target: Float, onTargetChange: (Float) -> Unit) {
-    val summary = response?.summary
+    val summary = response?.let { calculateSummary(it.records, target.toDouble()) }
     val percentage = summary?.percentage
     Card(
         Modifier.fillMaxWidth().padding(horizontal = 20.dp),
@@ -292,6 +289,32 @@ private fun AttendanceLectureCard(
             }
         }
     }
+}
+
+@Composable
+private fun calculateSummary(records: List<AttendanceRecord>, target: Double): com.gndec.timetable.net.AttendanceSummary {
+    val present = records.count { it.status == "present" }
+    val absent = records.count { it.status == "absent" }
+    val marked = present + absent
+    val percentage = if (marked == 0) null else present.toDouble() * 100.0 / marked
+    val ratio = target / 100.0
+    val affordable = when {
+        ratio <= 0.0 -> 0
+        ratio >= 1.0 -> 0
+        else -> kotlin.math.max(0, kotlin.math.floor(present / ratio - marked + 1e-9).toInt())
+    }
+    val toAttend = if (ratio in 0.0..1.0 && ratio < 1.0 && marked > 0 && percentage != null && percentage < target) {
+        kotlin.math.ceil((ratio * marked - present) / (1.0 - ratio)).toInt()
+    } else null
+    return com.gndec.timetable.net.AttendanceSummary(
+        present = present,
+        absent = absent,
+        markedTotal = marked,
+        percentage = percentage,
+        target = target,
+        affordableMisses = affordable,
+        lecturesToAttend = toAttend
+    )
 }
 
 @Composable
