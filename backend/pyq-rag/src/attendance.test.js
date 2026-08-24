@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { attendanceRecordSchema, chooseAttendanceOwner, summarize } from './attendance.js';
+import { attendanceRecordSchema, chooseAttendanceOwner, scopedInstallationHash, summarize } from './attendance.js';
 
 test('attendance summary excludes unmarked lectures and calculates affordable misses', () => {
   const records = [
@@ -22,6 +22,11 @@ test('attendance summary reports one affordable absence at exactly 80 percent', 
   assert.equal(summary.percentage, 100);
   assert.equal(summary.affordableMisses, 1);
   assert.equal(summary.lecturesToAttend, null);
+});
+
+test('installation identity is scoped to the active profile', () => {
+  assert.notEqual(scopedInstallationHash('same-installation', 'a'.repeat(64)), scopedInstallationHash('same-installation', 'b'.repeat(64)));
+  assert.equal(scopedInstallationHash('same-installation', 'a'.repeat(64)), scopedInstallationHash('same-installation', 'a'.repeat(64)));
 });
 
 test('profile recovery chooses the candidate that already owns attendance records', () => {

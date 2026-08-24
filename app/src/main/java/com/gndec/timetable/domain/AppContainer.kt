@@ -30,7 +30,7 @@ class AppContainer(val context: Context) {
     val timetableSourceResolver by lazy { TimetableSourceResolver(pyqRagClient) }
     val syllabusManager by lazy { SyllabusManager(context, settings, keys, GeminiClient(), db.syllabusChatDao()) }
     val releaseUpdateManager by lazy { ReleaseUpdateManager(context, settings) }
-    val studentDirectoryManager by lazy { StudentDirectoryManager(context, settings) }
+    val studentDirectoryManager by lazy { StudentDirectoryManager(context, settings, keys) }
     val refreshManager by lazy { RefreshManager(db, settings, keys, fetcher, timetableSourceResolver, normalizer, scheduler) }
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 }

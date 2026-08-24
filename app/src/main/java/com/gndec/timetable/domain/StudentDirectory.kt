@@ -3,6 +3,7 @@ package com.gndec.timetable.domain
 import android.content.Context
 import com.gndec.timetable.R
 import com.gndec.timetable.data.prefs.SettingsManager
+import com.gndec.timetable.data.prefs.SecureKeyStore
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -35,7 +36,8 @@ sealed class StudentDirectoryResult {
 
 class StudentDirectoryManager(
     context: Context,
-    private val settings: SettingsManager
+    private val settings: SettingsManager,
+    private val keys: SecureKeyStore
 ) {
     companion object {
         val BRANCHES = listOf("CE", "CS", "EC", "EE", "IT", "ME", "RAI")
@@ -124,6 +126,7 @@ class StudentDirectoryManager(
             current.group != match.subsection
         if (!needsUpgrade) return@withContext false
 
+        keys.removeAttendanceSession()
         settings.saveStudentProfile(
             name = match.candidateName,
             rollNumber = match.crn,

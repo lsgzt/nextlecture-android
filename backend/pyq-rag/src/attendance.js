@@ -43,6 +43,10 @@ const attendanceQuerySchema = z.object({
 const hash = (value) => crypto.createHash('sha256').update(String(value)).digest('hex');
 const token = () => crypto.randomBytes(32).toString('base64url');
 
+export function scopedInstallationHash(installationId, profileFingerprint) {
+  return hash(`${installationId}|${profileFingerprint}`);
+}
+
 function todayUtc() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -110,7 +114,9 @@ export async function authenticateAttendance(req) {
 
 export async function createAttendanceSession(input) {
   const parsed = attendanceSessionSchema.parse(input);
-  const installationHash = hash(parsed.installationId);
+  // Scope the installation identity to the saved profile as a defense in depth:
+  // switching students on one device can never reuse the previous owner's row.
+  const installationHash = scopedInstallationHash(parsed.installationId, parsed.profileFingerprint);
   const accessToken = token();
   const row = {
     installation_hash: installationHash,

@@ -101,6 +101,7 @@ fun OnboardingScreen(container: AppContainer, onDone: () -> Unit) {
             val timetableGroup = subsection
             val mentorMobile = record?.mentorMobile.orEmpty()
             val mentorVenue = record?.venue.orEmpty()
+            container.keys.removeAttendanceSession()
             container.settings.saveStudentProfile(name, crn, branch, registration, father, mother, mentor, section, subsection, studentGroup, mentorMobile, mentorVenue, source)
             if (timetableGroup.isNotBlank()) {
                 runCatching { container.refreshManager.changeGroup(timetableGroup) }

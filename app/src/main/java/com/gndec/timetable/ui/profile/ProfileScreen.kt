@@ -115,6 +115,7 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit, onOpenAttendance:
 
     fun choose(record: StudentDirectoryRecord) {
         scope.launch {
+            container.keys.removeAttendanceSession()
             container.settings.saveStudentProfile(
                 record.candidateName,
                 record.crn,
@@ -139,6 +140,7 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit, onOpenAttendance:
 
     fun saveManual() {
         scope.launch {
+            container.keys.removeAttendanceSession()
             container.settings.saveStudentProfile(manualName, manualCrn, branch, manualRegistration, manualFather, manualMother, manualMentor, manualSection, manualSubsection, manualSubsection, "", "", "manual")
             runCatching { if (manualSubsection.isNotBlank()) container.refreshManager.changeGroup(manualSubsection) }
             savedMessage = "Manual profile saved on this device"
