@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Person
@@ -24,8 +25,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -33,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.gndec.timetable.data.db.LectureEntity
 import com.gndec.timetable.domain.AppContainer
+import com.gndec.timetable.domain.AttendanceManager
 import com.gndec.timetable.ui.BottomBar
 import com.gndec.timetable.ui.Header
 import com.gndec.timetable.ui.IconBadge
@@ -45,6 +52,8 @@ import com.gndec.timetable.ui.theme.GndecMuted
 import com.gndec.timetable.ui.theme.GndecTeal
 import com.gndec.timetable.ui.theme.GndecTealDark
 import com.gndec.timetable.util.Formatters
+import java.time.LocalDate
+import kotlinx.coroutines.launch
 
 @Composable
 fun LectureDetailScreen(
@@ -57,6 +66,23 @@ fun LectureDetailScreen(
     onOpenSettings: () -> Unit
 ) {
     val settings by container.settings.flow.collectAsStateWithLifecycle(initialValue = com.gndec.timetable.data.prefs.AppSettings())
+    val scope = rememberCoroutineScope()
+    val attendanceDate = remember { LocalDate.now() }
+    var attendanceStatus by remember { mutableStateOf<String?>(null) }
+    var attendanceBusy by remember { mutableStateOf(true) }
+    var attendanceSaving by remember { mutableStateOf(false) }
+    var attendanceError by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(lecture.id, attendanceDate) {
+        attendanceBusy = true
+        attendanceError = null
+        runCatching { container.attendanceManager.load(attendanceDate, attendanceDate, 75.0) }
+            .onSuccess { loaded ->
+                val key = AttendanceManager.lectureKey(attendanceDate, lecture)
+                attendanceStatus = loaded.records.firstOrNull { it.lectureKey == key }?.status
+            }
+            .onFailure { attendanceError = it.message ?: "Attendance is unavailable" }
+        attendanceBusy = false
+    }
     val reminderEnabled = settings.remind15 || settings.remind30 || settings.remind5 || settings.remindAtStart
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -95,6 +121,33 @@ fun LectureDetailScreen(
                             InfoRow(Icons.Default.School, lecture.lectureType ?: "Lecture")
                         }
                     }
+                }
+                item {
+                    AttendanceDetailCard(
+                        status = attendanceStatus,
+                        busy = attendanceBusy || attendanceSaving,
+                        error = attendanceError,
+                        onStatus = { status ->
+                            attendanceSaving = true
+                            attendanceError = null
+                            scope.launch {
+                                runCatching { container.attendanceManager.mark(attendanceDate, lecture, status) }
+                                    .onSuccess { saved -> attendanceStatus = saved.status }
+                                    .onFailure { attendanceError = it.message ?: "Could not save attendance" }
+                                attendanceSaving = false
+                            }
+                        },
+                        onClear = {
+                            attendanceSaving = true
+                            attendanceError = null
+                            scope.launch {
+                                runCatching { container.attendanceManager.unmark(attendanceDate, lecture) }
+                                    .onSuccess { attendanceStatus = null }
+                                    .onFailure { attendanceError = it.message ?: "Could not clear attendance" }
+                                attendanceSaving = false
+                            }
+                        }
+                    )
                 }
                 item {
                     Card(
@@ -136,6 +189,60 @@ fun LectureDetailScreen(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                         onClick = onOpenSettings
                     )
+                }
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun AttendanceDetailCard(
+    status: String?,
+    busy: Boolean,
+    error: String?,
+    onStatus: (String) -> Unit,
+    onClear: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(Modifier.padding(18.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconBadge(Icons.Default.CheckCircle, containerColor = MaterialTheme.colorScheme.primaryContainer, tint = MaterialTheme.colorScheme.primary, size = 46.dp)
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Attendance", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        when (status) {
+                            "present" -> "Marked present on this device"
+                            "absent" -> "Marked absent on this device"
+                            else -> "Not marked yet"
+                        },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+            Spacer(Modifier.size(12.dp))
+            if (error != null) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            if (busy) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                    androidx.compose.material3.CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                }
+            } else {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    androidx.compose.material3.Button(
+                        onClick = { onStatus("present") },
+                        modifier = Modifier.weight(1f),
+                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = GndecTeal)
+                    ) { Text("Present") }
+                    androidx.compose.material3.OutlinedButton(onClick = { onStatus("absent") }, modifier = Modifier.weight(1f)) {
+                        Text("Absent", color = MaterialTheme.colorScheme.error)
+                    }
+                    if (status != null) androidx.compose.material3.TextButton(onClick = onClear) { Text("Clear") }
                 }
             }
         }

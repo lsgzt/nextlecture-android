@@ -69,7 +69,7 @@ import com.gndec.timetable.ui.PremiumScreenBackground
 import kotlinx.coroutines.launch
 
 @Composable
-fun ProfileScreen(container: AppContainer, onBack: () -> Unit) {
+fun ProfileScreen(container: AppContainer, onBack: () -> Unit, onOpenAttendance: () -> Unit) {
     val settings by container.settings.flow.collectAsStateWithLifecycle(initialValue = AppSettings())
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -162,6 +162,9 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit) {
             item { SourceStatus(settings.profileSource, loading, savedMessage) }
 
             if (hasSavedProfile && !lookupOpen) {
+                item {
+                    AttendanceProfileAction(onClick = onOpenAttendance)
+                }
                 item {
                     SavedProfileCard(
                         name = settings.studentName,
@@ -451,6 +454,26 @@ private fun CopyableDetail(label: String, value: String, onCopy: () -> Unit) {
                     Icon(Icons.Default.ContentCopy, contentDescription = "Copy $label", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(17.dp))
                 }
             }
+        }
+    }
+}
+
+
+@Composable
+private fun AttendanceProfileAction(onClick: () -> Unit) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(0.dp)
+    ) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("View attendance", color = MaterialTheme.colorScheme.onPrimaryContainer, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Mark lectures and track your percentage", color = MaterialTheme.colorScheme.onPrimaryContainer, style = MaterialTheme.typography.bodySmall)
+            }
+            Icon(Icons.Default.ArrowForward, contentDescription = "Open attendance", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
         }
     }
 }

@@ -25,6 +25,15 @@ import {
   writeCache,
 } from './db.js';
 import { buildEvidence, processPaper } from './rag.js';
+import {
+  authenticateAttendance,
+  attendanceRecordSchema,
+  attendanceSessionSchema,
+  createAttendanceSession,
+  listAttendance,
+  removeAttendance,
+  upsertAttendance,
+} from './attendance.js';
 
 const paperIdSchema = z.string().trim().min(5).max(200);
 const courseSchema = z.string().trim().toUpperCase().transform((value) => value.replace(/^([A-Z]{2,12})-?(\d{2,4})$/, '$1-$2')).pipe(z.string().regex(/^[A-Z]{2,12}-\d{2,4}$/));
@@ -100,6 +109,8 @@ export function buildRouter() {
   const publicLimit = createRateLimiter(config.publicRateLimitPerMinute);
   const askLimit = createRateLimiter(config.askRateLimitPerMinute);
   const retryLimit = createRateLimiter(2);
+  const attendanceSessionLimit = createRateLimiter(8);
+  const attendanceMutationLimit = createRateLimiter(120);
 
   router.get('/admin/status', requireAdmin, async (_req, res) => {
     try {
@@ -136,6 +147,58 @@ export function buildRouter() {
     } catch (error) {
       console.error('[PYQ] retry failed', error.message);
       return res.status(503).json({ error: 'retry unavailable' });
+    }
+  });
+
+  router.post('/attendance/session', attendanceSessionLimit, async (req, res) => {
+    const parsed = attendanceSessionSchema.safeParse(req.body || {});
+    if (!parsed.success) return validationError(res, parsed);
+    try {
+      return res.status(201).set('cache-control', 'no-store').json(await createAttendanceSession(parsed.data));
+    } catch (error) {
+      console.error('[ATTENDANCE] session failed', error.message);
+      return res.status(503).json({ error: 'attendance session unavailable' });
+    }
+  });
+
+  router.get('/attendance', attendanceMutationLimit, async (req, res) => {
+    try {
+      const student = await authenticateAttendance(req);
+      if (!student) return res.status(401).json({ error: 'attendance authentication required' });
+      const result = await listAttendance(student.id, req.query);
+      return res.set('cache-control', 'no-store').json(result);
+    } catch (error) {
+      if (error?.name === 'ZodError') return res.status(400).json({ error: 'invalid attendance request' });
+      console.error('[ATTENDANCE] list failed', error.message);
+      return res.status(503).json({ error: 'attendance unavailable' });
+    }
+  });
+
+  router.post('/attendance/records', attendanceMutationLimit, async (req, res) => {
+    try {
+      const student = await authenticateAttendance(req);
+      if (!student) return res.status(401).json({ error: 'attendance authentication required' });
+      const parsed = attendanceRecordSchema.safeParse(req.body || {});
+      if (!parsed.success) return validationError(res, parsed);
+      const record = await upsertAttendance(student.id, parsed.data);
+      return res.status(200).set('cache-control', 'no-store').json({ record });
+    } catch (error) {
+      if (error?.name === 'ZodError') return res.status(400).json({ error: 'invalid attendance request' });
+      console.error('[ATTENDANCE] upsert failed', error.message);
+      return res.status(503).json({ error: 'attendance write unavailable' });
+    }
+  });
+
+  router.delete('/attendance/records', attendanceMutationLimit, async (req, res) => {
+    try {
+      const student = await authenticateAttendance(req);
+      if (!student) return res.status(401).json({ error: 'attendance authentication required' });
+      await removeAttendance(student.id, req.query.date, req.query.lectureKey);
+      return res.status(204).set('cache-control', 'no-store').send();
+    } catch (error) {
+      if (error?.name === 'ZodError') return res.status(400).json({ error: 'invalid attendance request' });
+      console.error('[ATTENDANCE] delete failed', error.message);
+      return res.status(503).json({ error: 'attendance delete unavailable' });
     }
   });
 

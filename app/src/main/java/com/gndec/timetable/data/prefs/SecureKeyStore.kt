@@ -31,5 +31,30 @@ class SecureKeyStore(context: Context) {
         prefs.edit().remove(KEY_GEMINI).apply()
     }
 
-    companion object { private const val KEY_GEMINI = "gemini_api_key" }
+    fun getAttendanceInstallationId(): String? = prefs.getString(KEY_ATTENDANCE_INSTALLATION_ID, null)?.takeIf { it.isNotBlank() }
+    fun getAttendanceToken(): String? = prefs.getString(KEY_ATTENDANCE_TOKEN, null)?.takeIf { it.isNotBlank() }
+    fun getAttendanceProfileFingerprint(): String? = prefs.getString(KEY_ATTENDANCE_PROFILE_FINGERPRINT, null)?.takeIf { it.isNotBlank() }
+
+    fun setAttendanceSession(installationId: String, token: String, profileFingerprint: String) {
+        prefs.edit()
+            .putString(KEY_ATTENDANCE_INSTALLATION_ID, installationId)
+            .putString(KEY_ATTENDANCE_TOKEN, token)
+            .putString(KEY_ATTENDANCE_PROFILE_FINGERPRINT, profileFingerprint)
+            .apply()
+    }
+
+    fun removeAttendanceSession() {
+        prefs.edit()
+            .remove(KEY_ATTENDANCE_INSTALLATION_ID)
+            .remove(KEY_ATTENDANCE_TOKEN)
+            .remove(KEY_ATTENDANCE_PROFILE_FINGERPRINT)
+            .apply()
+    }
+
+    companion object {
+        private const val KEY_GEMINI = "gemini_api_key"
+        private const val KEY_ATTENDANCE_INSTALLATION_ID = "attendance_installation_id"
+        private const val KEY_ATTENDANCE_TOKEN = "attendance_access_token"
+        private const val KEY_ATTENDANCE_PROFILE_FINGERPRINT = "attendance_profile_fingerprint"
+    }
 }

@@ -28,6 +28,7 @@ import com.gndec.timetable.data.prefs.AppSettings
 import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.domain.NotificationHelper
 import com.gndec.timetable.ui.alerts.AlertsScreen
+import com.gndec.timetable.ui.attendance.AttendanceScreen
 import com.gndec.timetable.ui.day.DayScreen
 import com.gndec.timetable.ui.details.LectureDetailScreen
 import com.gndec.timetable.ui.home.HomeScreen
@@ -263,7 +264,14 @@ class MainActivity : ComponentActivity() {
                                 enterTransition = { fadeIn(tween(100)) },
                                 exitTransition = { fadeOut(tween(70)) }
                             ) {
-                                ProfileScreen(container = container, onBack = { nav.popBackStack() })
+                                ProfileScreen(container = container, onBack = { nav.popBackStack() }, onOpenAttendance = { navigate("attendance") })
+                            }
+                            composable(
+                                "attendance",
+                                enterTransition = { fadeIn(tween(100)) },
+                                exitTransition = { fadeOut(tween(70)) }
+                            ) {
+                                AttendanceScreen(container = container, onBack = { nav.popBackStack() })
                             }
                         }
                     }

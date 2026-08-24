@@ -4,6 +4,7 @@ import android.content.Context
 import com.gndec.timetable.data.db.AppDatabase
 import com.gndec.timetable.data.prefs.SecureKeyStore
 import com.gndec.timetable.data.prefs.SettingsManager
+import com.gndec.timetable.net.AttendanceClient
 import com.gndec.timetable.net.BackendClient
 import com.gndec.timetable.net.GeminiClient
 import com.gndec.timetable.net.TimetableFetcher
@@ -24,6 +25,8 @@ class AppContainer(val context: Context) {
     val announcementManager by lazy { AnnouncementManager(context, settings) }
     val erpNoticeManager by lazy { ErpNoticeManager(context, settings) }
     val pyqRagClient by lazy { PyqRagClient() }
+    val attendanceClient by lazy { AttendanceClient() }
+    val attendanceManager by lazy { AttendanceManager(attendanceClient, keys, settings) }
     val timetableSourceResolver by lazy { TimetableSourceResolver(pyqRagClient) }
     val syllabusManager by lazy { SyllabusManager(context, settings, keys, GeminiClient(), db.syllabusChatDao()) }
     val releaseUpdateManager by lazy { ReleaseUpdateManager(context, settings) }
