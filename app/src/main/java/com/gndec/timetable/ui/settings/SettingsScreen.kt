@@ -123,11 +123,13 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onOpenAlerts: ()
             ) {
                 item { Header("Settings", "Manage timetable & reminders", onBack = onBack, modifier = Modifier.padding(top = 8.dp)) }
                 message?.let { info ->
-                    item {
-                        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-                            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text(info, Modifier.weight(1f))
-                                TextButton(onClick = vm::clearMessage) { Text("OK") }
+                    item(key = "message") {
+                        androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().animateItem()) {
+                            Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(info, Modifier.weight(1f))
+                                    TextButton(onClick = vm::clearMessage) { Text("OK") }
+                                }
                             }
                         }
                     }

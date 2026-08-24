@@ -2,6 +2,7 @@ package com.gndec.timetable.ui.syllabus
 
 import android.content.Context
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -43,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.gndec.timetable.ui.motion.pressFeedback
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -163,7 +166,7 @@ fun PreviousYearPapersScreen(
                     }
                     itemsIndexed(filtered, key = { _, paper -> paper.id }) { index, paper ->
                         val previous = filtered.getOrNull(index - 1)
-                        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Column(Modifier.animateItem(), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                             if (previous?.session != paper.session) {
                                 Text(
                                     paper.session,
@@ -190,9 +193,11 @@ private fun PreviousYearPaperCard(
     paper: PreviousYearPaper,
     onOpen: () -> Unit
 ) {
+    val cardInteraction = remember { MutableInteractionSource() }
     Card(
         onClick = onOpen,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().pressFeedback(cardInteraction),
+        interactionSource = cardInteraction,
         shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),

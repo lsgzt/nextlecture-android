@@ -1,6 +1,11 @@
 package com.gndec.timetable.ui.syllabus
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,6 +61,9 @@ import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.net.PyqCoverage
 import com.gndec.timetable.net.PyqFrequentlyAskedResponse
 import com.gndec.timetable.net.PyqGroupDetailResponse
+import com.gndec.timetable.ui.motion.Motion
+import com.gndec.timetable.ui.motion.motionTween
+import com.gndec.timetable.ui.motion.pressFeedback
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -153,9 +161,11 @@ class FrequentlyAskedViewModel(private val container: AppContainer) : ViewModel(
 
 @Composable
 fun FrequentlyAskedEntryCard(onClick: () -> Unit) {
+    val entryInteraction = remember { MutableInteractionSource() }
     Card(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).pressFeedback(entryInteraction),
+        interactionSource = entryInteraction,
         shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
@@ -247,10 +257,20 @@ private fun CoverageCard(coverage: PyqCoverage, loading: Boolean, onRefresh: () 
             }
             if (coverage.failed > 0) {
                 OutlinedButton(onClick = onRetry, enabled = !retrying && !loading, modifier = Modifier.fillMaxWidth()) {
-                    if (retrying) CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp)
-                    else Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(17.dp))
-                    Spacer(Modifier.size(7.dp))
-                    Text(if (retrying) "Retrying one paper…" else "Retry one failed paper now")
+                    val retrySwapIn = motionTween<Float>(Motion.Normal)
+                    val retrySwapOut = motionTween<Float>(Motion.Fast)
+                    AnimatedContent(
+                        targetState = retrying,
+                        transitionSpec = { fadeIn(retrySwapIn) togetherWith fadeOut(retrySwapOut) },
+                        label = "retryButton"
+                    ) { isRetrying ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (isRetrying) CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp)
+                            else Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(17.dp))
+                            Spacer(Modifier.size(7.dp))
+                            Text(if (isRetrying) "Retrying one paper…" else "Retry one failed paper now")
+                        }
+                    }
                 }
             }
             coverage.updatedAt?.let {
@@ -394,10 +414,11 @@ fun FrequentlyAskedScreen(container: AppContainer, onBack: () -> Unit, onOpenGro
                     } else {
                         item { Text("${result.groups.size} repeated groups · frequency means distinct papers", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium) }
                         items(result.groups, key = { it.groupId }) { group ->
+                            val groupInteraction = remember { MutableInteractionSource() }
                             Card(onClick = {
                                 vm.rememberListScroll(responseListState.firstVisibleItemIndex, responseListState.firstVisibleItemScrollOffset)
                                 onOpenGroup(group.groupId)
-                            }, modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), elevation = CardDefaults.cardElevation(0.dp)) {
+                            }, modifier = Modifier.fillMaxWidth().animateItem().pressFeedback(groupInteraction), interactionSource = groupInteraction, shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), elevation = CardDefaults.cardElevation(0.dp)) {
                                 Column(Modifier.fillMaxWidth().padding(15.dp)) {
                                     Text(formatPyqText(group.title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                     Spacer(Modifier.height(7.dp))
@@ -461,7 +482,7 @@ fun FrequentlyAskedGroupScreen(container: AppContainer, groupId: Long, onBack: (
                     }
                     items(detail.occurrences, key = { occurrence -> occurrence.question?.id ?: occurrence.hashCode().toLong() }) { occurrence ->
                         occurrence.question?.let { question ->
-                            Card(modifier = Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), elevation = CardDefaults.cardElevation(0.dp)) {
+                            Card(modifier = Modifier.fillMaxWidth().animateItem(), shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), elevation = CardDefaults.cardElevation(0.dp)) {
                                 Column(Modifier.fillMaxWidth().padding(15.dp)) {
                                     Text(formatPyqText(question.questionText), style = MaterialTheme.typography.bodyLarge)
                                     Text("Page ${question.sourcePage} · ${question.paper?.examSession ?: "session unavailable"}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))

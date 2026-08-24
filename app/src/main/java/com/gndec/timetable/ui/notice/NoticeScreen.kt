@@ -2,8 +2,14 @@ package com.gndec.timetable.ui.notice
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -30,6 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -41,10 +48,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.domain.ErpNotice
 import com.gndec.timetable.domain.ErpNoticeManager
-import com.gndec.timetable.ui.PremiumBottomBar
+import com.gndec.timetable.ui.PremiumBottomBarContentClearance
 import com.gndec.timetable.ui.PremiumPageHeader
 import com.gndec.timetable.ui.PremiumScreenBackground
 import com.gndec.timetable.ui.TealOutlineButton
+import com.gndec.timetable.ui.motion.Motion
+import com.gndec.timetable.ui.motion.motionTween
+import com.gndec.timetable.ui.motion.pressFeedback
 import kotlinx.coroutines.launch
 
 @Composable
@@ -64,22 +74,11 @@ fun NoticeScreen(
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = {
-            PremiumBottomBar("notice") { route ->
-                when (route) {
-                    "home" -> onOpenHome()
-                    "today" -> onOpenToday()
-                    "syllabus" -> onOpenAlerts()
-                }
-            }
-        }
-    ) { padding ->
+    Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         PremiumScreenBackground {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(top = 8.dp, bottom = 26.dp),
+                contentPadding = PaddingValues(top = 8.dp, bottom = 26.dp + PremiumBottomBarContentClearance),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 item {
@@ -111,18 +110,35 @@ fun NoticeScreen(
                     }
                 }
                 if (notices.isEmpty()) {
-                    item {
-                        Card(Modifier.fillMaxWidth().padding(horizontal = 20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(0.dp)) {
-                            Text(
-                                if (refreshing) "Loading official notices…" else (lastError ?: "No cached notices available yet."),
-                                modifier = Modifier.padding(18.dp),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                    item(key = "empty") {
+                        Box(Modifier.animateItem()) {
+                            Card(Modifier.fillMaxWidth().padding(horizontal = 20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(0.dp)) {
+                                val phase = if (refreshing) "__loading" else (lastError ?: "__empty")
+                                val phaseSwapIn = motionTween<Float>(Motion.Normal)
+                                val phaseSwapOut = motionTween<Float>(Motion.Fast)
+                                AnimatedContent(
+                                    targetState = phase,
+                                    transitionSpec = { fadeIn(phaseSwapIn) togetherWith fadeOut(phaseSwapOut) },
+                                    label = "noticePhase"
+                                ) { current ->
+                                    Text(
+                                        when {
+                                            current == "__loading" -> "Loading official notices…"
+                                            current == "__empty" -> "No cached notices available yet."
+                                            else -> current
+                                        },
+                                        modifier = Modifier.padding(18.dp),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
                         }
                     }
                 } else {
                     items(notices, key = { it.id }) { notice ->
-                        NoticeCard(notice = notice, onClick = { open(notice.url) })
+                        Box(Modifier.animateItem()) {
+                            NoticeCard(notice = notice, onClick = { open(notice.url) })
+                        }
                     }
                 }
                 item {
@@ -140,9 +156,11 @@ fun NoticeScreen(
 
 @Composable
 private fun NoticeCard(notice: ErpNotice, onClick: () -> Unit) {
+    val pressInteraction = remember { MutableInteractionSource() }
     Card(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).pressFeedback(pressInteraction),
+        interactionSource = pressInteraction,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         shape = RoundedCornerShape(18.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),

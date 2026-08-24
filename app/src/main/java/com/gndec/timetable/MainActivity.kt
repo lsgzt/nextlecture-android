@@ -4,11 +4,9 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -22,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.gndec.timetable.data.db.LectureEntity
 import com.gndec.timetable.data.prefs.AppSettings
@@ -32,6 +31,11 @@ import com.gndec.timetable.ui.attendance.AttendanceScreen
 import com.gndec.timetable.ui.day.DayScreen
 import com.gndec.timetable.ui.details.LectureDetailScreen
 import com.gndec.timetable.ui.home.HomeScreen
+import com.gndec.timetable.ui.PremiumBottomBar
+import com.gndec.timetable.ui.motion.LocalReducedMotion
+import com.gndec.timetable.ui.motion.ReducedMotionProvider
+import com.gndec.timetable.ui.motion.screenEnter
+import com.gndec.timetable.ui.motion.screenExit
 import com.gndec.timetable.ui.onboarding.NotificationPermissionOnboardingScreen
 import com.gndec.timetable.ui.onboarding.OnboardingScreen
 import com.gndec.timetable.ui.notice.NoticeScreen
@@ -96,182 +100,166 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val container = (application as TimetableApp).container
         setContent {
-            val settingsFlow = remember(container.settings) { container.settings.flow.map { value: AppSettings -> value as AppSettings? } }
-            val settings by settingsFlow.collectAsState(initial = null)
-            var selectedLecture by remember { mutableStateOf<LectureEntity?>(null) }
+            ReducedMotionProvider {
+                val settingsFlow = remember(container.settings) { container.settings.flow.map { value: AppSettings -> value as AppSettings? } }
+                val settings by settingsFlow.collectAsState(initial = null)
+                var selectedLecture by remember { mutableStateOf<LectureEntity?>(null) }
 
-            if (settings == null) {
-                GndecTheme(mode = "light") {
-                    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+                if (settings == null) {
+                    GndecTheme(mode = "light") {
+                        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+                            }
                         }
                     }
-                }
-            } else {
-                GndecTheme(mode = settings!!.themeMode) {
-                    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                        val nav = rememberNavController()
-                        fun navigate(route: String) {
-                            if (nav.currentDestination?.route == route) return
-                            nav.navigate(route) {
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        }
-                        val setupComplete = settings!!.onboardingDone || settings!!.studentName.isNotBlank() || settings!!.registrationNumber.isNotBlank() || settings!!.rollNumber.isNotBlank()
-                        val permissionPromptNeeded = setupComplete &&
-                            !settings!!.notificationPermissionPrompted &&
-                            !NotificationHelper.notificationsEnabled(container.context)
-                        val startDestination = when {
-                            !setupComplete -> "onboarding"
-                            permissionPromptNeeded -> "notification_onboarding"
-                            else -> "home"
-                        }
-                        NavHost(navController = nav, startDestination = startDestination) {
-                            composable("onboarding", enterTransition = { fadeIn(tween(140)) }, exitTransition = { fadeOut(tween(100)) }) {
-                                OnboardingScreen(container = container) {
-                                    container.appScope.launch { container.settings.setOnboardingDone(true) }
-                                    nav.navigate("home") { popUpTo("onboarding") { inclusive = true } }
+                } else {
+                    GndecTheme(mode = settings!!.themeMode) {
+                        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                            val nav = rememberNavController()
+                            val reduced = LocalReducedMotion.current
+                            fun navigate(route: String) {
+                                if (nav.currentDestination?.route == route) return
+                                nav.navigate(route) {
+                                    launchSingleTop = true
+                                    restoreState = true
                                 }
                             }
-                            composable("notification_onboarding", enterTransition = { fadeIn(tween(140)) }, exitTransition = { fadeOut(tween(100)) }) {
-                                NotificationPermissionOnboardingScreen(container = container) {
-                                    nav.navigate("home") { popUpTo("notification_onboarding") { inclusive = true } }
+                            val setupComplete = settings!!.onboardingDone || settings!!.studentName.isNotBlank() || settings!!.registrationNumber.isNotBlank() || settings!!.rollNumber.isNotBlank()
+                            val permissionPromptNeeded = setupComplete &&
+                                !settings!!.notificationPermissionPrompted &&
+                                !NotificationHelper.notificationsEnabled(container.context)
+                            val startDestination = when {
+                                !setupComplete -> "onboarding"
+                                permissionPromptNeeded -> "notification_onboarding"
+                                else -> "home"
+                            }
+                            // One hoisted bottom bar for all tab destinations: it lives above the
+                            // NavHost, so screen transitions can never move or redraw the bar itself.
+                            Box(Modifier.fillMaxSize()) {
+                                NavHost(
+                                    navController = nav,
+                                    startDestination = startDestination,
+                                    enterTransition = { screenEnter(reduced, initialState.destination.route, targetState.destination.route) },
+                                    exitTransition = { screenExit(reduced, initialState.destination.route, targetState.destination.route) },
+                                    popEnterTransition = { screenEnter(reduced, initialState.destination.route, targetState.destination.route) },
+                                    popExitTransition = { screenExit(reduced, initialState.destination.route, targetState.destination.route) }
+                                ) {
+                                    composable("onboarding") {
+                                        OnboardingScreen(container = container) {
+                                            container.appScope.launch { container.settings.setOnboardingDone(true) }
+                                            nav.navigate("home") { popUpTo("onboarding") { inclusive = true } }
+                                        }
+                                    }
+                                    composable("notification_onboarding") {
+                                        NotificationPermissionOnboardingScreen(container = container) {
+                                            nav.navigate("home") { popUpTo("notification_onboarding") { inclusive = true } }
+                                        }
+                                    }
+                                    composable("home") {
+                                        HomeScreen(
+                                            container = container,
+                                            onOpenToday = { navigate("today") },
+                                            onOpenAlerts = { navigate("syllabus") },
+                                            onOpenNotice = { navigate("notice") },
+                                            onOpenSettings = { navigate("settings") },
+                                            onOpenProfile = { navigate("profile") },
+                                            onOpenLecture = { selectedLecture = it; navigate("detail") }
+                                        )
+                                    }
+                                    composable("today") {
+                                        DayScreen(
+                                            container = container,
+                                            onOpenHome = { navigate("home") },
+                                            onOpenAlerts = { navigate("syllabus") },
+                                            onOpenNotice = { navigate("notice") },
+                                            onOpenSettings = { navigate("settings") },
+                                            onOpenLecture = { selectedLecture = it; navigate("detail") }
+                                        )
+                                    }
+                                    composable("syllabus") {
+                                        SyllabusScreen(
+                                            container = container,
+                                            onBack = { nav.popBackStack() },
+                                            onOpenPreviousYearPapers = { navigate("previous_year_papers") }
+                                        )
+                                    }
+                                    composable("previous_year_papers") {
+                                        PreviousYearPapersScreen(
+                                            context = container.context,
+                                            onBack = { nav.popBackStack() },
+                                            onOpenFrequentlyAsked = { navigate("frequently_asked") }
+                                        )
+                                    }
+                                    composable("frequently_asked") {
+                                        FrequentlyAskedScreen(
+                                            container = container,
+                                            onBack = { nav.popBackStack() },
+                                            onOpenGroup = { groupId -> navigate("frequently_asked_group/$groupId") }
+                                        )
+                                    }
+                                    composable("frequently_asked_group/{groupId}") { entry ->
+                                        val groupId = entry.arguments?.getString("groupId")?.toLongOrNull()
+                                        if (groupId == null) nav.popBackStack()
+                                        else FrequentlyAskedGroupScreen(container = container, groupId = groupId, onBack = { nav.popBackStack() })
+                                    }
+                                    composable("alerts") {
+                                        AlertsScreen(
+                                            container = container,
+                                            onOpenHome = { navigate("home") },
+                                            onOpenToday = { navigate("today") },
+                                            onOpenNotice = { navigate("notice") },
+                                            onOpenSettings = { navigate("settings") },
+                                            onOpenLecture = { selectedLecture = it; navigate("detail") },
+                                            onBack = { nav.popBackStack() }
+                                        )
+                                    }
+                                    composable("notice") {
+                                        NoticeScreen(
+                                            container = container,
+                                            onOpenHome = { navigate("home") },
+                                            onOpenToday = { navigate("today") },
+                                            onOpenAlerts = { navigate("syllabus") },
+                                            onOpenSettings = { navigate("settings") }
+                                        )
+                                    }
+                                    composable("detail") {
+                                        selectedLecture?.let { lecture ->
+                                            LectureDetailScreen(
+                                                container = container,
+                                                lecture = lecture,
+                                                onBack = { nav.popBackStack() },
+                                                onOpenHome = { navigate("home") },
+                                                onOpenToday = { navigate("today") },
+                                                onOpenAlerts = { navigate("syllabus") },
+                                                onOpenSettings = { navigate("settings") }
+                                            )
+                                        }
+                                    }
+                                    composable("settings") {
+                                        SettingsScreen(container = container, onBack = { nav.popBackStack() }, onOpenAlerts = { navigate("alerts") })
+                                    }
+                                    composable("profile") {
+                                        ProfileScreen(container = container, onBack = { nav.popBackStack() }, onOpenAttendance = { navigate("attendance") })
+                                    }
+                                    composable("attendance") {
+                                        AttendanceScreen(container = container, onBack = { nav.popBackStack() })
+                                    }
                                 }
-                            }
-                            composable("home", enterTransition = { fadeIn(tween(140)) }, exitTransition = { fadeOut(tween(100)) }) {
-                                HomeScreen(
-                                    container = container,
-                                    onOpenToday = { navigate("today") },
-                                    onOpenAlerts = { navigate("syllabus") },
-                                    onOpenNotice = { navigate("notice") },
-                                    onOpenSettings = { navigate("settings") },
-                                    onOpenProfile = { navigate("profile") },
-                                    onOpenLecture = { selectedLecture = it; navigate("detail") }
-                                )
-                            }
-                            composable(
-                                "today",
-                                enterTransition = { fadeIn(tween(100)) },
-                                exitTransition = { fadeOut(tween(70)) }
-                            ) {
-                                DayScreen(
-                                    container = container,
-                                    onOpenHome = { navigate("home") },
-                                    onOpenAlerts = { navigate("syllabus") },
-                                    onOpenNotice = { navigate("notice") },
-                                    onOpenSettings = { navigate("settings") },
-                                    onOpenLecture = { selectedLecture = it; navigate("detail") }
-                                )
-                            }
-                            composable(
-                                "syllabus",
-                                enterTransition = { fadeIn(tween(100)) },
-                                exitTransition = { fadeOut(tween(70)) }
-                            ) {
-                                SyllabusScreen(
-                                    container = container,
-                                    onBack = { nav.popBackStack() },
-                                    onOpenPreviousYearPapers = { navigate("previous_year_papers") }
-                                )
-                            }
-                            composable(
-                                "previous_year_papers",
-                                enterTransition = { fadeIn(tween(100)) },
-                                exitTransition = { fadeOut(tween(70)) }
-                            ) {
-                                PreviousYearPapersScreen(
-                                    context = container.context,
-                                    onBack = { nav.popBackStack() },
-                                    onOpenFrequentlyAsked = { navigate("frequently_asked") }
-                                )
-                            }
-                            composable(
-                                "frequently_asked",
-                                enterTransition = { fadeIn(tween(100)) },
-                                exitTransition = { fadeOut(tween(70)) }
-                            ) {
-                                FrequentlyAskedScreen(
-                                    container = container,
-                                    onBack = { nav.popBackStack() },
-                                    onOpenGroup = { groupId -> navigate("frequently_asked_group/$groupId") }
-                                )
-                            }
-                            composable(
-                                "frequently_asked_group/{groupId}",
-                                enterTransition = { fadeIn(tween(100)) },
-                                exitTransition = { fadeOut(tween(70)) }
-                            ) { entry ->
-                                val groupId = entry.arguments?.getString("groupId")?.toLongOrNull()
-                                if (groupId == null) nav.popBackStack()
-                                else FrequentlyAskedGroupScreen(container = container, groupId = groupId, onBack = { nav.popBackStack() })
-                            }
-                            composable(
-                                "alerts",
-                                enterTransition = { fadeIn(tween(100)) },
-                                exitTransition = { fadeOut(tween(70)) }
-                            ) {
-                                AlertsScreen(
-                                    container = container,
-                                    onOpenHome = { navigate("home") },
-                                    onOpenToday = { navigate("today") },
-                                    onOpenNotice = { navigate("notice") },
-                                    onOpenSettings = { navigate("settings") },
-                                    onOpenLecture = { selectedLecture = it; navigate("detail") },
-                                    onBack = { nav.popBackStack() }
-                                )
-                            }
-                            composable(
-                                "notice",
-                                enterTransition = { fadeIn(tween(100)) },
-                                exitTransition = { fadeOut(tween(70)) }
-                            ) {
-                                NoticeScreen(
-                                    container = container,
-                                    onOpenHome = { navigate("home") },
-                                    onOpenToday = { navigate("today") },
-                                    onOpenAlerts = { navigate("syllabus") },
-                                    onOpenSettings = { navigate("settings") }
-                                )
-                            }
-                            composable(
-                                "detail",
-                                enterTransition = { fadeIn(tween(100)) },
-                                exitTransition = { fadeOut(tween(70)) }
-                            ) {
-                                selectedLecture?.let { lecture ->
-                                    LectureDetailScreen(
-                                        container = container,
-                                        lecture = lecture,
-                                        onBack = { nav.popBackStack() },
-                                        onOpenHome = { navigate("home") },
-                                        onOpenToday = { navigate("today") },
-                                        onOpenAlerts = { navigate("syllabus") },
-                                        onOpenSettings = { navigate("settings") }
+                                val backStackEntry by nav.currentBackStackEntryAsState()
+                                val tabRoute = when (backStackEntry?.destination?.route) {
+                                    "home", "today", "notice" -> backStackEntry?.destination?.route
+                                    // Detail keeps its previous behavior of highlighting Home.
+                                    "detail" -> "home"
+                                    else -> null
+                                }
+                                if (tabRoute != null) {
+                                    PremiumBottomBar(
+                                        selected = tabRoute,
+                                        onNavigate = { route -> navigate(route) },
+                                        modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
                                     )
                                 }
-                            }
-                            composable(
-                                "settings",
-                                enterTransition = { fadeIn(tween(100)) },
-                                exitTransition = { fadeOut(tween(70)) }
-                            ) {
-                                SettingsScreen(container = container, onBack = { nav.popBackStack() }, onOpenAlerts = { navigate("alerts") })
-                            }
-                            composable(
-                                "profile",
-                                enterTransition = { fadeIn(tween(100)) },
-                                exitTransition = { fadeOut(tween(70)) }
-                            ) {
-                                ProfileScreen(container = container, onBack = { nav.popBackStack() }, onOpenAttendance = { navigate("attendance") })
-                            }
-                            composable(
-                                "attendance",
-                                enterTransition = { fadeIn(tween(100)) },
-                                exitTransition = { fadeOut(tween(70)) }
-                            ) {
-                                AttendanceScreen(container = container, onBack = { nav.popBackStack() })
                             }
                         }
                     }

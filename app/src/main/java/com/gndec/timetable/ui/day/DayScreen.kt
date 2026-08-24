@@ -1,7 +1,22 @@
 package com.gndec.timetable.ui.day
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +43,7 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -44,10 +60,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -57,9 +75,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gndec.timetable.data.db.LectureEntity
 import com.gndec.timetable.data.prefs.AppSettings
 import com.gndec.timetable.domain.AppContainer
-import com.gndec.timetable.ui.PremiumBottomBar
+import com.gndec.timetable.ui.PremiumBottomBarContentClearance
 import com.gndec.timetable.ui.PremiumPageHeader
 import com.gndec.timetable.ui.PremiumScreenBackground
+import com.gndec.timetable.ui.motion.LocalReducedMotion
+import com.gndec.timetable.ui.motion.Motion
+import com.gndec.timetable.ui.motion.motionSpring
+import com.gndec.timetable.ui.motion.motionTween
+import com.gndec.timetable.ui.motion.pressFeedback
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
 import java.time.DayOfWeek
@@ -131,22 +154,11 @@ fun DayScreen(
     }
     val weekDays = (0L..6L).map { selectedDate.plusDays(it) }
 
-    Scaffold(
-        containerColor = background,
-        bottomBar = {
-            PremiumBottomBar("today") { route ->
-                when (route) {
-                    "home" -> onOpenHome()
-                    "syllabus" -> onOpenAlerts()
-                    "notice" -> onOpenNotice()
-                }
-            }
-        }
-    ) { padding ->
+    Scaffold(containerColor = background) { padding ->
         Box(Modifier.fillMaxSize().background(background)) {
             LazyColumn(
                 Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(top = 8.dp, bottom = 26.dp),
+                contentPadding = PaddingValues(top = 8.dp, bottom = 26.dp + PremiumBottomBarContentClearance),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 item { PremiumPageHeader(viewMode.title, dateLabel, onSettings = onOpenSettings) }
@@ -198,17 +210,19 @@ fun DayScreen(
                                 }
                             }
                         ) { item ->
-                            when (item) {
-                                is TimelineItem.Lecture -> TimelineLectureCard(
-                                    lecture = item.lecture,
-                                    state = item.state,
-                                    nowMinutes = if (viewMode == DayViewMode.TODAY) nowMinutes else -1,
-                                    accent = accent,
-                                    primaryText = primaryText,
-                                    muted = muted,
-                                    onClick = { onOpenLecture(item.lecture) }
-                                )
-                                is TimelineItem.Free -> FreePeriod(start = item.start, end = item.end, muted = muted, accent = accent)
+                            Box(Modifier.animateItem()) {
+                                when (item) {
+                                    is TimelineItem.Lecture -> TimelineLectureCard(
+                                        lecture = item.lecture,
+                                        state = item.state,
+                                        nowMinutes = if (viewMode == DayViewMode.TODAY) nowMinutes else -1,
+                                        accent = accent,
+                                        primaryText = primaryText,
+                                        muted = muted,
+                                        onClick = { onOpenLecture(item.lecture) }
+                                    )
+                                    is TimelineItem.Free -> FreePeriod(start = item.start, end = item.end, muted = muted, accent = accent)
+                                }
                             }
                         }
                     }
@@ -242,15 +256,32 @@ private fun DayModeSelector(mode: DayViewMode, onSelect: (DayViewMode) -> Unit) 
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
         DayViewMode.values().forEach { item ->
             val active = item == mode
+            val containerColor by animateColorAsState(
+                targetValue = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                animationSpec = motionTween(Motion.Normal),
+                label = "modeContainer"
+            )
+            val borderColor by animateColorAsState(
+                targetValue = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                animationSpec = motionTween(Motion.Normal),
+                label = "modeBorder"
+            )
+            val textColor by animateColorAsState(
+                targetValue = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                animationSpec = motionTween(Motion.Normal),
+                label = "modeText"
+            )
+            val pressInteraction = remember { MutableInteractionSource() }
             Card(
                 onClick = { onSelect(item) },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).pressFeedback(pressInteraction, pressedScale = 0.96f),
+                interactionSource = pressInteraction,
                 shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.dp, if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
+                colors = CardDefaults.cardColors(containerColor = containerColor),
+                border = androidx.compose.foundation.BorderStroke(1.dp, borderColor),
                 elevation = CardDefaults.cardElevation(0.dp)
             ) {
-                Text(item.title, modifier = Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 11.dp), color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.labelMedium, fontWeight = if (active) FontWeight.Bold else FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Text(item.title, modifier = Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 11.dp), color = textColor, style = MaterialTheme.typography.labelMedium, fontWeight = if (active) FontWeight.Bold else FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
         }
     }
@@ -314,7 +345,14 @@ private fun WeekDaySection(date: java.time.LocalDate, lectures: List<LectureEnti
 
 @Composable
 private fun WeekLectureRow(lecture: LectureEntity, primaryText: Color, muted: Color, accent: Color, onOpenLecture: (LectureEntity) -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable { onOpenLecture(lecture) }.padding(vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+    val pressInteraction = remember { MutableInteractionSource() }
+    Row(
+        Modifier.fillMaxWidth()
+            .pressFeedback(pressInteraction, pressedScale = 0.98f)
+            .clickable(interactionSource = pressInteraction, indication = LocalIndication.current) { onOpenLecture(lecture) }
+            .padding(vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Column(Modifier.width(72.dp)) {
             Text(formatTime(lecture.startMinutes), color = accent, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
             Text(formatTime(lecture.endMinutes), color = muted, style = MaterialTheme.typography.labelSmall)
@@ -353,9 +391,17 @@ private fun DaySummary(lectures: Int, freeMinutes: Int, reminders: Int, accent: 
 
 @Composable
 private fun MetricCard(value: String, label: String, valueColor: Color, primaryText: Color, muted: Color, cardColor: Color, modifier: Modifier) {
+    val valueSwapIn = motionTween<Float>(Motion.Normal)
+    val valueSwapOut = motionTween<Float>(Motion.Fast)
     Card(modifier.height(102.dp), shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = cardColor), elevation = CardDefaults.cardElevation(0.dp)) {
         Column(Modifier.fillMaxSize().padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Text(value, color = valueColor, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Medium)
+            AnimatedContent(
+                targetState = value,
+                transitionSpec = { fadeIn(valueSwapIn) togetherWith fadeOut(valueSwapOut) },
+                label = "metricValue"
+            ) { current ->
+                Text(current, color = valueColor, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Medium)
+            }
             Spacer(Modifier.height(8.dp))
             Text(label, color = if (label == "LECTURES") primaryText else muted, style = MaterialTheme.typography.labelMedium, letterSpacing = 1.6.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
@@ -365,10 +411,20 @@ private fun MetricCard(value: String, label: String, valueColor: Color, primaryT
 @Composable
 private fun EmptyDayCard(cardColor: Color, primaryText: Color, muted: Color) {
     Card(Modifier.fillMaxWidth().padding(horizontal = 20.dp), shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = cardColor), elevation = CardDefaults.cardElevation(0.dp)) {
-        Column(Modifier.padding(22.dp)) {
-            Text("You’re free today", color = primaryText, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                Modifier.size(52.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.WbSunny, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(26.dp))
+            }
+            Spacer(Modifier.height(12.dp))
+            Text("You’re free today", color = primaryText, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             Spacer(Modifier.height(5.dp))
-            Text("No lectures are scheduled for this day.", color = muted)
+            Text("No lectures are scheduled for this day.", color = muted, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         }
     }
 }
@@ -376,16 +432,63 @@ private fun EmptyDayCard(cardColor: Color, primaryText: Color, muted: Color) {
 @Composable
 private fun TimelineLectureCard(lecture: LectureEntity, state: LectureState, nowMinutes: Int, accent: Color, primaryText: Color, muted: Color, onClick: () -> Unit) {
     val live = state == LectureState.HAPPENING
-    val cardColor = if (live) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
-    val railColor = if (live) accent else muted.copy(alpha = 0.65f)
+    // State colors glide between UPCOMING / LIVE / COMPLETED instead of snapping.
+    val cardColor by animateColorAsState(
+        targetValue = if (live) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+        animationSpec = motionTween(Motion.Normal),
+        label = "timelineCardColor"
+    )
+    val railColor by animateColorAsState(
+        targetValue = if (live) accent else muted.copy(alpha = 0.65f),
+        animationSpec = motionTween(Motion.Normal),
+        label = "timelineRailColor"
+    )
+    val statusColor by animateColorAsState(
+        targetValue = if (live) accent else muted,
+        animationSpec = motionTween(Motion.Normal),
+        label = "timelineStatusColor"
+    )
     val remaining = (lecture.endMinutes - nowMinutes).coerceAtLeast(0)
+    val stateSwapIn = motionTween<Float>(Motion.Fast)
+    val stateSwapOut = motionTween<Float>(Motion.Fast)
+    // The happening lecture lifts off the page; finished ones rest back, quieter.
+    val cardElevation by animateDpAsState(
+        targetValue = if (live) 6.dp else 0.dp,
+        animationSpec = motionTween(Motion.Normal),
+        label = "timelineElevation"
+    )
+    val contentAlpha = animateFloatAsState(
+        targetValue = if (state == LectureState.COMPLETED) 0.72f else 1f,
+        animationSpec = motionTween(Motion.Normal),
+        label = "timelineContentAlpha"
+    )
+    val pressInteraction = remember { MutableInteractionSource() }
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.Top) {
         TimelineRail(lecture, state, railColor, primaryText, muted)
         Spacer(Modifier.width(12.dp))
-        Card(onClick = onClick, modifier = Modifier.weight(1f), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = cardColor), elevation = CardDefaults.cardElevation(0.dp)) {
-            Column(Modifier.padding(horizontal = 18.dp, vertical = 17.dp)) {
+        Card(
+            onClick = onClick,
+            modifier = Modifier.weight(1f).pressFeedback(pressInteraction),
+            interactionSource = pressInteraction,
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = cardColor),
+            elevation = CardDefaults.cardElevation(defaultElevation = cardElevation)
+        ) {
+            Column(Modifier.graphicsLayer { alpha = contentAlpha.value }.padding(horizontal = 18.dp, vertical = 17.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(when (state) { LectureState.COMPLETED -> "COMPLETED"; LectureState.HAPPENING -> "LIVE NOW"; LectureState.UPCOMING -> "UPCOMING" }, color = if (live) accent else muted, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, letterSpacing = 1.7.sp)
+                    AnimatedContent(
+                        targetState = state,
+                        transitionSpec = { fadeIn(stateSwapIn) togetherWith fadeOut(stateSwapOut) },
+                        label = "timelineStatusLabel"
+                    ) { current ->
+                        Text(
+                            when (current) { LectureState.COMPLETED -> "COMPLETED"; LectureState.HAPPENING -> "LIVE NOW"; LectureState.UPCOMING -> "UPCOMING" },
+                            color = statusColor,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.7.sp
+                        )
+                    }
                     Spacer(Modifier.weight(1f))
                     if (live) {
                         Text("${formatDurationUpper(remaining)} REMAINING", color = accent, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
@@ -407,17 +510,88 @@ private fun TimelineLectureCard(lecture: LectureEntity, state: LectureState, now
 
 @Composable
 private fun TimelineRail(lecture: LectureEntity, state: LectureState, railColor: Color, primaryText: Color, muted: Color) {
+    val iconSwapIn = motionTween<Float>(Motion.Fast)
+    val iconSwapOut = motionTween<Float>(Motion.Fast)
+    val live = state == LectureState.HAPPENING
+    val timeColor by animateColorAsState(
+        targetValue = if (live) railColor else primaryText,
+        animationSpec = motionTween(Motion.Normal),
+        label = "railTimeColor"
+    )
+    // "Heartbeat" for the live badge. The infinite transition only exists while this
+    // row is actually happening, and its values are read exclusively inside
+    // graphicsLayer blocks — idle rows cost nothing and nothing ever recomposes.
+    val pulse = if (live) rememberLiveRailPulse() else null
     Column(Modifier.width(116.dp).heightIn(min = 185.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.width(2.dp).height(26.dp).background(railColor.copy(alpha = 0.45f)))
-        Box(Modifier.size(56.dp).background(railColor.copy(alpha = 0.18f), CircleShape), contentAlignment = Alignment.Center) {
-            Icon(when (state) { LectureState.COMPLETED -> Icons.Default.CheckCircle; LectureState.HAPPENING -> Icons.Default.Notifications; LectureState.UPCOMING -> Icons.Default.AccessTime }, contentDescription = null, tint = railColor, modifier = Modifier.size(25.dp))
+        Box(
+            Modifier.width(2.dp).height(26.dp)
+                .graphicsLayer { alpha = pulse?.breath?.value ?: 1f }
+                .background(railColor.copy(alpha = 0.45f))
+        )
+        Box(Modifier.size(56.dp), contentAlignment = Alignment.Center) {
+            if (pulse != null) {
+                Box(
+                    Modifier.fillMaxSize().graphicsLayer {
+                        val s = pulse.scale.value
+                        scaleX = s
+                        scaleY = s
+                        alpha = pulse.fade.value
+                    }.background(railColor, CircleShape)
+                )
+            }
+            Box(Modifier.size(56.dp).background(railColor.copy(alpha = 0.18f), CircleShape), contentAlignment = Alignment.Center) {
+            AnimatedContent(
+                targetState = state,
+                transitionSpec = { fadeIn(iconSwapIn) togetherWith fadeOut(iconSwapOut) },
+                label = "railIcon"
+            ) { current ->
+                Icon(
+                    when (current) { LectureState.COMPLETED -> Icons.Default.CheckCircle; LectureState.HAPPENING -> Icons.Default.Notifications; LectureState.UPCOMING -> Icons.Default.AccessTime },
+                    contentDescription = null,
+                    tint = railColor,
+                    modifier = Modifier.size(25.dp)
+                )
+            }
+            }
         }
         Spacer(Modifier.height(9.dp))
-        Text(formatTime(lecture.startMinutes), color = if (state == LectureState.HAPPENING) railColor else primaryText, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text(formatTime(lecture.startMinutes), color = timeColor, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Text(formatTime(lecture.endMinutes), color = muted, style = MaterialTheme.typography.bodyLarge)
         Spacer(Modifier.height(7.dp))
-        Box(Modifier.width(2.dp).weight(1f).background(railColor.copy(alpha = 0.35f)))
+        Box(
+            Modifier.width(2.dp).weight(1f)
+                .graphicsLayer { alpha = pulse?.breath?.value ?: 1f }
+                .background(railColor.copy(alpha = 0.35f))
+        )
     }
+}
+
+/** Owns the infinite "live" animations; null under reduced motion so nothing runs. */
+private class LiveRailPulse(val scale: State<Float>, val fade: State<Float>, val breath: State<Float>)
+
+@Composable
+private fun rememberLiveRailPulse(): LiveRailPulse? {
+    if (LocalReducedMotion.current) return null
+    val transition = rememberInfiniteTransition(label = "liveRailPulse")
+    val scale = transition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.3f,
+        animationSpec = infiniteRepeatable(tween(1400, easing = Motion.EasingStandard), RepeatMode.Restart),
+        label = "pulseScale"
+    )
+    val fade = transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(tween(1400, easing = LinearEasing), RepeatMode.Restart),
+        label = "pulseFade"
+    )
+    val breath = transition.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 0.9f,
+        animationSpec = infiniteRepeatable(tween(1400, easing = Motion.EasingStandard), RepeatMode.Reverse),
+        label = "lineBreath"
+    )
+    return LiveRailPulse(scale, fade, breath)
 }
 
 @Composable

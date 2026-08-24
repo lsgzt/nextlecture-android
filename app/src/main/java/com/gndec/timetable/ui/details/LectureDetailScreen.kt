@@ -1,5 +1,10 @@
 package com.gndec.timetable.ui.details
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -40,12 +45,15 @@ import androidx.compose.ui.unit.dp
 import com.gndec.timetable.data.db.LectureEntity
 import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.domain.AttendanceManager
-import com.gndec.timetable.ui.BottomBar
 import com.gndec.timetable.ui.Header
 import com.gndec.timetable.ui.IconBadge
 import com.gndec.timetable.ui.InfoRow
+import com.gndec.timetable.ui.PremiumBottomBarContentClearance
 import com.gndec.timetable.ui.ScreenSurface
 import com.gndec.timetable.ui.TealOutlineButton
+import com.gndec.timetable.ui.motion.Motion
+import com.gndec.timetable.ui.motion.motionTween
+import com.gndec.timetable.ui.motion.pressFeedback
 import com.gndec.timetable.ui.theme.GndecAqua
 import com.gndec.timetable.ui.theme.GndecGreenSoft
 import com.gndec.timetable.ui.theme.GndecMuted
@@ -84,14 +92,11 @@ fun LectureDetailScreen(
         attendanceBusy = false
     }
     val reminderEnabled = settings.remind15 || settings.remind30 || settings.remind5 || settings.remindAtStart
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = { BottomBar("home") { route -> when (route) { "home" -> onOpenHome(); "today" -> onOpenToday(); "syllabus" -> onOpenAlerts() } } }
-    ) { padding ->
+    Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         ScreenSurface {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 22.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 22.dp + PremiumBottomBarContentClearance),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 item {
@@ -215,34 +220,57 @@ private fun AttendanceDetailCard(
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text("Attendance", style = MaterialTheme.typography.titleLarge)
-                    Text(
-                        when (status) {
-                            "present" -> "Marked present on this device"
-                            "absent" -> "Marked absent on this device"
-                            else -> "Not marked yet"
-                        },
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                    val statusSwapIn = motionTween<Float>(Motion.Fast)
+                    val statusSwapOut = motionTween<Float>(Motion.Fast)
+                    AnimatedContent(
+                        targetState = status,
+                        transitionSpec = { fadeIn(statusSwapIn) togetherWith fadeOut(statusSwapOut) },
+                        label = "detailAttendanceStatus"
+                    ) { current ->
+                        Text(
+                            when (current) {
+                                "present" -> "Marked present on this device"
+                                "absent" -> "Marked absent on this device"
+                                else -> "Not marked yet"
+                            },
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
                 }
             }
             Spacer(Modifier.size(12.dp))
             if (error != null) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            if (busy) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                    androidx.compose.material3.CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
-                }
-            } else {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    androidx.compose.material3.Button(
-                        onClick = { onStatus("present") },
-                        modifier = Modifier.weight(1f),
-                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = GndecTeal)
-                    ) { Text("Present") }
-                    androidx.compose.material3.OutlinedButton(onClick = { onStatus("absent") }, modifier = Modifier.weight(1f)) {
-                        Text("Absent", color = MaterialTheme.colorScheme.error)
+            val busySwapIn = motionTween<Float>(Motion.Fast)
+            val busySwapOut = motionTween<Float>(Motion.Fast)
+            AnimatedContent(
+                targetState = busy,
+                transitionSpec = { fadeIn(busySwapIn) togetherWith fadeOut(busySwapOut) },
+                label = "detailAttendanceBusy"
+            ) { isBusy ->
+                if (isBusy) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                        androidx.compose.material3.CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
                     }
-                    if (status != null) androidx.compose.material3.TextButton(onClick = onClear) { Text("Clear") }
+                } else {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val presentPress = remember { MutableInteractionSource() }
+                        androidx.compose.material3.Button(
+                            onClick = { onStatus("present") },
+                            modifier = Modifier.weight(1f).pressFeedback(presentPress, pressedScale = 0.96f),
+                            interactionSource = presentPress,
+                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = GndecTeal, contentColor = androidx.compose.ui.graphics.Color.White)
+                        ) { Text("Present") }
+                        val absentPress = remember { MutableInteractionSource() }
+                        androidx.compose.material3.OutlinedButton(
+                            onClick = { onStatus("absent") },
+                            modifier = Modifier.weight(1f).pressFeedback(absentPress, pressedScale = 0.96f),
+                            interactionSource = absentPress
+                        ) {
+                            Text("Absent", color = MaterialTheme.colorScheme.error)
+                        }
+                        if (status != null) androidx.compose.material3.TextButton(onClick = onClear) { Text("Clear") }
+                    }
                 }
             }
         }

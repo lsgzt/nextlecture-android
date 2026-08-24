@@ -46,6 +46,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -55,6 +57,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gndec.timetable.data.db.LectureEntity
+import com.gndec.timetable.ui.motion.pressFeedback
 import com.gndec.timetable.ui.theme.GndecAqua
 import com.gndec.timetable.ui.theme.GndecAquaStrong
 import com.gndec.timetable.ui.theme.GndecGreen
@@ -155,10 +158,12 @@ fun TealOutlineButton(
     onClick: () -> Unit,
     enabled: Boolean = true
 ) {
+    val pressInteraction = remember { MutableInteractionSource() }
     OutlinedButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.defaultMinSize(minHeight = 50.dp),
+        modifier = modifier.defaultMinSize(minHeight = 50.dp).pressFeedback(pressInteraction, pressedScale = 0.97f),
+        interactionSource = pressInteraction,
         shape = RoundedCornerShape(16.dp),
         border = BorderStroke(1.5.dp, if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
         colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(

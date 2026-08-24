@@ -1,7 +1,14 @@
 package com.gndec.timetable.ui.attendance
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -59,6 +66,9 @@ import com.gndec.timetable.net.AttendanceRecord
 import com.gndec.timetable.net.AttendanceResponse
 import com.gndec.timetable.ui.PremiumPageHeader
 import com.gndec.timetable.ui.PremiumScreenBackground
+import com.gndec.timetable.ui.motion.Motion
+import com.gndec.timetable.ui.motion.motionTween
+import com.gndec.timetable.ui.motion.pressFeedback
 import com.gndec.timetable.ui.theme.GndecGreenSoft
 import com.gndec.timetable.ui.theme.GndecMuted
 import com.gndec.timetable.ui.theme.GndecOrange
@@ -149,11 +159,17 @@ fun AttendanceScreen(
                                 val present = dateRecords.count { it.status == "present" }
                                 val absent = dateRecords.count { it.status == "absent" }
                                 val selected = date == selectedDate
+                                val chipColor by animateColorAsState(
+                                    targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                    animationSpec = motionTween(Motion.Normal),
+                                    label = "dateChip"
+                                )
+                                val pressInteraction = remember { MutableInteractionSource() }
                                 Card(
                                     onClick = { selectedDate = date },
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
-                                    ),
+                                    modifier = Modifier.pressFeedback(pressInteraction, pressedScale = 0.94f),
+                                    interactionSource = pressInteraction,
+                                    colors = CardDefaults.cardColors(containerColor = chipColor),
                                     shape = RoundedCornerShape(14.dp)
                                 ) {
                                     Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -179,23 +195,30 @@ fun AttendanceScreen(
                 }
             }
             if (error != null) {
-                item { AttendanceErrorCard(error!!, onRetry = ::reload) }
+                item(key = "error") { Box(Modifier.animateItem()) { AttendanceErrorCard(error!!, onRetry = ::reload) } }
             }
             if (activeGroup.isBlank()) {
-                item {
-                    AttendanceInfoCard("Complete your profile first", "Attendance uses your saved subsection to match lectures, for example ITB2 rather than the mentoring group.")
+                item(key = "no-group") {
+                    Box(Modifier.animateItem()) {
+                        AttendanceInfoCard("Complete your profile first", "Attendance uses your saved subsection to match lectures, for example ITB2 rather than the mentoring group.")
+                    }
                 }
             } else if (loading && response == null) {
-                item { LoadingCard() }
+                item(key = "loading") { Box(Modifier.animateItem()) { LoadingCard() } }
             } else if (dayLectures.isEmpty()) {
-                item { AttendanceInfoCard("No lectures for this date", "The saved timetable has no lecture for ${selectedDate.format(attendanceShortFormatter)}. You can choose another date above.") }
+                item(key = "empty-day") {
+                    Box(Modifier.animateItem()) {
+                        AttendanceInfoCard("No lectures for this date", "The saved timetable has no lecture for ${selectedDate.format(attendanceShortFormatter)}. You can choose another date above.")
+                    }
+                }
             } else {
-                item {
+                item(key = "lectures-label") {
                     Text("Lectures on ${selectedDate.format(attendanceShortFormatter)}", Modifier.padding(horizontal = 22.dp), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 }
                 items(dayLectures, key = { "${selectedDate}_${AttendanceManager.lectureKey(selectedDate, it)}" }) { lecture ->
-                    val key = AttendanceManager.lectureKey(selectedDate, lecture)
-                    AttendanceLectureCard(
+                    Box(Modifier.animateItem()) {
+                        val key = AttendanceManager.lectureKey(selectedDate, lecture)
+                        AttendanceLectureCard(
                         lecture = lecture,
                         status = recordByKey[key]?.status,
                         saving = savingKey == key,
@@ -217,7 +240,8 @@ fun AttendanceScreen(
                                 savingKey = null
                             }
                         }
-                    )
+                        )
+                    }
                 }
             }
             item { AttendanceInfoCard("How the percentage works", "Only lectures you mark as present or absent are counted. Unmarked lectures stay neutral. You can update a mark later if you made a mistake.") }
@@ -271,6 +295,8 @@ private fun AttendanceLectureCard(
     onStatus: (String) -> Unit,
     onUnmark: () -> Unit
 ) {
+    val iconSwapIn = motionTween<Float>(Motion.Fast)
+    val iconSwapOut = motionTween<Float>(Motion.Fast)
     Card(
         Modifier.fillMaxWidth().padding(horizontal = 20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -283,20 +309,45 @@ private fun AttendanceLectureCard(
                     Text(Formatters.range(lecture.startMinutes, lecture.endMinutes), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
                     Text(listOf(lecture.teacher, lecture.venue).filter { !it.isNullOrBlank() }.joinToString(" · ").ifBlank { "Details unavailable" }, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                when (status) {
-                    "present" -> Icon(Icons.Default.CheckCircle, "Present", tint = GndecTeal, modifier = Modifier.size(28.dp))
-                    "absent" -> Icon(Icons.Default.EventBusy, "Absent", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(28.dp))
-                    else -> Icon(Icons.Default.RemoveCircleOutline, "Unmarked", tint = GndecMuted, modifier = Modifier.size(28.dp))
+                AnimatedContent(
+                    targetState = status,
+                    transitionSpec = { fadeIn(iconSwapIn) togetherWith fadeOut(iconSwapOut) },
+                    label = "attendanceStatusIcon"
+                ) { current ->
+                    when (current) {
+                        "present" -> Icon(Icons.Default.CheckCircle, "Present", tint = GndecTeal, modifier = Modifier.size(28.dp))
+                        "absent" -> Icon(Icons.Default.EventBusy, "Absent", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(28.dp))
+                        else -> Icon(Icons.Default.RemoveCircleOutline, "Unmarked", tint = GndecMuted, modifier = Modifier.size(28.dp))
+                    }
                 }
             }
             Spacer(Modifier.height(12.dp))
-            if (saving) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp) }
-            } else {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { onStatus("present") }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = GndecTeal)) { Text("Present") }
-                    OutlinedButton(onClick = { onStatus("absent") }, modifier = Modifier.weight(1f)) { Text("Absent", color = MaterialTheme.colorScheme.error) }
-                    if (status != null) TextButton(onClick = onUnmark) { Text("Clear") }
+            val swapIn = motionTween<Float>(Motion.Fast)
+            val swapOut = motionTween<Float>(Motion.Fast)
+            AnimatedContent(
+                targetState = saving,
+                transitionSpec = { fadeIn(swapIn) togetherWith fadeOut(swapOut) },
+                label = "attendanceSaving"
+            ) { isSaving ->
+                if (isSaving) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp) }
+                } else {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val presentPress = remember { MutableInteractionSource() }
+                        Button(
+                            onClick = { onStatus("present") },
+                            modifier = Modifier.weight(1f).pressFeedback(presentPress, pressedScale = 0.96f),
+                            interactionSource = presentPress,
+                            colors = ButtonDefaults.buttonColors(containerColor = GndecTeal, contentColor = Color.White)
+                        ) { Text("Present") }
+                        val absentPress = remember { MutableInteractionSource() }
+                        OutlinedButton(
+                            onClick = { onStatus("absent") },
+                            modifier = Modifier.weight(1f).pressFeedback(absentPress, pressedScale = 0.96f),
+                            interactionSource = absentPress
+                        ) { Text("Absent", color = MaterialTheme.colorScheme.error) }
+                        if (status != null) TextButton(onClick = onUnmark) { Text("Clear") }
+                    }
                 }
             }
         }

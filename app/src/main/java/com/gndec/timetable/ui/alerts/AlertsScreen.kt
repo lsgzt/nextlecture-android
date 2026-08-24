@@ -2,8 +2,10 @@ package com.gndec.timetable.ui.alerts
 
 import android.content.Intent
 import android.provider.Settings
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -55,6 +57,8 @@ import com.gndec.timetable.ui.PremiumPageHeader
 import com.gndec.timetable.ui.IconBadge
 import com.gndec.timetable.ui.PremiumScreenBackground
 import com.gndec.timetable.ui.TealOutlineButton
+import com.gndec.timetable.ui.motion.Motion
+import com.gndec.timetable.ui.motion.motionTween
 import com.gndec.timetable.ui.theme.GndecAqua
 import com.gndec.timetable.ui.theme.GndecGreen
 import com.gndec.timetable.ui.theme.GndecInk
@@ -175,7 +179,11 @@ fun AlertsScreen(
                         Text("Open notification settings", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                     }
                 }
-                reliability?.let { status -> item { ReliabilitySummary(status) } }
+                reliability?.let { status ->
+                    item(key = "reliability-summary") {
+                        Box(Modifier.fillMaxWidth().animateItem()) { ReliabilitySummary(status) }
+                    }
+                }
             }
         }
     }
@@ -198,6 +206,11 @@ private fun HealthCard(enabled: Boolean, reliability: ReliabilityStatus?, lastFe
 
 @Composable
 private fun HealthRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, ok: Boolean) {
+    val checkTint by animateColorAsState(
+        targetValue = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary,
+        animationSpec = motionTween(Motion.Normal),
+        label = "healthCheck"
+    )
     Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         IconBadge(icon, size = 44.dp)
         Spacer(Modifier.width(12.dp))
@@ -205,7 +218,7 @@ private fun HealthRow(icon: androidx.compose.ui.graphics.vector.ImageVector, tit
             Text(title, fontWeight = FontWeight.SemiBold)
             Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(28.dp))
+        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = checkTint, modifier = Modifier.size(28.dp))
     }
 }
 

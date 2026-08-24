@@ -2,7 +2,9 @@ package com.gndec.timetable.ui.home
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -10,8 +12,22 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -19,8 +35,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -28,8 +47,10 @@ import com.gndec.timetable.data.db.LectureEntity
 import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.domain.ErpNoticeManager
 import com.gndec.timetable.domain.NextLectureEngine
+import com.gndec.timetable.ui.motion.Motion
+import com.gndec.timetable.ui.motion.motionTween
 import com.gndec.timetable.ui.PremiumAnnouncementCard
-import com.gndec.timetable.ui.PremiumBottomBar
+import com.gndec.timetable.ui.PremiumBottomBarContentClearance
 import com.gndec.timetable.ui.PremiumErpNoticeBanner
 import com.gndec.timetable.ui.PremiumBrandHeader
 import com.gndec.timetable.ui.PremiumNextLectureCard
@@ -61,17 +82,16 @@ fun HomeScreen(
     val releaseUpdate by container.releaseUpdateManager.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    val next = when (val status = state.status) {
-        is NextLectureEngine.Status.Next -> status.lecture
-        is NextLectureEngine.Status.HappeningNow -> status.lecture
-        else -> null
+    // Hero slot identity. Countdown strings are deliberately excluded so the
+    // per-minute ticker never re-triggers the transition — only meaningful
+    // state changes (which lecture / which phase) do.
+    val hero = when (val s = state.status) {
+        is NextLectureEngine.Status.Next -> HeroTarget("next", s.lecture.id, s.lecture)
+        is NextLectureEngine.Status.HappeningNow -> HeroTarget("happening", s.lecture.id, s.lecture)
+        is NextLectureEngine.Status.DoneForToday -> HeroTarget("later", s.next?.lecture?.id, s.next?.lecture, s.next?.daysAhead ?: 0)
+        is NextLectureEngine.Status.FreeDay -> HeroTarget("free", s.next?.lecture?.id, s.next?.lecture, s.next?.daysAhead ?: 0)
+        NextLectureEngine.Status.NoData -> HeroTarget("none", null, null)
     }
-    val nextLater = when (val status = state.status) {
-        is NextLectureEngine.Status.DoneForToday -> status.next
-        is NextLectureEngine.Status.FreeDay -> status.next
-        else -> null
-    }
-    val isHappening = state.status is NextLectureEngine.Status.HappeningNow
     val countdown = when (val status = state.status) {
         is NextLectureEngine.Status.Next -> Formatters.countdown(status.startsInMinutes)
         is NextLectureEngine.Status.HappeningNow -> Formatters.countdown(status.endsInMinutes)
@@ -90,17 +110,14 @@ fun HomeScreen(
     val todayIso = Instant.ofEpochMilli(state.nowMillis).atZone(ZoneId.systemDefault()).toLocalDate().toString()
     val todayNotice = erpNotices.firstOrNull { it.publishedDate == todayIso }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = { PremiumBottomBar("home") { route -> when (route) { "today" -> onOpenToday(); "notice" -> onOpenNotice(); "syllabus" -> onOpenAlerts() } } }
-    ) { padding ->
+    Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         PremiumScreenBackground {
             LazyColumn(
                 modifier = androidx.compose.ui.Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(top = 8.dp, bottom = 22.dp),
+                contentPadding = PaddingValues(top = 8.dp, bottom = 22.dp + PremiumBottomBarContentClearance),
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
-                item {
+                item(key = "header") {
                     PremiumBrandHeader(
                         group = state.group ?: "ITB2",
                         greeting = greeting,
@@ -109,108 +126,173 @@ fun HomeScreen(
                     )
                 }
                 todayNotice?.let { notice ->
-                    item {
+                    item(key = "erp-notice") {
                         PremiumErpNoticeBanner(
                             notice = notice,
                             onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(notice.url))) },
-                            modifier = androidx.compose.ui.Modifier.padding(horizontal = 20.dp)
+                            modifier = androidx.compose.ui.Modifier.padding(horizontal = 20.dp).animateItem()
                         )
                     }
                 }
-                item {
-                    PremiumStatusRow(
-                        updatedText = updatedText,
-                        onFetch = vm::fetchAgain,
-                        fetchEnabled = fetchState !is FetchState.Running
-                    )
+                item(key = "status") {
+                    Box(androidx.compose.ui.Modifier.animateItem()) {
+                        PremiumStatusRow(
+                            updatedText = updatedText,
+                            onFetch = vm::fetchAgain,
+                            fetchEnabled = fetchState !is FetchState.Running
+                        )
+                    }
                 }
                 if (fetchState !is FetchState.Idle) {
-                    item {
-                        Text(
-                            when (fetchState) {
-                                FetchState.Running -> "Refreshing your timetable…"
-                                is FetchState.Ok -> "Timetable updated"
-                                FetchState.UpToDate -> "Already up to date"
-                                is FetchState.Failed -> "Couldn’t refresh timetable"
-                                else -> ""
-                            },
-                            color = if (fetchState is FetchState.Failed) GndecOrange else MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = androidx.compose.ui.Modifier.padding(horizontal = 24.dp)
-                        )
-                    }
-                }
-                if (releaseUpdate.updateAvailable) {
-                    item {
-                        androidx.compose.material3.Card(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
-                            colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
-                            elevation = androidx.compose.material3.CardDefaults.cardElevation(0.dp)
-                        ) {
-                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                                Text("UPDATE AVAILABLE · RELEASE ${releaseUpdate.latestMarker}", color = GndecOrange, style = MaterialTheme.typography.labelMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, letterSpacing = 1.1.sp)
-                                Text(releaseUpdate.releaseName.ifBlank { "A newer GNDEC Timetable build is ready" }, style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                                Text("Download the latest APK from GitHub to get the newest fixes and features.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                                androidx.compose.material3.TextButton(onClick = {
-                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(com.gndec.timetable.domain.ReleaseUpdateManager.DOWNLOAD_URL)))
-                                }) { Text("Download update") }
+                    item(key = "fetch-message") {
+                        val swapIn = motionTween<Float>(Motion.Normal)
+                        val swapOut = motionTween<Float>(Motion.Fast)
+                        AnimatedContent(
+                            targetState = fetchState,
+                            modifier = androidx.compose.ui.Modifier.animateItem(),
+                            transitionSpec = { fadeIn(swapIn) togetherWith fadeOut(swapOut) },
+                            label = "fetchMessage"
+                        ) { current ->
+                            when (current) {
+                                FetchState.Idle -> {}
+                                FetchState.Running -> FetchMessage("Refreshing your timetable…", false)
+                                is FetchState.Ok -> FetchMessage("Timetable updated", false)
+                                FetchState.UpToDate -> FetchMessage("Already up to date", false)
+                                is FetchState.Failed -> FetchMessage("Couldn’t refresh timetable", true)
                             }
                         }
                     }
                 }
-                if (next != null) {
-                    item {
-                        PremiumNextLectureCard(
-                            lecture = next,
-                            dayLabel = if (isHappening) "Now" else "Today",
-                            countdown = countdown,
-                            isHappening = isHappening,
-                            onClick = { onOpenLecture(next) },
-                            modifier = androidx.compose.ui.Modifier.padding(horizontal = 20.dp)
+                if (releaseUpdate.updateAvailable) {
+                    item(key = "release-update") {
+                        ReleaseUpdateCard(
+                            releaseUpdate = releaseUpdate,
+                            onDownload = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(com.gndec.timetable.domain.ReleaseUpdateManager.DOWNLOAD_URL))) },
+                            modifier = androidx.compose.ui.Modifier.padding(horizontal = 20.dp).animateItem()
                         )
                     }
-                } else if (nextLater != null) {
-                    item {
-                        PremiumNextLectureCard(
-                            lecture = nextLater.lecture,
-                            dayLabel = if (nextLater.daysAhead == 1) "Tomorrow" else "In ${nextLater.daysAhead} days",
-                            countdown = "",
-                            isHappening = false,
-                            onClick = { onOpenLecture(nextLater.lecture) },
-                            modifier = androidx.compose.ui.Modifier.padding(horizontal = 20.dp)
-                        )
-                    }
-                } else {
-                    item {
-                        androidx.compose.material3.Card(
-                            modifier = androidx.compose.ui.Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(30.dp),
-                            colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-                            elevation = androidx.compose.material3.CardDefaults.cardElevation(0.dp)
-                        ) {
-                            Column(Modifier.padding(26.dp)) {
-                                Text("A clear day ahead", style = MaterialTheme.typography.headlineSmall, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                                Spacer(Modifier.height(6.dp))
-                                Text("No upcoming lecture is scheduled. Enjoy the breathing room.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                item(key = "hero") {
+                    val heroIn = motionTween<Float>(Motion.Emphasized)
+                    val heroOut = motionTween<Float>(Motion.Fast)
+                    val heroSlide = motionTween<IntOffset>(Motion.Emphasized, Motion.EasingEnter)
+                    AnimatedContent(
+                        targetState = hero,
+                        modifier = androidx.compose.ui.Modifier.fillMaxWidth().animateItem(),
+                        transitionSpec = {
+                            (fadeIn(heroIn) + slideInVertically(heroSlide) { it / 10 }) togetherWith fadeOut(heroOut)
+                        },
+                        label = "homeHero"
+                    ) { target ->
+                        when {
+                            (target.kind == "next" || target.kind == "happening") && target.lecture != null -> {
+                                val happening = target.kind == "happening"
+                                PremiumNextLectureCard(
+                                    lecture = target.lecture!!,
+                                    dayLabel = if (happening) "Now" else "Today",
+                                    countdown = countdown,
+                                    isHappening = happening,
+                                    onClick = { onOpenLecture(target.lecture!!) },
+                                    modifier = androidx.compose.ui.Modifier.padding(horizontal = 20.dp)
+                                )
+                            }
+                            target.lecture != null && (target.kind == "later" || target.kind == "free") -> {
+                                PremiumNextLectureCard(
+                                    lecture = target.lecture!!,
+                                    dayLabel = if (target.daysAhead == 1) "Tomorrow" else "In ${target.daysAhead} days",
+                                    countdown = "",
+                                    isHappening = false,
+                                    onClick = { onOpenLecture(target.lecture!!) },
+                                    modifier = androidx.compose.ui.Modifier.padding(horizontal = 20.dp)
+                                )
+                            }
+                            else -> {
+                                androidx.compose.material3.Card(
+                                    modifier = androidx.compose.ui.Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(30.dp),
+                                    colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                                    elevation = androidx.compose.material3.CardDefaults.cardElevation(0.dp)
+                                ) {
+                                    Column(
+                                        Modifier.fillMaxWidth().padding(horizontal = 26.dp, vertical = 30.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Box(
+                                            Modifier.size(56.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Default.WbSunny, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                                        }
+                                        Spacer(Modifier.height(14.dp))
+                                        Text("A clear day ahead", style = MaterialTheme.typography.headlineSmall, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                                        Spacer(Modifier.height(6.dp))
+                                        Text("No upcoming lecture is scheduled. Enjoy the breathing room.", color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                                    }
+                                }
                             }
                         }
                     }
                 }
                 announcement?.let { current ->
-                    item { PremiumAnnouncementCard(current, androidx.compose.ui.Modifier.padding(horizontal = 20.dp)) }
+                    item(key = "announcement") {
+                        PremiumAnnouncementCard(current, androidx.compose.ui.Modifier.padding(horizontal = 20.dp).animateItem())
+                    }
                 }
-                item {
-                    PremiumTodayPreview(
-                        lectures = state.todayLectures,
-                        dateLabel = dateLabel,
-                        onOpen = onOpenToday,
-                        onLecture = onOpenLecture,
-                        modifier = androidx.compose.ui.Modifier.padding(horizontal = 20.dp)
-                    )
+                item(key = "today-preview") {
+                    Box(androidx.compose.ui.Modifier.animateItem()) {
+                        PremiumTodayPreview(
+                            lectures = state.todayLectures,
+                            dateLabel = dateLabel,
+                            onOpen = onOpenToday,
+                            onLecture = onOpenLecture,
+                            modifier = androidx.compose.ui.Modifier.padding(horizontal = 20.dp)
+                        )
+                    }
                 }
-                item { PremiumOfflineCard(androidx.compose.ui.Modifier.padding(horizontal = 20.dp)) }
+                item(key = "offline") {
+                    PremiumOfflineCard(androidx.compose.ui.Modifier.padding(horizontal = 20.dp).animateItem())
+                }
             }
         }
     }
 }
+
+@Composable
+private fun FetchMessage(text: String, isError: Boolean) {
+    if (text.isEmpty()) return
+    Text(
+        text,
+        color = if (isError) GndecOrange else MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodySmall,
+        modifier = androidx.compose.ui.Modifier.padding(horizontal = 24.dp, vertical = 2.dp)
+    )
+}
+
+@Composable
+private fun ReleaseUpdateCard(
+    releaseUpdate: com.gndec.timetable.domain.ReleaseUpdateState,
+    onDownload: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    androidx.compose.material3.Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+        elevation = androidx.compose.material3.CardDefaults.cardElevation(0.dp)
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Text("UPDATE AVAILABLE · RELEASE ${releaseUpdate.latestMarker}", color = GndecOrange, style = MaterialTheme.typography.labelMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, letterSpacing = 1.1.sp)
+            Text(releaseUpdate.releaseName.ifBlank { "A newer GNDEC Timetable build is ready" }, style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+            Text("Download the latest APK from GitHub to get the newest fixes and features.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            androidx.compose.material3.TextButton(onClick = onDownload) { Text("Download update") }
+        }
+    }
+}
+
+/** Hero slot identity — excludes volatile countdown data so minute ticks don't replay transitions. */
+private data class HeroTarget(
+    val kind: String,
+    val lectureId: Long?,
+    val lecture: LectureEntity?,
+    val daysAhead: Int = 0
+)

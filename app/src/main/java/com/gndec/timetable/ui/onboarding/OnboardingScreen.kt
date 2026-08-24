@@ -4,8 +4,20 @@ import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -54,6 +67,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.width
@@ -64,6 +78,9 @@ import com.gndec.timetable.domain.StudentDirectoryRecord
 import com.gndec.timetable.domain.StudentDirectoryResult
 import com.gndec.timetable.domain.matchingStudents
 import com.gndec.timetable.domain.studentDisplayName
+import com.gndec.timetable.ui.motion.Motion
+import com.gndec.timetable.ui.motion.motionTween
+import com.gndec.timetable.ui.motion.pressFeedback
 import kotlinx.coroutines.launch
 
 @Composable
@@ -136,88 +153,105 @@ fun OnboardingScreen(container: AppContainer, onDone: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(14.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            item {
+            item(key = "top") {
                 OnboardingTop(step)
             }
-            when (step) {
-                0 -> item {
-                    IntroStep(onContinue = { step = 1 })
-                }
-                1 -> {
-                    item {
-                        BranchStep(
-                            selectedBranch = branch,
-                            onBranch = { branch = it; error = null },
-                            loading = loading,
-                            error = error,
-                            onContinue = {
-                                if (branch.isBlank()) return@BranchStep
-                                scope.launch {
-                                    loading = true
-                                    error = null
-                                    runCatching { container.refreshManager.refresh(force = true) }
-                                    when (val result = container.studentDirectoryManager.load(branch)) {
-                                        is StudentDirectoryResult.Ready -> {
-                                            directory = result.records
-                                            loading = false
-                                            step = 2
-                                        }
-                                        is StudentDirectoryResult.Failed -> {
-                                            directory = result.cached
-                                            loading = false
-                                            if (result.cached.isNotEmpty()) step = 2 else error = result.reason
+            item(key = "step") {
+                val stepIn = motionTween<Float>(Motion.Emphasized)
+                val stepOut = motionTween<Float>(Motion.Normal)
+                val slideSpec = motionTween<IntOffset>(Motion.Emphasized, Motion.EasingEnter)
+                val slideOutSpec = motionTween<IntOffset>(Motion.Normal, Motion.EasingExit)
+                AnimatedContent(
+                    targetState = step,
+                    modifier = Modifier.fillMaxWidth(),
+                    transitionSpec = {
+                        val forward = targetState >= initialState
+                        if (forward) {
+                            (slideInVertically(slideSpec) { it / 12 } + fadeIn(stepIn)) togetherWith
+                                (fadeOut(stepOut) + slideOutVertically(slideOutSpec) { -it / 16 })
+                        } else {
+                            (slideInVertically(slideSpec) { -it / 12 } + fadeIn(stepIn)) togetherWith
+                                (fadeOut(stepOut) + slideOutVertically(slideOutSpec) { it / 16 })
+                        }
+                    },
+                    label = "onboardingStep"
+                ) { currentStep ->
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        when (currentStep) {
+                            0 -> IntroStep(onContinue = { step = 1 })
+                            1 -> BranchStep(
+                                selectedBranch = branch,
+                                onBranch = { branch = it; error = null },
+                                loading = loading,
+                                error = error,
+                                onContinue = {
+                                    if (branch.isBlank()) return@BranchStep
+                                    scope.launch {
+                                        loading = true
+                                        error = null
+                                        runCatching { container.refreshManager.refresh(force = true) }
+                                        when (val result = container.studentDirectoryManager.load(branch)) {
+                                            is StudentDirectoryResult.Ready -> {
+                                                directory = result.records
+                                                loading = false
+                                                step = 2
+                                            }
+                                            is StudentDirectoryResult.Failed -> {
+                                                directory = result.cached
+                                                loading = false
+                                                if (result.cached.isNotEmpty()) step = 2 else error = result.reason
+                                            }
                                         }
                                     }
-                                }
-                            },
-                            onManual = { manualMode = true; step = 3 }
-                        )
-                    }
-                }
-                2 -> {
-                    item {
-                        NameLookupStep(
-                            branch = branch,
-                            query = nameQuery,
-                            onQuery = { nameQuery = it },
-                            records = directory,
-                            onSelect = { selected = it; step = 3 },
-                            onManual = { manualMode = true; step = 3 },
-                            onBack = { step = 1 }
-                        )
-                    }
-                }
-                3 -> {
-                    item {
-                        if (manualMode) {
-                            ManualProfileStep(
-                                branch = branch,
-                                name = manualName,
-                                crn = manualCrn,
-                                registration = manualRegistration,
-                                father = manualFather,
-                                mother = manualMother,
-                                mentor = manualMentor,
-                                section = manualSection,
-                                subsection = manualSubsection,
-                                onName = { manualName = it },
-                                onCrn = { manualCrn = it },
-                                onRegistration = { manualRegistration = it },
-                                onFather = { manualFather = it },
-                                onMother = { manualMother = it },
-                                onMentor = { manualMentor = it },
-                                onSection = { manualSection = it },
-                                onSubsection = { manualSubsection = it },
-                                onSave = { finishProfile(null, "manual") },
-                                onBack = { manualMode = false; step = 2 }
+                                },
+                                onManual = { manualMode = true; step = 3 }
                             )
-                        } else {
-                            ConfirmProfileStep(selected, onConfirm = { finishProfile(selected, "gndec_permanent_pdf") }, onBack = { step = 2 })
+                            2 -> NameLookupStep(
+                                branch = branch,
+                                query = nameQuery,
+                                onQuery = { nameQuery = it },
+                                records = directory,
+                                onSelect = { selected = it; step = 3 },
+                                onManual = { manualMode = true; step = 3 },
+                                onBack = { step = 1 }
+                            )
+                            3 -> {
+                                val modeSwap = motionTween<Float>(Motion.Fast)
+                                AnimatedContent(
+                                    targetState = manualMode,
+                                    transitionSpec = { fadeIn(modeSwap) togetherWith fadeOut(modeSwap) },
+                                    label = "profileMode"
+                                ) { manual ->
+                                    if (manual) {
+                                        ManualProfileStep(
+                                            branch = branch,
+                                            name = manualName,
+                                            crn = manualCrn,
+                                            registration = manualRegistration,
+                                            father = manualFather,
+                                            mother = manualMother,
+                                            mentor = manualMentor,
+                                            section = manualSection,
+                                            subsection = manualSubsection,
+                                            onName = { manualName = it },
+                                            onCrn = { manualCrn = it },
+                                            onRegistration = { manualRegistration = it },
+                                            onFather = { manualFather = it },
+                                            onMother = { manualMother = it },
+                                            onMentor = { manualMentor = it },
+                                            onSection = { manualSection = it },
+                                            onSubsection = { manualSubsection = it },
+                                            onSave = { finishProfile(null, "manual") },
+                                            onBack = { manualMode = false; step = 2 }
+                                        )
+                                    } else {
+                                        ConfirmProfileStep(selected, onConfirm = { finishProfile(selected, "gndec_permanent_pdf") }, onBack = { step = 2 })
+                                    }
+                                }
+                            }
+                            4 -> NotificationStep(onEnable = { requestNotificationsAndFinish() }, onSkip = { finishNotificationStep() })
                         }
                     }
-                }
-                4 -> item {
-                    NotificationStep(onEnable = { requestNotificationsAndFinish() }, onSkip = { finishNotificationStep() })
                 }
             }
         }
@@ -261,7 +295,12 @@ private fun OnboardingTop(step: Int) {
         Spacer(Modifier.height(18.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             repeat(5) { index ->
-                Box(Modifier.weight(1f).height(4.dp).clip(CircleShape).background(if (index <= step) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant))
+                val fill by animateColorAsState(
+                    targetValue = if (index <= step) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                    animationSpec = motionTween(Motion.Normal),
+                    label = "onboardingProgress"
+                )
+                Box(Modifier.weight(1f).height(4.dp).clip(CircleShape).background(fill))
             }
         }
     }
@@ -287,26 +326,49 @@ private fun BranchStep(selectedBranch: String, onBranch: (String) -> Unit, loadi
         Spacer(Modifier.height(5.dp))
         Text("We’ll read that branch’s official 2026 permanent student PDF bundled inside the app. Nothing is downloaded.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(16.dp))
-        com.gndec.timetable.domain.StudentDirectoryManager.BRANCHES.forEach { branch ->
+        com.gndec.timetable.domain.StudentDirectoryManager.BRANCHES.forEach { branchName ->
+            val isSelected = branchName == selectedBranch
+            val containerColor by animateColorAsState(
+                targetValue = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                animationSpec = motionTween(Motion.Normal),
+                label = "branchContainer"
+            )
+            val borderColor by animateColorAsState(
+                targetValue = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                animationSpec = motionTween(Motion.Normal),
+                label = "branchBorder"
+            )
+            val iconTint by animateColorAsState(
+                targetValue = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                animationSpec = motionTween(Motion.Normal),
+                label = "branchIcon"
+            )
+            val pressInteraction = remember { MutableInteractionSource() }
             Card(
-                onClick = { onBranch(branch) },
-                Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                onClick = { onBranch(branchName) },
+                Modifier.fillMaxWidth().padding(vertical = 3.dp)
+                    .pressFeedback(pressInteraction, pressedScale = 0.98f),
+                interactionSource = pressInteraction,
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = if (branch == selectedBranch) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.dp, if (branch == selectedBranch) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
+                colors = CardDefaults.cardColors(containerColor = containerColor),
+                border = androidx.compose.foundation.BorderStroke(1.dp, borderColor),
                 elevation = CardDefaults.cardElevation(0.dp)
             ) {
                 Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Badge, contentDescription = null, tint = if (branch == selectedBranch) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                    Icon(Icons.Default.Badge, contentDescription = null, tint = iconTint, modifier = Modifier.size(22.dp))
                     Spacer(Modifier.size(12.dp))
-                    Text(branch, style = MaterialTheme.typography.titleMedium, fontWeight = if (branch == selectedBranch) FontWeight.Bold else FontWeight.Medium)
+                    Text(branchName, style = MaterialTheme.typography.titleMedium, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium)
                     Spacer(Modifier.weight(1f))
-                    if (branch == selectedBranch) Text("Selected", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
+                    if (isSelected) Text("Selected", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
                 }
             }
         }
         Spacer(Modifier.height(10.dp))
-        if (loading) {
+        AnimatedVisibility(
+            visible = loading,
+            enter = expandVertically(motionTween(Motion.Normal)) + fadeIn(motionTween(Motion.Normal)),
+            exit = shrinkVertically(motionTween(Motion.Fast)) + fadeOut(motionTween(Motion.Fast))
+        ) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                 Spacer(Modifier.width(10.dp))
@@ -318,7 +380,7 @@ private fun BranchStep(selectedBranch: String, onBranch: (String) -> Unit, loadi
             Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
         Spacer(Modifier.height(12.dp))
-        PrimaryAction("Read ${selectedBranch.ifBlank { "branch" }} students", Icons.Default.CloudDone, enabled = selectedBranch.isNotBlank() && !loading, onClick = onContinue)
+        PrimaryAction("Read ${selectedBranch.ifBlank { "branch" }} students", Icons.Default.CloudDone, enabled = selectedBranch.isNotBlank() && !loading, onClick = onContinue, modifier = Modifier.fillMaxWidth())
         TextButton(onClick = onManual) { Text("Enter profile manually instead") }
     }
 }
@@ -339,7 +401,15 @@ private fun NameLookupStep(branch: String, query: String, onQuery: (String) -> U
             HintCard("No matching name found. Check spelling or use manual entry below.")
         } else {
             matches.forEach { record ->
-                Card(onClick = { onSelect(record) }, Modifier.fillMaxWidth().padding(vertical = 3.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), elevation = CardDefaults.cardElevation(0.dp)) {
+                val pressInteraction = remember { MutableInteractionSource() }
+                Card(
+                    onClick = { onSelect(record) },
+                    Modifier.fillMaxWidth().padding(vertical = 3.dp).pressFeedback(pressInteraction, pressedScale = 0.98f),
+                    interactionSource = pressInteraction,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    elevation = CardDefaults.cardElevation(0.dp)
+                ) {
                     Column(Modifier.padding(13.dp)) {
                         Text(studentDisplayName(record, matches), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text("${record.subsection}  ·  ${record.group}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
@@ -378,7 +448,7 @@ private fun ConfirmProfileStep(record: StudentDirectoryRecord?, onConfirm: () ->
             }
         }
         Spacer(Modifier.height(16.dp))
-        PrimaryAction("Use these details", Icons.Default.ArrowForward, onClick = onConfirm)
+        PrimaryAction("Use these details", Icons.Default.ArrowForward, onClick = onConfirm, modifier = Modifier.fillMaxWidth())
         TextButton(onClick = onBack) { Text("Search again") }
     }
 }
@@ -399,20 +469,20 @@ private fun ManualProfileStep(branch: String, name: String, crn: String, registr
         ProfileInput("Permanent section", section, onSection)
         ProfileInput("Permanent subsection / timetable group", subsection, onSubsection)
         Spacer(Modifier.height(7.dp))
-        PrimaryAction("Save profile", Icons.Default.ArrowForward, enabled = name.isNotBlank(), onClick = onSave)
+        PrimaryAction("Save profile", Icons.Default.ArrowForward, enabled = name.isNotBlank(), onClick = onSave, modifier = Modifier.fillMaxWidth())
         TextButton(onClick = onBack) { Text("Back to official search") }
     }
 }
 
 @Composable
 private fun NotificationStep(onEnable: () -> Unit, onSkip: () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(top = 36.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(Modifier.fillMaxWidth().padding(top = 26.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         IconCircle(Icons.Default.Notifications, 72.dp)
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(18.dp))
         Text("Never miss a lecture", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
         Spacer(Modifier.height(8.dp))
-        Text("Get timely notifications about your lectures so you never miss them, even when the timetable app is closed.", color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(24.dp))
+        Text("Get timely notifications about your lectures so you never miss them, even when the timetable app is closed.", color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 6.dp))
+        Spacer(Modifier.height(22.dp))
         PrimaryAction("Enable notifications", Icons.Default.Notifications, onClick = onEnable)
         TextButton(onClick = onSkip) { Text("Skip for now") }
     }
@@ -446,10 +516,24 @@ private fun IconCircle(icon: androidx.compose.ui.graphics.vector.ImageVector, si
 }
 
 @Composable
-private fun PrimaryAction(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, enabled: Boolean = true, onClick: () -> Unit) {
-    Button(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0A6A66), contentColor = Color.White, disabledContainerColor = Color(0xFF244746), disabledContentColor = Color.White.copy(alpha = 0.72f))) {
+private fun PrimaryAction(
+    text: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier.widthIn(min = 248.dp)
+) {
+    val pressInteraction = remember { MutableInteractionSource() }
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.height(50.dp).pressFeedback(pressInteraction, pressedScale = 0.97f),
+        interactionSource = pressInteraction,
+        shape = RoundedCornerShape(16.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0A6A66), contentColor = Color.White, disabledContainerColor = Color(0xFF244746), disabledContentColor = Color.White.copy(alpha = 0.72f))
+    ) {
         Text(text, color = Color.White, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.width(9.dp))
         Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
     }
 }

@@ -3,9 +3,16 @@ package com.gndec.timetable.ui.profile
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -66,6 +73,9 @@ import com.gndec.timetable.domain.matchingStudents
 import com.gndec.timetable.domain.studentDisplayName
 import com.gndec.timetable.ui.PremiumPageHeader
 import com.gndec.timetable.ui.PremiumScreenBackground
+import com.gndec.timetable.ui.motion.Motion
+import com.gndec.timetable.ui.motion.motionTween
+import com.gndec.timetable.ui.motion.pressFeedback
 import kotlinx.coroutines.launch
 
 @Composable
@@ -164,8 +174,8 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit, onOpenAttendance:
             item { SourceStatus(settings.profileSource, loading, savedMessage) }
 
             if (hasSavedProfile && !lookupOpen) {
-                item {
-                    AttendanceProfileAction(onClick = onOpenAttendance)
+                item(key = "attendance-action") {
+                    Box(Modifier.animateItem()) { AttendanceProfileAction(onClick = onOpenAttendance) }
                 }
                 item {
                     SavedProfileCard(
@@ -211,16 +221,20 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit, onOpenAttendance:
                     )
                 }
             } else {
-                item {
-                    SectionTitle("Connect your official record", "Choose your branch, then search the bundled GNDEC 2026 permanent-section PDF.")
+                item(key = "connect-title") {
+                    Box(Modifier.animateItem()) {
+                        SectionTitle("Connect your official record", "Choose your branch, then search the bundled GNDEC 2026 permanent-section PDF.")
+                    }
                 }
-                item {
-                    BranchSelector(
-                        branch,
-                        onBranch = { branch = it; directory = emptyList(); query = ""; error = null; manualMode = false },
-                        onRefresh = { scope.launch { loadBranch(force = true) } },
-                        loading = loading
-                    )
+                item(key = "branch-selector") {
+                    Box(Modifier.animateItem()) {
+                        BranchSelector(
+                            branch,
+                            onBranch = { branch = it; directory = emptyList(); query = ""; error = null; manualMode = false },
+                            onRefresh = { scope.launch { loadBranch(force = true) } },
+                            loading = loading
+                        )
+                    }
                 }
                 if (branch.isNotBlank()) {
                     item {
@@ -242,8 +256,9 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit, onOpenAttendance:
             }
 
             if (manualMode) {
-                item {
-                    ManualFields(
+                item(key = "manual-fields") {
+                    Box(Modifier.animateItem()) {
+                        ManualFields(
                         name = manualName,
                         crn = manualCrn,
                         registration = manualRegistration,
@@ -266,6 +281,7 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit, onOpenAttendance:
             }
         }
     }
+}
 }
 
 @Composable
@@ -290,7 +306,15 @@ private fun SavedProfileCard(name: String, branch: String, crn: String, registra
 
 @Composable
 private fun ProfileActionRow(text: String, onClick: () -> Unit) {
-    Card(onClick = onClick, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer), shape = RoundedCornerShape(16.dp), elevation = CardDefaults.cardElevation(0.dp)) {
+    val pressInteraction = remember { MutableInteractionSource() }
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).pressFeedback(pressInteraction),
+        interactionSource = pressInteraction,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(0.dp)
+    ) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(text, Modifier.weight(1f), color = MaterialTheme.colorScheme.onPrimaryContainer, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
             Icon(Icons.Default.ArrowForward, contentDescription = "Open", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
@@ -318,14 +342,32 @@ private fun ProfileHero(initials: String, name: String, group: String, registrat
 @Composable
 private fun SourceStatus(source: String, loading: Boolean, saved: String?) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (loading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Icon(Icons.Default.CloudDone, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(19.dp))
+        val iconSwapIn = motionTween<Float>(Motion.Fast)
+        val iconSwapOut = motionTween<Float>(Motion.Fast)
+        AnimatedContent(
+            targetState = loading,
+            transitionSpec = { fadeIn(iconSwapIn) togetherWith fadeOut(iconSwapOut) },
+            label = "sourceIcon"
+        ) { isLoading ->
+            if (isLoading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            else Icon(Icons.Default.CloudDone, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(19.dp))
+        }
         Spacer(Modifier.width(8.dp))
-        Text(when {
+        val statusText = when {
             loading -> "Reading the official branch PDF…"
             saved != null -> saved
             source == "gndec_permanent_pdf" -> "Linked to GNDEC’s bundled permanent 2026 list"
             else -> "Manual profile details"
-        }, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        }
+        val textSwapIn = motionTween<Float>(Motion.Normal)
+        val textSwapOut = motionTween<Float>(Motion.Fast)
+        AnimatedContent(
+            targetState = statusText,
+            transitionSpec = { fadeIn(textSwapIn) togetherWith fadeOut(textSwapOut) },
+            label = "sourceText"
+        ) { text ->
+            Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        }
     }
 }
 
@@ -362,14 +404,40 @@ private fun BranchChip(text: String, selected: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun SurfaceChip(text: String, selected: Boolean, onClick: () -> Unit) {
-    Box(Modifier.clip(RoundedCornerShape(12.dp)).background(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface).clickable(onClick = onClick).padding(horizontal = 13.dp, vertical = 9.dp)) {
-        Text(text, color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+    val chipColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+        animationSpec = motionTween(Motion.Normal),
+        label = "chipColor"
+    )
+    val textColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+        animationSpec = motionTween(Motion.Normal),
+        label = "chipText"
+    )
+    val pressInteraction = remember { MutableInteractionSource() }
+    Box(
+        Modifier.clip(RoundedCornerShape(12.dp))
+            .background(chipColor)
+            .pressFeedback(pressInteraction, pressedScale = 0.93f)
+            .clickable(interactionSource = pressInteraction, indication = LocalIndication.current, onClick = onClick)
+            .padding(horizontal = 13.dp, vertical = 9.dp)
+    ) {
+        Text(text, color = textColor, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
     }
 }
 
 @Composable
 private fun CandidateRow(record: StudentDirectoryRecord, matches: List<StudentDirectoryRecord>, onClick: () -> Unit) {
-    Card(onClick = onClick, Modifier.fillMaxWidth().padding(vertical = 3.dp), shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), elevation = CardDefaults.cardElevation(0.dp)) {
+    val pressInteraction = remember { MutableInteractionSource() }
+    Card(
+        onClick = onClick,
+        Modifier.fillMaxWidth().padding(vertical = 3.dp).pressFeedback(pressInteraction, pressedScale = 0.98f),
+        interactionSource = pressInteraction,
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(0.dp)
+    ) {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(21.dp))
             Spacer(Modifier.width(9.dp))

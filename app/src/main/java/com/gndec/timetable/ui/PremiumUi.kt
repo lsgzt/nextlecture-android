@@ -1,5 +1,7 @@
 package com.gndec.timetable.ui
 
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -11,9 +13,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -45,10 +47,13 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -59,11 +64,28 @@ import androidx.compose.foundation.layout.navigationBars
 import com.gndec.timetable.data.db.LectureEntity
 import com.gndec.timetable.domain.Announcement
 import com.gndec.timetable.domain.ErpNotice
+import com.gndec.timetable.ui.motion.Motion
+import com.gndec.timetable.ui.motion.pressFeedback
+import com.gndec.timetable.ui.motion.motionTween
 import com.gndec.timetable.util.Formatters
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.runtime.remember
 
 private val LightAqua = Color(0xFFE8F6F4)
 private val LightAquaStrong = Color(0xFFD8F0ED)
 private val DarkAqua = Color(0xFF183B3A)
+
+/** Signature aqua wash shared by the hero card and the sync strip. */
+@Composable
+private fun premiumAquaBrush(): Brush = Brush.linearGradient(
+    if (MaterialTheme.colorScheme.background.luminance() > 0.5f) listOf(LightAqua, LightAquaStrong)
+    else listOf(Color(0xFF1C4443), DarkAqua)
+)
 
 @Composable
 fun PremiumScreenBackground(content: @Composable () -> Unit) {
@@ -79,11 +101,11 @@ fun PremiumBrandHeader(
     onProfile: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+    Column(modifier.padding(horizontal = 20.dp, vertical = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                Text(group, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.titleMedium)
+                Text(group, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
             }
             IconButton(onClick = onProfile) {
                 Icon(Icons.Default.Person, contentDescription = "Profile", tint = MaterialTheme.colorScheme.primary)
@@ -136,7 +158,7 @@ fun PremiumStatusRow(
 ) {
     Row(
         modifier.fillMaxWidth().padding(horizontal = 20.dp).clip(RoundedCornerShape(18.dp))
-            .background(if (MaterialTheme.colorScheme.background.luminance() > 0.5f) LightAqua else DarkAqua)
+            .background(premiumAquaBrush(), RoundedCornerShape(18.dp))
             .padding(horizontal = 14.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -146,13 +168,15 @@ fun PremiumStatusRow(
             Text("Using saved timetable", fontWeight = FontWeight.SemiBold, maxLines = 1)
             Text(updatedText, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
+        val updatePress = remember { MutableInteractionSource() }
         OutlinedButton(
             onClick = onFetch,
             enabled = fetchEnabled,
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
             shape = RoundedCornerShape(14.dp),
-            modifier = Modifier.height(38.dp)
+            modifier = Modifier.height(38.dp).pressFeedback(updatePress, pressedScale = 0.96f),
+            interactionSource = updatePress
         ) {
             Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(17.dp))
             Spacer(Modifier.width(5.dp))
@@ -170,20 +194,42 @@ fun PremiumNextLectureCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val cardColor = if (MaterialTheme.colorScheme.background.luminance() > 0.5f) LightAqua else DarkAqua
+    val heroBrush = premiumAquaBrush()
     val titleColor = MaterialTheme.colorScheme.onSurface
+    val countdownColor by animateColorAsState(
+        targetValue = if (isHappening) MaterialTheme.colorScheme.primary else Color(0xFFE89A4A),
+        animationSpec = motionTween(Motion.Normal),
+        label = "nextLectureCountdownColor"
+    )
+    val pressInteraction = remember { MutableInteractionSource() }
+    val badgeFade = motionTween<Float>(Motion.Fast)
     Card(
         onClick = onClick,
-        modifier = modifier,
+        modifier = modifier.pressFeedback(pressInteraction).background(heroBrush, RoundedCornerShape(24.dp)),
+        interactionSource = pressInteraction,
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = cardColor),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         elevation = CardDefaults.cardElevation(0.dp)
     ) {
         Column(Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), contentColor = MaterialTheme.colorScheme.primary, shape = CircleShape) {
-                    Text(if (isHappening) "NOW" else "NEXT", modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    AnimatedContent(
+                        targetState = isHappening,
+                        transitionSpec = {
+                            (fadeIn(badgeFade) togetherWith fadeOut(badgeFade))
+                        },
+                        label = "nextLectureBadge"
+                    ) { happening ->
+                        Text(
+                            if (happening) "NOW" else "NEXT",
+                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
+                        )
+                    }
                 }
                 Spacer(Modifier.width(8.dp))
                 Text(dayLabel, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
@@ -194,9 +240,10 @@ fun PremiumNextLectureCard(
             Text(lecture.subject ?: "Lecture", color = titleColor, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (countdown.isNotBlank()) {
                 Spacer(Modifier.height(6.dp))
+                // Text updates per minute without animation; only the state color animates.
                 Text(
                     if (isHappening) "ENDS IN $countdown" else "STARTS IN $countdown",
-                    color = if (isHappening) MaterialTheme.colorScheme.primary else Color(0xFFE89A4A),
+                    color = countdownColor,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 0.5.sp
@@ -241,9 +288,11 @@ fun PremiumAnnouncementCard(announcement: Announcement, modifier: Modifier = Mod
 
 @Composable
 fun PremiumErpNoticeBanner(notice: ErpNotice, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val pressInteraction = remember { MutableInteractionSource() }
     Card(
         onClick = onClick,
-        modifier = modifier,
+        modifier = modifier.pressFeedback(pressInteraction),
+        interactionSource = pressInteraction,
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
@@ -302,8 +351,11 @@ fun PremiumTodayPreview(lectures: List<LectureEntity>, dateLabel: String, onOpen
 
 @Composable
 private fun PremiumPreviewRow(lecture: LectureEntity, onClick: () -> Unit) {
+    val pressInteraction = remember { MutableInteractionSource() }
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable(onClick = onClick)
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+            .pressFeedback(pressInteraction, pressedScale = 0.98f)
+            .clickable(interactionSource = pressInteraction, indication = LocalIndication.current, onClick = onClick)
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f)).padding(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -350,40 +402,76 @@ fun PremiumMetaRow(icon: ImageVector, text: String, tint: Color = MaterialTheme.
     }
 }
 
+/** Bottom clearance tab screens must add so scrollable content clears the overlaid bar. */
+val PremiumBottomBarContentClearance = 78.dp
+
 @Composable
-fun PremiumBottomBar(selected: String, onNavigate: (String) -> Unit) {
+fun PremiumBottomBar(
+    selected: String,
+    onNavigate: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
     val items = listOf(
         Triple("home", "Home", Icons.Default.Home),
         Triple("today", "Today", Icons.Default.Today),
         Triple("notice", "Notice", Icons.Default.Campaign),
         Triple("syllabus", "Syllabus", Icons.Default.MenuBook)
     )
-    Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp, shadowElevation = 0.dp) {
+    // Every dimension below is FIXED; selection is expressed purely through animated
+    // color fills and draw-phase scaling, so tapping a destination never shifts layout.
+    Surface(modifier = modifier, color = MaterialTheme.colorScheme.background, tonalElevation = 0.dp, shadowElevation = 0.dp) {
         Row(
             Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars)
-                .heightIn(min = 84.dp).padding(horizontal = 10.dp, vertical = 7.dp),
+                .height(78.dp).padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             items.forEach { (route, label, icon) ->
                 val active = route == selected
+                val indicatorColor by animateColorAsState(
+                    targetValue = if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else Color.Transparent,
+                    animationSpec = motionTween(Motion.Normal),
+                    label = "navIndicatorColor"
+                )
+                val contentTint by animateColorAsState(
+                    targetValue = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    animationSpec = motionTween(Motion.Normal),
+                    label = "navContentTint"
+                )
+                val iconScale = animateFloatAsState(
+                    targetValue = if (active) 1f else 0.92f,
+                    animationSpec = motionTween(Motion.Normal),
+                    label = "navIconScale"
+                )
+                val pressInteraction = remember { MutableInteractionSource() }
                 Column(
-                    Modifier.weight(1f).heightIn(min = 68.dp).clip(RoundedCornerShape(18.dp)).clickable { onNavigate(route) }
-                        .padding(horizontal = 6.dp, vertical = 3.dp),
+                    Modifier.weight(1f).fillMaxHeight()
+                        .clip(RoundedCornerShape(18.dp))
+                        .pressFeedback(pressInteraction, pressedScale = 0.95f)
+                        .clickable(interactionSource = pressInteraction, indication = LocalIndication.current) { onNavigate(route) },
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
                     Box(
-                        Modifier.size(if (active) 42.dp else 38.dp).background(if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else Color.Transparent, CircleShape),
+                        Modifier.size(40.dp).background(indicatorColor, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(icon, contentDescription = label, tint = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(23.dp))
+                        Icon(
+                            icon,
+                            contentDescription = label,
+                            tint = contentTint,
+                            modifier = Modifier.size(23.dp).graphicsLayer {
+                                val s = iconScale.value
+                                scaleX = s
+                                scaleY = s
+                            }
+                        )
                     }
-                    Spacer(Modifier.height(1.dp))
+                    Spacer(Modifier.height(2.dp))
                     Text(
                         label,
-                        color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        color = contentTint,
                         style = MaterialTheme.typography.labelMedium,
-                        fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                        fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         softWrap = false,
                         overflow = TextOverflow.Clip

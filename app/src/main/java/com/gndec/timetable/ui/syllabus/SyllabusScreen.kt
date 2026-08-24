@@ -1,8 +1,10 @@
 package com.gndec.timetable.ui.syllabus
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -73,10 +76,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gndec.timetable.data.db.SyllabusChatMessageEntity
 import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.domain.SyllabusLoadState
-import com.gndec.timetable.ui.PremiumBottomBar
 import com.gndec.timetable.ui.PremiumPageHeader
 import com.gndec.timetable.ui.PremiumScreenBackground
 import com.gndec.timetable.ui.TealOutlineButton
+import com.gndec.timetable.ui.motion.Motion
+import com.gndec.timetable.ui.motion.motionTween
+import com.gndec.timetable.ui.motion.pressFeedback
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -238,11 +243,18 @@ fun SyllabusScreen(
                 } else {
                     LazyColumn(contentPadding = PaddingValues(bottom = 26.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(sessions, key = { it.id }) { session ->
+                            val sessionInteraction = remember { MutableInteractionSource() }
+                            val sessionContainer by animateColorAsState(
+                                targetValue = if (session.id == selectedId) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
+                                animationSpec = motionTween(Motion.Normal),
+                                label = "sessionCardContainer"
+                            )
                             Card(
                                 onClick = { vm.selectSession(session.id); chatStarted = true; historyOpen = false },
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier.fillMaxWidth().animateItem().pressFeedback(sessionInteraction),
+                                interactionSource = sessionInteraction,
                                 shape = RoundedCornerShape(16.dp),
-                                colors = CardDefaults.cardColors(containerColor = if (session.id == selectedId) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface),
+                                colors = CardDefaults.cardColors(containerColor = sessionContainer),
                                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                                 elevation = CardDefaults.cardElevation(0.dp)
                             ) {
@@ -306,33 +318,41 @@ fun SyllabusScreen(
                 if (firstChat) {
                     item { WelcomeCard(onOpenPreviousYearPapers) }
                 } else {
-                    items(messages, key = { it.id }) { message -> ChatBubble(message) }
+                    items(messages, key = { it.id }) { message ->
+                        Box(Modifier.animateItem()) { ChatBubble(message) }
+                    }
                 }
                 if (streamingAnswer.isNotBlank()) {
                     item(key = "streaming-answer") {
-                        ChatBubble(
-                            SyllabusChatMessageEntity(
-                                id = Long.MIN_VALUE,
-                                sessionId = selectedId.orEmpty(),
-                                role = "model",
-                                content = streamingAnswer,
-                                timestamp = 0L
+                        Box(Modifier.fillMaxWidth().animateItem()) {
+                            ChatBubble(
+                                SyllabusChatMessageEntity(
+                                    id = Long.MIN_VALUE,
+                                    sessionId = selectedId.orEmpty(),
+                                    role = "model",
+                                    content = streamingAnswer,
+                                    timestamp = 0L
+                                )
                             )
-                        )
+                        }
                     }
                 }
                 if (sending) {
                     item(key = "streaming-status") {
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Gemini is writing…", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                        Box(Modifier.fillMaxWidth().animateItem()) {
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Gemini is writing…", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                            }
                         }
                     }
                 }
                 error?.let { message ->
                     item(key = "chat-error") {
-                        Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 4.dp))
+                        Box(Modifier.fillMaxWidth().animateItem()) {
+                            Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 4.dp))
+                        }
                     }
                 }
             }
@@ -349,12 +369,16 @@ fun SyllabusScreen(
                             shape = RoundedCornerShape(18.dp),
                             enabled = !sending
                         )
+                        val canSend = question.isNotBlank() && !sending
                         IconButton(
                             onClick = { val q = question.trim(); question = ""; chatStarted = true; vm.ask(q) },
-                            enabled = !sending && question.isNotBlank(),
-                            modifier = Modifier.size(52.dp)
+                            enabled = canSend,
+                            modifier = Modifier.size(52.dp).background(
+                                if (canSend) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                                CircleShape
+                            )
                         ) {
-                            Icon(Icons.Default.Send, contentDescription = "Send question", tint = if (question.isNotBlank() && !sending) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                            Icon(Icons.Default.Send, contentDescription = "Send question", tint = if (canSend) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     if (firstChat) {
