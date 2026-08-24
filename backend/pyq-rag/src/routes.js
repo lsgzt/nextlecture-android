@@ -64,6 +64,15 @@ function parseCourseRange(query) {
   return { course: course.data, from: from?.success ? from.data : null, to: to?.success ? to.data : null, limit: limit.data };
 }
 
+function isAllowedTimetableUrl(value) {
+  try {
+    const url = new URL(String(value || '').trim());
+    return url.protocol === 'https:' && url.hostname === 'appsc.gndec.ac.in' && url.pathname.toLowerCase().endsWith('.html') ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 function retryFailureReason(error) {
   const message = String(error?.message || '').toLowerCase();
   return /quota|rate limit|resource exhausted|too many requests|invalid api key|api key not valid|unauthorized|forbidden/.test(message) ? 'provider_quota' : 'processing_error';
@@ -128,6 +137,11 @@ export function buildRouter() {
       console.error('[PYQ] retry failed', error.message);
       return res.status(503).json({ error: 'retry unavailable' });
     }
+  });
+
+  router.get('/timetable-source', publicLimit, async (_req, res) => {
+    const url = isAllowedTimetableUrl(config.timetableUrl);
+    return res.json({ url, source: url ? 'server-config' : 'none', fetchedAt: new Date().toISOString() });
   });
 
   router.post('/pyq/retry-course', retryLimit, async (req, res) => {

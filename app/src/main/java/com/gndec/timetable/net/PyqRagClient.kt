@@ -90,6 +90,13 @@ data class PyqGroupDetailResponse(
 )
 
 @Serializable
+data class TimetableSourceResponse(
+    val url: String? = null,
+    val source: String? = null,
+    val fetchedAt: String? = null
+)
+
+@Serializable
 data class PyqRetryRequest(val course: String)
 
 @Serializable
@@ -139,6 +146,11 @@ class PyqRagClient(private val client: OkHttpClient = Net.client) {
         val loaded = execute(url, PyqGroupDetailResponse.serializer())
         groupDetailCache[groupId] = CachedGroupDetail(loaded, System.currentTimeMillis())
         loaded
+    }
+
+    suspend fun timetableSource(baseUrl: String): TimetableSourceResponse = withContext(Dispatchers.IO) {
+        val url = buildUrl(baseUrl, "api/timetable-source") ?: throw IllegalArgumentException("Invalid timetable source backend URL")
+        execute(url, TimetableSourceResponse.serializer())
     }
 
     suspend fun retryCourse(baseUrl: String, course: String): PyqRetryResponse = withContext(Dispatchers.IO) {

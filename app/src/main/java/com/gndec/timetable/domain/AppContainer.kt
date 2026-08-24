@@ -7,6 +7,7 @@ import com.gndec.timetable.data.prefs.SettingsManager
 import com.gndec.timetable.net.BackendClient
 import com.gndec.timetable.net.GeminiClient
 import com.gndec.timetable.net.TimetableFetcher
+import com.gndec.timetable.net.TimetableSourceResolver
 import com.gndec.timetable.net.PyqRagClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -23,9 +24,10 @@ class AppContainer(val context: Context) {
     val announcementManager by lazy { AnnouncementManager(context, settings) }
     val erpNoticeManager by lazy { ErpNoticeManager(context, settings) }
     val pyqRagClient by lazy { PyqRagClient() }
+    val timetableSourceResolver by lazy { TimetableSourceResolver(pyqRagClient) }
     val syllabusManager by lazy { SyllabusManager(context, settings, keys, GeminiClient(), db.syllabusChatDao()) }
     val releaseUpdateManager by lazy { ReleaseUpdateManager(context, settings) }
     val studentDirectoryManager by lazy { StudentDirectoryManager(context, settings) }
-    val refreshManager by lazy { RefreshManager(db, settings, keys, fetcher, normalizer, scheduler) }
+    val refreshManager by lazy { RefreshManager(db, settings, keys, fetcher, timetableSourceResolver, normalizer, scheduler) }
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 }

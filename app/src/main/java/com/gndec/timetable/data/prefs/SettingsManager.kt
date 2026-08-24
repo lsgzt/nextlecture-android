@@ -59,7 +59,7 @@ data class AppSettings(
         const val DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"
         const val DEFAULT_PYQ_RAG_BACKEND_URL = "https://gndec-pyq-rag-api.vercel.app"
         const val DEFAULT_SOURCE_URL =
-            "https://appsc.gndec.ac.in/sites/default/files/2026-08/09_08_2026%20FINAL_FILE_subgroups_days_horizontal.html"
+            "https://appsc.gndec.ac.in/sites/default/files/2026-08/23_08_2026%20FINAL_FILE%20R4_subgroups_days_horizontal.html"
     }
 }
 

@@ -26,6 +26,7 @@ export const config = Object.freeze({
   geminiEmbeddingDimension: integerEnv('GEMINI_EMBEDDING_DIMENSION', 768, 768, 768),
   adminToken: process.env.PYQ_ADMIN_TOKEN?.trim() || '',
   allowedOrigins: (process.env.ALLOWED_ORIGINS || '').split(',').map((value) => value.trim()).filter(Boolean),
+  timetableUrl: process.env.Timetable_url?.trim() || process.env.TIMETABLE_URL?.trim() || '',
   publicRateLimitPerMinute: integerEnv('PUBLIC_RATE_LIMIT_PER_MINUTE', 60, 10, 300),
   askRateLimitPerMinute: integerEnv('ASK_RATE_LIMIT_PER_MINUTE', 20, 1, 100),
   maxPdfBytes: integerEnv('MAX_PDF_BYTES', 50 * 1024 * 1024, 1 * 1024 * 1024, 50 * 1024 * 1024),

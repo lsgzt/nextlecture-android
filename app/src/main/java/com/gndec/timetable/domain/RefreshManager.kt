@@ -7,6 +7,7 @@ import com.gndec.timetable.data.prefs.SecureKeyStore
 import com.gndec.timetable.data.prefs.SettingsManager
 import com.gndec.timetable.net.FetchOutcome
 import com.gndec.timetable.net.TimetableFetcher
+import com.gndec.timetable.net.TimetableSourceResolver
 import com.gndec.timetable.parse.ParseException
 import com.gndec.timetable.parse.TimetableParser
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +34,7 @@ class RefreshManager(
     private val settings: SettingsManager,
     private val keys: SecureKeyStore,
     private val fetcher: TimetableFetcher,
+    private val sourceResolver: TimetableSourceResolver,
     private val normalizer: AiNormalizer,
     private val scheduler: AlarmScheduler
 ) {
@@ -53,16 +55,20 @@ class RefreshManager(
         val cfg = settings.flow.first()
         val meta = db.metaDao().get()
         val now = System.currentTimeMillis()
+        val resolved = sourceResolver.resolve(cfg.pyqRagBackendUrl, cfg.sourceUrl)
+        val sourceUrlChanged = meta?.sourceUrl != resolved.url
+        val etag = if (sourceUrlChanged) null else meta?.etag
+        val lastModified = if (sourceUrlChanged) null else meta?.lastModified
 
         fun markChecked() = TimetableMetaEntity(
-            id = 1, sourceUrl = cfg.sourceUrl,
+            id = 1, sourceUrl = resolved.url,
             lastSuccessfulFetch = meta?.lastSuccessfulFetch,
             lastChecked = now,
-            etag = meta?.etag, lastModified = meta?.lastModified,
+            etag = etag, lastModified = lastModified,
             timetableHash = meta?.timetableHash
         )
 
-        when (val outcome = fetcher.fetch(cfg.sourceUrl, meta?.etag, meta?.lastModified)) {
+        when (val outcome = fetcher.fetch(resolved.url, etag, lastModified)) {
             is FetchOutcome.NotModified -> {
                 db.metaDao().put(markChecked())
                 RefreshResult.UpToDate
@@ -72,7 +78,7 @@ class RefreshManager(
                 RefreshResult.Failed(outcome.reason, hadCachedTimetable = db.lectureDao().countAll() > 0)
             }
             is FetchOutcome.Changed ->
-                parseAndSave(outcome.html, cfg.group, cfg.sourceUrl, outcome.etag, outcome.lastModified, now)
+                parseAndSave(outcome.html, cfg.group, resolved.url, outcome.etag, outcome.lastModified, now)
         }
     }
 
