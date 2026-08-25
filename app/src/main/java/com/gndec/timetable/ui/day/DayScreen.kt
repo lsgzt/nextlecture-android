@@ -167,37 +167,24 @@ fun DayScreen(
                 }
                 item(key = "day-view-content") {
                     AnimatedContent(
-                        targetState = viewMode,
+                        targetState = viewMode == DayViewMode.WEEK,
                         transitionSpec = {
-                            val direction = if (targetState.ordinal >= initialState.ordinal) 1 else -1
-                            (slideInHorizontally(tween(Motion.Normal, easing = Motion.EasingStandard)) { width -> width / 4 * direction } + fadeIn(tween(Motion.Normal, easing = Motion.EasingStandard))) togetherWith
-                                (slideOutHorizontally(tween(Motion.Fast, easing = Motion.EasingStandard)) { width -> -width / 4 * direction } + fadeOut(tween(Motion.Fast, easing = Motion.EasingStandard)))
+                            fadeIn(tween(Motion.Emphasized, easing = Motion.EasingStandard)) togetherWith
+                                fadeOut(tween(Motion.Normal, easing = Motion.EasingStandard))
                         },
-                        label = "dayViewContent"
-                    ) { mode ->
-                        val modeDate = when (mode) {
-                            DayViewMode.TODAY -> time.toLocalDate()
-                            DayViewMode.TOMORROW -> time.toLocalDate().plusDays(1)
-                            DayViewMode.WEEK -> time.toLocalDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-                        }
-                        val modeLectures = when (mode) {
-                            DayViewMode.TODAY -> lectures.filter { it.dayOfWeek == todayDow }
-                            DayViewMode.TOMORROW -> lectures.filter { it.dayOfWeek == tomorrowDow }
-                            DayViewMode.WEEK -> emptyList()
-                        }.sortedBy { it.startMinutes }
-                        val modeTimeline = if (mode == DayViewMode.WEEK) emptyList() else buildTimeline(modeLectures, if (mode == DayViewMode.TODAY) nowMinutes else -1)
-                        val modeFreeMinutes = modeTimeline.filterIsInstance<TimelineItem.Free>().sumOf { it.end - it.start }
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            if (mode == DayViewMode.WEEK) {
+                        label = "weekModeContent"
+                    ) { isWeekMode ->
+                        if (isWeekMode) {
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 WeekSummary(
                                     totalLectures = lectures.size,
-                                    weekStart = modeDate,
+                                    weekStart = selectedDate,
                                     cardColor = MaterialTheme.colorScheme.surface,
                                     primaryText = primaryText,
                                     muted = muted,
                                     accent = accent
                                 )
-                                (0L..6L).map { modeDate.plusDays(it) }.forEach { date ->
+                                (0L..6L).map { selectedDate.plusDays(it) }.forEach { date ->
                                     WeekDaySection(
                                         date = date,
                                         lectures = lectures.filter { it.dayOfWeek == date.dayOfWeek.value }.sortedBy { it.startMinutes },
@@ -207,28 +194,52 @@ fun DayScreen(
                                         onOpenLecture = onOpenLecture
                                     )
                                 }
-                            } else {
+                            }
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                val modeLectures = when (viewMode) {
+                                    DayViewMode.TODAY -> lectures.filter { it.dayOfWeek == todayDow }
+                                    DayViewMode.TOMORROW -> lectures.filter { it.dayOfWeek == tomorrowDow }
+                                    DayViewMode.WEEK -> emptyList()
+                                }.sortedBy { it.startMinutes }
+                                val modeTimeline = buildTimeline(modeLectures, if (viewMode == DayViewMode.TODAY) nowMinutes else -1)
+                                val modeFreeMinutes = modeTimeline.filterIsInstance<TimelineItem.Free>().sumOf { it.end - it.start }
                                 DaySummary(
                                     lectures = modeLectures.size,
                                     freeMinutes = modeFreeMinutes,
-                                    reminders = if (mode == DayViewMode.TODAY) scheduledReminders else 0,
+                                    reminders = if (viewMode == DayViewMode.TODAY) scheduledReminders else 0,
                                     accent = accent,
                                     primaryText = primaryText,
                                     muted = muted,
                                     cardColor = MaterialTheme.colorScheme.surface
                                 )
-                                if (modeTimeline.isEmpty()) {
-                                    EmptyDayCard(cardColor = MaterialTheme.colorScheme.surface, primaryText = primaryText, muted = muted)
-                                } else {
-                                    TimelineSection(
-                                        timeline = modeTimeline,
-                                        nowMinutes = if (mode == DayViewMode.TODAY) nowMinutes else -1,
-                                        accent = accent,
-                                        railBackground = background,
-                                        primaryText = primaryText,
-                                        muted = muted,
-                                        onOpenLecture = onOpenLecture
-                                    )
+                                AnimatedContent(
+                                    targetState = viewMode,
+                                    transitionSpec = {
+                                        fadeIn(tween(Motion.Normal, easing = Motion.EasingStandard)) togetherWith
+                                            fadeOut(tween(Motion.Fast, easing = Motion.EasingStandard))
+                                    },
+                                    label = "dayTimetableFade"
+                                ) { mode ->
+                                    val animatedLectures = when (mode) {
+                                        DayViewMode.TODAY -> lectures.filter { it.dayOfWeek == todayDow }
+                                        DayViewMode.TOMORROW -> lectures.filter { it.dayOfWeek == tomorrowDow }
+                                        DayViewMode.WEEK -> emptyList()
+                                    }.sortedBy { it.startMinutes }
+                                    val animatedTimeline = buildTimeline(animatedLectures, if (mode == DayViewMode.TODAY) nowMinutes else -1)
+                                    if (animatedTimeline.isEmpty()) {
+                                        EmptyDayCard(cardColor = MaterialTheme.colorScheme.surface, primaryText = primaryText, muted = muted)
+                                    } else {
+                                        TimelineSection(
+                                            timeline = animatedTimeline,
+                                            nowMinutes = if (mode == DayViewMode.TODAY) nowMinutes else -1,
+                                            accent = accent,
+                                            railBackground = background,
+                                            primaryText = primaryText,
+                                            muted = muted,
+                                            onOpenLecture = onOpenLecture
+                                        )
+                                    }
                                 }
                             }
                         }
