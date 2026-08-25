@@ -104,9 +104,11 @@ private enum class DayViewMode(val title: String) { TODAY("Today"), TOMORROW("To
 
 private val Zone = ZoneId.systemDefault()
 private val DateFormatter = DateTimeFormatter.ofPattern("d MMMM")
+private val TimelineHorizontalPadding = 16.dp
+private val TimelineCardGap = 8.dp
 private val RailColumnWidth = 116.dp
 private val RailNodeSize = 56.dp
-private val RailCenterX = 20.dp + RailColumnWidth / 2
+private val RailCenterX = TimelineHorizontalPadding + RailColumnWidth / 2
 
 @Composable
 fun DayScreen(
@@ -579,6 +581,7 @@ private fun TimelineSection(
                         accent = accent,
                         primaryText = primaryText,
                         muted = muted,
+                        bottomGap = if (index < timeline.lastIndex && timeline[index + 1] is TimelineItem.Lecture) 10.dp else 0.dp,
                         onClick = { onOpenLecture(item.lecture) }
                     )
                     is TimelineItem.Free -> FreePeriod(
@@ -597,7 +600,7 @@ private fun TimelineSection(
 }
 
 @Composable
-private fun TimelineLectureCard(lecture: LectureEntity, state: LectureState, nowMinutes: Int, nodeIndex: Int, sectionCoords: () -> LayoutCoordinates?, registerNode: (Int, LayoutCoordinates) -> Unit, accent: Color, primaryText: Color, muted: Color, onClick: () -> Unit) {
+private fun TimelineLectureCard(lecture: LectureEntity, state: LectureState, nowMinutes: Int, nodeIndex: Int, sectionCoords: () -> LayoutCoordinates?, registerNode: (Int, LayoutCoordinates) -> Unit, accent: Color, primaryText: Color, muted: Color, bottomGap: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
     val live = state == LectureState.HAPPENING
     // State colors glide between UPCOMING / LIVE / COMPLETED instead of snapping.
     val cardColor by animateColorAsState(
@@ -630,9 +633,9 @@ private fun TimelineLectureCard(lecture: LectureEntity, state: LectureState, now
         label = "timelineContentAlpha"
     )
     val pressInteraction = remember { MutableInteractionSource() }
-    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.Top) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = TimelineHorizontalPadding).padding(bottom = bottomGap), verticalAlignment = Alignment.Top) {
         TimelineRail(lecture, state, nodeIndex, sectionCoords, registerNode, railColor, primaryText, muted)
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(TimelineCardGap))
         Card(
             onClick = onClick,
             modifier = Modifier.weight(1f).pressFeedback(pressInteraction),
@@ -668,7 +671,7 @@ private fun TimelineLectureCard(lecture: LectureEntity, state: LectureState, now
                 Spacer(Modifier.height(15.dp))
                 Text((lecture.subject ?: "Lecture").uppercase(), color = primaryText, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(13.dp))
-                TimelineMetaRow(Icons.Default.Person, lecture.teacher?.takeIf { it.isNotBlank() }?.uppercase() ?: "TEACHER UNAVAILABLE", primaryText, muted)
+                TimelineMetaRow(Icons.Default.Person, lecture.teacher?.takeIf { it.isNotBlank() }?.uppercase() ?: "TEACHER UNAVAILABLE", primaryText, muted, maxLines = 1)
                 lecture.venue?.takeIf { it.isNotBlank() }?.let { Spacer(Modifier.height(8.dp)); TimelineMetaRow(Icons.Default.LocationOn, it, primaryText, muted) }
             }
         }
@@ -715,17 +718,17 @@ private fun TimelineRail(lecture: LectureEntity, state: LectureState, nodeIndex:
 }
 
 @Composable
-private fun TimelineMetaRow(icon: ImageVector, text: String, primaryText: Color, muted: Color) {
+private fun TimelineMetaRow(icon: ImageVector, text: String, primaryText: Color, muted: Color, maxLines: Int = 2) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, contentDescription = null, tint = muted, modifier = Modifier.size(19.dp))
         Spacer(Modifier.width(9.dp))
-        Text(text, color = primaryText.copy(alpha = 0.88f), style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(text, color = primaryText.copy(alpha = 0.88f), style = MaterialTheme.typography.bodyLarge, maxLines = maxLines, overflow = TextOverflow.Ellipsis, softWrap = maxLines > 1)
     }
 }
 
 @Composable
 private fun FreePeriod(start: Int, end: Int, nodeIndex: Int, sectionCoords: () -> LayoutCoordinates?, registerNode: (Int, LayoutCoordinates) -> Unit, muted: Color, accent: Color) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = TimelineHorizontalPadding, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.width(RailColumnWidth), horizontalAlignment = Alignment.CenterHorizontally) {
             Box(
                 Modifier.size(14.dp).onGloballyPositioned { coords -> registerNode(nodeIndex, coords) }
