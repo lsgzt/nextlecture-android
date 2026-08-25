@@ -101,9 +101,11 @@ private enum class DayViewMode(val title: String) { TODAY("Today"), TOMORROW("To
 
 private val Zone = ZoneId.systemDefault()
 private val DateFormatter = DateTimeFormatter.ofPattern("d MMMM")
-private val RailColumnWidth = 116.dp
-private val RailNodeSize = 56.dp
-private val RailCenterX = 20.dp + RailColumnWidth / 2
+private val RailTimeWidth = 64.dp
+private val RailTimeGap = 6.dp
+private val RailNodeSize = 52.dp
+private val RailColumnWidth = RailTimeWidth + RailTimeGap + RailNodeSize
+private val RailCenterX = 20.dp + RailTimeWidth + RailTimeGap + RailNodeSize / 2
 
 @Composable
 fun DayScreen(
@@ -632,32 +634,39 @@ private fun TimelineRail(lecture: LectureEntity, state: LectureState, nodeIndex:
         animationSpec = motionTween(Motion.Normal),
         label = "railTimeColor"
     )
-    // The connecting line itself is drawn by TimelineSection behind this column;
-    // only the node (ring + circle + times) lives here.
-    Column(Modifier.width(RailColumnWidth).heightIn(min = 185.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Spacer(Modifier.height(26.dp))
-        Box(
-            Modifier.size(RailNodeSize).onGloballyPositioned { coords -> registerNode(nodeIndex, coords) },
-            contentAlignment = Alignment.Center
+    // The connecting line is drawn behind the node column. Timing labels have
+    // their own right-aligned column and never share pixels with the rail.
+    Row(Modifier.width(RailColumnWidth).heightIn(min = 185.dp), verticalAlignment = Alignment.Top) {
+        Column(
+            Modifier.width(RailTimeWidth).padding(top = 30.dp),
+            horizontalAlignment = Alignment.End
         ) {
-            Box(Modifier.size(RailNodeSize).background(railColor.copy(alpha = 0.18f), CircleShape), contentAlignment = Alignment.Center) {
-            AnimatedContent(
-                targetState = state,
-                transitionSpec = { fadeIn(iconSwapIn) togetherWith fadeOut(iconSwapOut) },
-                label = "railIcon"
-            ) { current ->
-                Icon(
-                    when (current) { LectureState.COMPLETED -> Icons.Default.CheckCircle; LectureState.HAPPENING -> Icons.Default.Notifications; LectureState.UPCOMING -> Icons.Default.AccessTime },
-                    contentDescription = null,
-                    tint = railColor,
-                    modifier = Modifier.size(25.dp)
-                )
-            }
+            Text(formatTime(lecture.startMinutes), color = timeColor, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+            Text(formatTime(lecture.endMinutes), color = muted, style = MaterialTheme.typography.bodyLarge, maxLines = 1, softWrap = false)
+        }
+        Spacer(Modifier.width(RailTimeGap))
+        Column(Modifier.width(RailNodeSize).heightIn(min = 185.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Spacer(Modifier.height(26.dp))
+            Box(
+                Modifier.size(RailNodeSize).onGloballyPositioned { coords -> registerNode(nodeIndex, coords) },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(Modifier.size(RailNodeSize).background(railColor.copy(alpha = 0.18f), CircleShape), contentAlignment = Alignment.Center) {
+                    AnimatedContent(
+                        targetState = state,
+                        transitionSpec = { fadeIn(iconSwapIn) togetherWith fadeOut(iconSwapOut) },
+                        label = "railIcon"
+                    ) { current ->
+                        Icon(
+                            when (current) { LectureState.COMPLETED -> Icons.Default.CheckCircle; LectureState.HAPPENING -> Icons.Default.Notifications; LectureState.UPCOMING -> Icons.Default.AccessTime },
+                            contentDescription = null,
+                            tint = railColor,
+                            modifier = Modifier.size(25.dp)
+                        )
+                    }
+                }
             }
         }
-        Spacer(Modifier.height(9.dp))
-        Text(formatTime(lecture.startMinutes), color = timeColor, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Text(formatTime(lecture.endMinutes), color = muted, style = MaterialTheme.typography.bodyLarge)
     }
 }
 
@@ -673,11 +682,14 @@ private fun TimelineMetaRow(icon: ImageVector, text: String, primaryText: Color,
 @Composable
 private fun FreePeriod(start: Int, end: Int, nodeIndex: Int, sectionCoords: () -> LayoutCoordinates?, registerNode: (Int, LayoutCoordinates) -> Unit, muted: Color, accent: Color) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.width(RailColumnWidth), horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(
-                Modifier.size(14.dp).onGloballyPositioned { coords -> registerNode(nodeIndex, coords) }
-                    .background(accent.copy(alpha = 0.45f), CircleShape)
-            )
+        Row(Modifier.width(RailColumnWidth), verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.width(RailTimeWidth + RailTimeGap))
+            Column(Modifier.width(RailNodeSize), horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    Modifier.size(14.dp).onGloballyPositioned { coords -> registerNode(nodeIndex, coords) }
+                        .background(accent.copy(alpha = 0.45f), CircleShape)
+                )
+            }
         }
         Spacer(Modifier.width(12.dp))
         Text("${formatDurationUpper(end - start)} FREE PERIOD", color = muted, style = MaterialTheme.typography.titleMedium, letterSpacing = 1.7.sp, fontWeight = FontWeight.Medium)
