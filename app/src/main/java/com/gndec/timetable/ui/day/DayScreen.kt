@@ -2,13 +2,8 @@ package com.gndec.timetable.ui.day
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -61,7 +56,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.State
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,7 +79,6 @@ import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.ui.PremiumBottomBarContentClearance
 import com.gndec.timetable.ui.PremiumPageHeader
 import com.gndec.timetable.ui.PremiumScreenBackground
-import com.gndec.timetable.ui.motion.LocalReducedMotion
 import com.gndec.timetable.ui.motion.Motion
 import com.gndec.timetable.ui.motion.motionSpring
 import com.gndec.timetable.ui.motion.motionTween
@@ -470,31 +463,53 @@ private fun TimelineSection(
                 val last = nodeY(timeline.lastIndex)
                 if (first == null || last == null || last <= first) return@drawBehind
                 val x = RailCenterX.toPx()
-                drawLine(
-                    color = muted.copy(alpha = 0.30f),
-                    start = Offset(x, first),
-                    end = Offset(x, last),
-                    strokeWidth = 2.dp.toPx(),
-                    cap = StrokeCap.Round
-                )
+                fun nodeGap(index: Int): Float {
+                    val coords = nodeCoords[index]
+                    return (coords?.size?.height?.toFloat()?.div(2f) ?: RailNodeSize.toPx() / 2f) + 4.dp.toPx()
+                }
+                for (index in 0 until timeline.lastIndex) {
+                    val startY = nodeY(index) ?: continue
+                    val endY = nodeY(index + 1) ?: continue
+                    val start = startY + nodeGap(index)
+                    val end = endY - nodeGap(index + 1)
+                    if (end > start) {
+                        drawLine(
+                            color = muted.copy(alpha = 0.18f),
+                            start = Offset(x, start),
+                            end = Offset(x, end),
+                            strokeWidth = 2.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    }
+                }
                 val tip = glowEnd.coerceIn(first, last)
                 if (tip > first + 2f) {
                     val core = Brush.verticalGradient(
-                        0f to accent.copy(alpha = 0.95f),
-                        0.72f to accent.copy(alpha = 0.62f),
+                        0f to accent.copy(alpha = 0.98f),
+                        0.55f to accent.copy(alpha = 0.78f),
+                        0.9f to accent.copy(alpha = 0.45f),
                         1f to Color.Transparent,
                         startY = first,
                         endY = tip
                     )
                     val halo = Brush.verticalGradient(
-                        0f to accent.copy(alpha = 0.20f),
-                        0.72f to accent.copy(alpha = 0.08f),
+                        0f to accent.copy(alpha = 0.18f),
+                        0.7f to accent.copy(alpha = 0.07f),
                         1f to Color.Transparent,
                         startY = first,
                         endY = tip
                     )
-                    drawLine(halo, Offset(x, first), Offset(x, tip), strokeWidth = 10.dp.toPx(), cap = StrokeCap.Round)
-                    drawLine(core, Offset(x, first), Offset(x, tip), strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
+                    for (index in 0 until timeline.lastIndex) {
+                        val startY = nodeY(index) ?: continue
+                        val endY = nodeY(index + 1) ?: continue
+                        val start = startY + nodeGap(index)
+                        val end = endY - nodeGap(index + 1)
+                        val progressEnd = minOf(end, tip - if (tip <= endY) nodeGap(index + 1) else 0f)
+                        if (progressEnd > start) {
+                            drawLine(halo, Offset(x, start), Offset(x, progressEnd), strokeWidth = 8.dp.toPx(), cap = StrokeCap.Round)
+                            drawLine(core, Offset(x, start), Offset(x, progressEnd), strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
+                        }
+                    }
                 }
             }
     ) {
@@ -617,10 +632,6 @@ private fun TimelineRail(lecture: LectureEntity, state: LectureState, nodeIndex:
         animationSpec = motionTween(Motion.Normal),
         label = "railTimeColor"
     )
-    // "Heartbeat" for the live badge. The infinite transition only exists while this
-    // row is actually happening, and its values are read exclusively inside
-    // graphicsLayer blocks — idle rows cost nothing and nothing ever recomposes.
-    val pulse = if (live) rememberLiveRailPulse() else null
     // The connecting line itself is drawn by TimelineSection behind this column;
     // only the node (ring + circle + times) lives here.
     Column(Modifier.width(RailColumnWidth).heightIn(min = 185.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -629,16 +640,6 @@ private fun TimelineRail(lecture: LectureEntity, state: LectureState, nodeIndex:
             Modifier.size(RailNodeSize).onGloballyPositioned { coords -> registerNode(nodeIndex, coords) },
             contentAlignment = Alignment.Center
         ) {
-            if (pulse != null) {
-                Box(
-                    Modifier.fillMaxSize().graphicsLayer {
-                        val s = pulse.scale.value
-                        scaleX = s
-                        scaleY = s
-                        alpha = pulse.fade.value
-                    }.background(railColor, CircleShape)
-                )
-            }
             Box(Modifier.size(RailNodeSize).background(railColor.copy(alpha = 0.18f), CircleShape), contentAlignment = Alignment.Center) {
             AnimatedContent(
                 targetState = state,
@@ -658,28 +659,6 @@ private fun TimelineRail(lecture: LectureEntity, state: LectureState, nodeIndex:
         Text(formatTime(lecture.startMinutes), color = timeColor, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Text(formatTime(lecture.endMinutes), color = muted, style = MaterialTheme.typography.bodyLarge)
     }
-}
-
-/** Owns the infinite "live" animations; null under reduced motion so nothing runs. */
-private class LiveRailPulse(val scale: State<Float>, val fade: State<Float>)
-
-@Composable
-private fun rememberLiveRailPulse(): LiveRailPulse? {
-    if (LocalReducedMotion.current) return null
-    val transition = rememberInfiniteTransition(label = "liveRailPulse")
-    val scale = transition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.3f,
-        animationSpec = infiniteRepeatable(tween(1400, easing = Motion.EasingStandard), RepeatMode.Restart),
-        label = "pulseScale"
-    )
-    val fade = transition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 0f,
-        animationSpec = infiniteRepeatable(tween(1400, easing = LinearEasing), RepeatMode.Restart),
-        label = "pulseFade"
-    )
-    return LiveRailPulse(scale, fade)
 }
 
 @Composable
