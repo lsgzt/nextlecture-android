@@ -7,6 +7,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -61,6 +63,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -101,11 +104,9 @@ private enum class DayViewMode(val title: String) { TODAY("Today"), TOMORROW("To
 
 private val Zone = ZoneId.systemDefault()
 private val DateFormatter = DateTimeFormatter.ofPattern("d MMMM")
-private val RailTimeWidth = 64.dp
-private val RailTimeGap = 6.dp
-private val RailNodeSize = 52.dp
-private val RailColumnWidth = RailTimeWidth + RailTimeGap + RailNodeSize
-private val RailCenterX = 20.dp + RailTimeWidth + RailTimeGap + RailNodeSize / 2
+private val RailColumnWidth = 116.dp
+private val RailNodeSize = 56.dp
+private val RailCenterX = 20.dp + RailColumnWidth / 2
 
 @Composable
 fun DayScreen(
@@ -139,10 +140,6 @@ fun DayScreen(
     val nowMinutes = time.hour * 60 + time.minute
     val todayDow = time.dayOfWeek.value
     val tomorrowDow = if (todayDow == 7) 1 else todayDow + 1
-    val selectedDow = if (viewMode == DayViewMode.TOMORROW) tomorrowDow else todayDow
-    val selectedLectures = lectures.filter { it.dayOfWeek == selectedDow }.sortedBy { it.startMinutes }
-    val timeline = if (viewMode == DayViewMode.WEEK) emptyList() else buildTimeline(selectedLectures, if (viewMode == DayViewMode.TODAY) nowMinutes else -1)
-    val freeMinutes = timeline.filterIsInstance<TimelineItem.Free>().sumOf { it.end - it.start }
     val background = MaterialTheme.colorScheme.background
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val primaryText = MaterialTheme.colorScheme.onSurface
@@ -157,8 +154,6 @@ fun DayScreen(
         DayViewMode.TOMORROW -> "${group ?: "Select group"} · Tomorrow · ${DateFormatter.format(selectedDate)}"
         DayViewMode.WEEK -> "${group ?: "Select group"} · ${DateFormatter.format(selectedDate)} – ${DateFormatter.format(selectedDate.plusDays(6))}"
     }
-    val weekDays = (0L..6L).map { selectedDate.plusDays(it) }
-
     Scaffold(containerColor = background) { padding ->
         Box(Modifier.fillMaxSize().background(background)) {
             LazyColumn(
@@ -170,51 +165,72 @@ fun DayScreen(
                 item {
                     DayModeSelector(viewMode) { viewModeName = it.name }
                 }
-                if (viewMode == DayViewMode.WEEK) {
-                    item {
-                        WeekSummary(
-                            totalLectures = lectures.size,
-                            weekStart = selectedDate,
-                            cardColor = MaterialTheme.colorScheme.surface,
-                            primaryText = primaryText,
-                            muted = muted,
-                            accent = accent
-                        )
-                    }
-                    items(weekDays, key = { it.toString() }) { date ->
-                        WeekDaySection(
-                            date = date,
-                            lectures = lectures.filter { it.dayOfWeek == date.dayOfWeek.value }.sortedBy { it.startMinutes },
-                            primaryText = primaryText,
-                            muted = muted,
-                            accent = accent,
-                            onOpenLecture = onOpenLecture
-                        )
-                    }
-                } else {
-                    item {
-                        DaySummary(
-                            lectures = selectedLectures.size,
-                            freeMinutes = freeMinutes,
-                            reminders = if (viewMode == DayViewMode.TODAY) scheduledReminders else 0,
-                            accent = accent,
-                            primaryText = primaryText,
-                            muted = muted,
-                            cardColor = MaterialTheme.colorScheme.surface
-                        )
-                    }
-                    if (timeline.isEmpty()) {
-                        item { EmptyDayCard(cardColor = MaterialTheme.colorScheme.surface, primaryText = primaryText, muted = muted) }
-                    } else {
-                        item(key = "${viewMode.name}-timeline") {
-                            TimelineSection(
-                                timeline = timeline,
-                                nowMinutes = if (viewMode == DayViewMode.TODAY) nowMinutes else -1,
-                                accent = accent,
-                                primaryText = primaryText,
-                                muted = muted,
-                                onOpenLecture = onOpenLecture
-                            )
+                item(key = "day-view-content") {
+                    AnimatedContent(
+                        targetState = viewMode,
+                        transitionSpec = {
+                            val direction = if (targetState.ordinal >= initialState.ordinal) 1 else -1
+                            (slideInHorizontally(tween(Motion.Normal, easing = Motion.EasingStandard)) { width -> width / 4 * direction } + fadeIn(tween(Motion.Normal, easing = Motion.EasingStandard))) togetherWith
+                                (slideOutHorizontally(tween(Motion.Fast, easing = Motion.EasingStandard)) { width -> -width / 4 * direction } + fadeOut(tween(Motion.Fast, easing = Motion.EasingStandard)))
+                        },
+                        label = "dayViewContent"
+                    ) { mode ->
+                        val modeDate = when (mode) {
+                            DayViewMode.TODAY -> time.toLocalDate()
+                            DayViewMode.TOMORROW -> time.toLocalDate().plusDays(1)
+                            DayViewMode.WEEK -> time.toLocalDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+                        }
+                        val modeLectures = when (mode) {
+                            DayViewMode.TODAY -> lectures.filter { it.dayOfWeek == todayDow }
+                            DayViewMode.TOMORROW -> lectures.filter { it.dayOfWeek == tomorrowDow }
+                            DayViewMode.WEEK -> emptyList()
+                        }.sortedBy { it.startMinutes }
+                        val modeTimeline = if (mode == DayViewMode.WEEK) emptyList() else buildTimeline(modeLectures, if (mode == DayViewMode.TODAY) nowMinutes else -1)
+                        val modeFreeMinutes = modeTimeline.filterIsInstance<TimelineItem.Free>().sumOf { it.end - it.start }
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            if (mode == DayViewMode.WEEK) {
+                                WeekSummary(
+                                    totalLectures = lectures.size,
+                                    weekStart = modeDate,
+                                    cardColor = MaterialTheme.colorScheme.surface,
+                                    primaryText = primaryText,
+                                    muted = muted,
+                                    accent = accent
+                                )
+                                (0L..6L).map { modeDate.plusDays(it) }.forEach { date ->
+                                    WeekDaySection(
+                                        date = date,
+                                        lectures = lectures.filter { it.dayOfWeek == date.dayOfWeek.value }.sortedBy { it.startMinutes },
+                                        primaryText = primaryText,
+                                        muted = muted,
+                                        accent = accent,
+                                        onOpenLecture = onOpenLecture
+                                    )
+                                }
+                            } else {
+                                DaySummary(
+                                    lectures = modeLectures.size,
+                                    freeMinutes = modeFreeMinutes,
+                                    reminders = if (mode == DayViewMode.TODAY) scheduledReminders else 0,
+                                    accent = accent,
+                                    primaryText = primaryText,
+                                    muted = muted,
+                                    cardColor = MaterialTheme.colorScheme.surface
+                                )
+                                if (modeTimeline.isEmpty()) {
+                                    EmptyDayCard(cardColor = MaterialTheme.colorScheme.surface, primaryText = primaryText, muted = muted)
+                                } else {
+                                    TimelineSection(
+                                        timeline = modeTimeline,
+                                        nowMinutes = if (mode == DayViewMode.TODAY) nowMinutes else -1,
+                                        accent = accent,
+                                        railBackground = background,
+                                        primaryText = primaryText,
+                                        muted = muted,
+                                        onOpenLecture = onOpenLecture
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -432,6 +448,7 @@ private fun TimelineSection(
     timeline: List<TimelineItem>,
     nowMinutes: Int,
     accent: Color,
+    railBackground: Color,
     primaryText: Color,
     muted: Color,
     onOpenLecture: (LectureEntity) -> Unit
@@ -469,19 +486,17 @@ private fun TimelineSection(
                     val coords = nodeCoords[index]
                     return (coords?.size?.height?.toFloat()?.div(2f) ?: RailNodeSize.toPx() / 2f) + 4.dp.toPx()
                 }
+                val labelBand = 58.dp.toPx()
                 for (index in 0 until timeline.lastIndex) {
                     val startY = nodeY(index) ?: continue
                     val endY = nodeY(index + 1) ?: continue
-                    val start = startY + nodeGap(index)
-                    val end = endY - nodeGap(index + 1)
-                    if (end > start) {
-                        drawLine(
-                            color = muted.copy(alpha = 0.18f),
-                            start = Offset(x, start),
-                            end = Offset(x, end),
-                            strokeWidth = 2.dp.toPx(),
-                            cap = StrokeCap.Round
-                        )
+                    val segmentStart = startY + nodeGap(index)
+                    val segmentEnd = endY - nodeGap(index + 1)
+                    val labelStart = segmentStart
+                    val labelEnd = labelStart + if (timeline[index] is TimelineItem.Lecture) labelBand else 0f
+                    if (segmentEnd > segmentStart) {
+                        if (labelStart > segmentStart) drawLine(muted.copy(alpha = 0.18f), Offset(x, segmentStart), Offset(x, minOf(segmentEnd, labelStart)), 2.dp.toPx(), StrokeCap.Round)
+                        if (segmentEnd > labelEnd) drawLine(muted.copy(alpha = 0.18f), Offset(x, maxOf(segmentStart, labelEnd)), Offset(x, segmentEnd), 2.dp.toPx(), StrokeCap.Round)
                     }
                 }
                 val tip = glowEnd.coerceIn(first, last)
@@ -504,13 +519,38 @@ private fun TimelineSection(
                     for (index in 0 until timeline.lastIndex) {
                         val startY = nodeY(index) ?: continue
                         val endY = nodeY(index + 1) ?: continue
-                        val start = startY + nodeGap(index)
-                        val end = endY - nodeGap(index + 1)
-                        val progressEnd = minOf(end, tip - if (tip <= endY) nodeGap(index + 1) else 0f)
-                        if (progressEnd > start) {
-                            drawLine(halo, Offset(x, start), Offset(x, progressEnd), strokeWidth = 8.dp.toPx(), cap = StrokeCap.Round)
-                            drawLine(core, Offset(x, start), Offset(x, progressEnd), strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
+                        val segmentStart = startY + nodeGap(index)
+                        val segmentEnd = endY - nodeGap(index + 1)
+                        val labelStart = segmentStart
+                        val labelEnd = labelStart + if (timeline[index] is TimelineItem.Lecture) labelBand else 0f
+                        val progressEnd = minOf(segmentEnd, tip)
+                        if (progressEnd > segmentStart) {
+                            val beforeEnd = minOf(progressEnd, labelStart)
+                            if (beforeEnd > segmentStart) {
+                                drawLine(halo, Offset(x, segmentStart), Offset(x, beforeEnd), 8.dp.toPx(), StrokeCap.Round)
+                                drawLine(core, Offset(x, segmentStart), Offset(x, beforeEnd), 3.dp.toPx(), StrokeCap.Round)
+                            }
+                            val afterStart = maxOf(segmentStart, labelEnd)
+                            if (progressEnd > afterStart) {
+                                drawLine(halo, Offset(x, afterStart), Offset(x, progressEnd), 8.dp.toPx(), StrokeCap.Round)
+                                drawLine(core, Offset(x, afterStart), Offset(x, progressEnd), 3.dp.toPx(), StrokeCap.Round)
+                            }
                         }
+                    }
+                }
+                // Draw the masks last so neither the base rail nor the gradient
+                // halo can bleed into the timing-label band.
+                for (index in 0 until timeline.lastIndex) {
+                    val startY = nodeY(index) ?: continue
+                    val endY = nodeY(index + 1) ?: continue
+                    val labelStart = startY + nodeGap(index)
+                    val labelEnd = labelStart + if (timeline[index] is TimelineItem.Lecture) labelBand else 0f
+                    if (labelEnd > labelStart) {
+                        drawRect(
+                            color = railBackground,
+                            topLeft = Offset(x - 50.dp.toPx(), labelStart - 4.dp.toPx()),
+                            size = Size(100.dp.toPx(), labelEnd - labelStart + 8.dp.toPx())
+                        )
                     }
                 }
             }
@@ -634,39 +674,32 @@ private fun TimelineRail(lecture: LectureEntity, state: LectureState, nodeIndex:
         animationSpec = motionTween(Motion.Normal),
         label = "railTimeColor"
     )
-    // The connecting line is drawn behind the node column. Timing labels have
-    // their own right-aligned column and never share pixels with the rail.
-    Row(Modifier.width(RailColumnWidth).heightIn(min = 185.dp), verticalAlignment = Alignment.Top) {
-        Column(
-            Modifier.width(RailTimeWidth).padding(top = 30.dp),
-            horizontalAlignment = Alignment.End
+    // The original premium geometry is preserved: node first, timing labels
+    // underneath. The rail renderer masks the label band between both nodes.
+    Column(Modifier.width(RailColumnWidth).heightIn(min = 185.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Spacer(Modifier.height(26.dp))
+        Box(
+            Modifier.size(RailNodeSize).onGloballyPositioned { coords -> registerNode(nodeIndex, coords) },
+            contentAlignment = Alignment.Center
         ) {
-            Text(formatTime(lecture.startMinutes), color = timeColor, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
-            Text(formatTime(lecture.endMinutes), color = muted, style = MaterialTheme.typography.bodyLarge, maxLines = 1, softWrap = false)
-        }
-        Spacer(Modifier.width(RailTimeGap))
-        Column(Modifier.width(RailNodeSize).heightIn(min = 185.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Spacer(Modifier.height(26.dp))
-            Box(
-                Modifier.size(RailNodeSize).onGloballyPositioned { coords -> registerNode(nodeIndex, coords) },
-                contentAlignment = Alignment.Center
-            ) {
-                Box(Modifier.size(RailNodeSize).background(railColor.copy(alpha = 0.18f), CircleShape), contentAlignment = Alignment.Center) {
-                    AnimatedContent(
-                        targetState = state,
-                        transitionSpec = { fadeIn(iconSwapIn) togetherWith fadeOut(iconSwapOut) },
-                        label = "railIcon"
-                    ) { current ->
-                        Icon(
-                            when (current) { LectureState.COMPLETED -> Icons.Default.CheckCircle; LectureState.HAPPENING -> Icons.Default.Notifications; LectureState.UPCOMING -> Icons.Default.AccessTime },
-                            contentDescription = null,
-                            tint = railColor,
-                            modifier = Modifier.size(25.dp)
-                        )
-                    }
+            Box(Modifier.size(RailNodeSize).background(railColor.copy(alpha = 0.18f), CircleShape), contentAlignment = Alignment.Center) {
+                AnimatedContent(
+                    targetState = state,
+                    transitionSpec = { fadeIn(iconSwapIn) togetherWith fadeOut(iconSwapOut) },
+                    label = "railIcon"
+                ) { current ->
+                    Icon(
+                        when (current) { LectureState.COMPLETED -> Icons.Default.CheckCircle; LectureState.HAPPENING -> Icons.Default.Notifications; LectureState.UPCOMING -> Icons.Default.AccessTime },
+                        contentDescription = null,
+                        tint = railColor,
+                        modifier = Modifier.size(25.dp)
+                    )
                 }
             }
         }
+        Spacer(Modifier.height(9.dp))
+        Text(formatTime(lecture.startMinutes), color = timeColor, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text(formatTime(lecture.endMinutes), color = muted, style = MaterialTheme.typography.bodyLarge)
     }
 }
 
@@ -682,14 +715,11 @@ private fun TimelineMetaRow(icon: ImageVector, text: String, primaryText: Color,
 @Composable
 private fun FreePeriod(start: Int, end: Int, nodeIndex: Int, sectionCoords: () -> LayoutCoordinates?, registerNode: (Int, LayoutCoordinates) -> Unit, muted: Color, accent: Color) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Row(Modifier.width(RailColumnWidth), verticalAlignment = Alignment.CenterVertically) {
-            Spacer(Modifier.width(RailTimeWidth + RailTimeGap))
-            Column(Modifier.width(RailNodeSize), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(
-                    Modifier.size(14.dp).onGloballyPositioned { coords -> registerNode(nodeIndex, coords) }
-                        .background(accent.copy(alpha = 0.45f), CircleShape)
-                )
-            }
+        Column(Modifier.width(RailColumnWidth), horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(
+                Modifier.size(14.dp).onGloballyPositioned { coords -> registerNode(nodeIndex, coords) }
+                    .background(accent.copy(alpha = 0.45f), CircleShape)
+            )
         }
         Spacer(Modifier.width(12.dp))
         Text("${formatDurationUpper(end - start)} FREE PERIOD", color = muted, style = MaterialTheme.typography.titleMedium, letterSpacing = 1.7.sp, fontWeight = FontWeight.Medium)
