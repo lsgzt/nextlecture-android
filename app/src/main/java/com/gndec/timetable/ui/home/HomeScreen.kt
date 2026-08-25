@@ -48,6 +48,7 @@ import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.domain.ErpNoticeManager
 import com.gndec.timetable.domain.NextLectureEngine
 import com.gndec.timetable.ui.motion.Motion
+import com.gndec.timetable.ui.motion.itemEntrance
 import com.gndec.timetable.ui.motion.motionTween
 import com.gndec.timetable.ui.PremiumAnnouncementCard
 import com.gndec.timetable.ui.PremiumBottomBarContentClearance
@@ -122,7 +123,8 @@ fun HomeScreen(
                         group = state.group ?: "ITB2",
                         greeting = greeting,
                         onSettings = onOpenSettings,
-                        onProfile = onOpenProfile
+                        onProfile = onOpenProfile,
+                        modifier = androidx.compose.ui.Modifier.itemEntrance(0)
                     )
                 }
                 todayNotice?.let { notice ->
@@ -130,12 +132,12 @@ fun HomeScreen(
                         PremiumErpNoticeBanner(
                             notice = notice,
                             onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(notice.url))) },
-                            modifier = androidx.compose.ui.Modifier.padding(horizontal = 20.dp).animateItem()
+                            modifier = androidx.compose.ui.Modifier.itemEntrance(1).padding(horizontal = 20.dp).animateItem()
                         )
                     }
                 }
                 item(key = "status") {
-                    Box(androidx.compose.ui.Modifier.animateItem()) {
+                    Box(androidx.compose.ui.Modifier.itemEntrance(2).animateItem()) {
                         PremiumStatusRow(
                             updatedText = updatedText,
                             onFetch = vm::fetchAgain,
@@ -178,7 +180,7 @@ fun HomeScreen(
                     val heroSlide = motionTween<IntOffset>(Motion.Emphasized, Motion.EasingEnter)
                     AnimatedContent(
                         targetState = hero,
-                        modifier = androidx.compose.ui.Modifier.fillMaxWidth().animateItem(),
+                        modifier = androidx.compose.ui.Modifier.fillMaxWidth().animateItem().itemEntrance(3),
                         transitionSpec = {
                             (fadeIn(heroIn) + slideInVertically(heroSlide) { it / 10 }) togetherWith fadeOut(heroOut)
                         },
@@ -235,11 +237,11 @@ fun HomeScreen(
                 }
                 announcement?.let { current ->
                     item(key = "announcement") {
-                        PremiumAnnouncementCard(current, androidx.compose.ui.Modifier.padding(horizontal = 20.dp).animateItem())
+                        PremiumAnnouncementCard(current, androidx.compose.ui.Modifier.itemEntrance(4).padding(horizontal = 20.dp).animateItem())
                     }
                 }
                 item(key = "today-preview") {
-                    Box(androidx.compose.ui.Modifier.animateItem()) {
+                    Box(androidx.compose.ui.Modifier.itemEntrance(5).animateItem()) {
                         PremiumTodayPreview(
                             lectures = state.todayLectures,
                             dateLabel = dateLabel,
@@ -250,7 +252,7 @@ fun HomeScreen(
                     }
                 }
                 item(key = "offline") {
-                    PremiumOfflineCard(androidx.compose.ui.Modifier.padding(horizontal = 20.dp).animateItem())
+                    PremiumOfflineCard(androidx.compose.ui.Modifier.itemEntrance(6).padding(horizontal = 20.dp).animateItem())
                 }
             }
         }

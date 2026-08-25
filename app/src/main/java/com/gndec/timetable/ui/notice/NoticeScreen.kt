@@ -3,6 +3,7 @@ package com.gndec.timetable.ui.notice
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -118,6 +119,7 @@ fun NoticeScreen(
                                 val phaseSwapOut = motionTween<Float>(Motion.Fast)
                                 AnimatedContent(
                                     targetState = phase,
+                                    modifier = Modifier.animateContentSize(motionTween(Motion.Normal)),
                                     transitionSpec = { fadeIn(phaseSwapIn) togetherWith fadeOut(phaseSwapOut) },
                                     label = "noticePhase"
                                 ) { current ->

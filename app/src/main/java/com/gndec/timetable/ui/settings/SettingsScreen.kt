@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -63,6 +64,8 @@ import com.gndec.timetable.ui.Header
 import com.gndec.timetable.ui.IconBadge
 import com.gndec.timetable.ui.ScreenSurface
 import com.gndec.timetable.ui.TealOutlineButton
+import com.gndec.timetable.ui.motion.Motion
+import com.gndec.timetable.ui.motion.motionTween
 import com.gndec.timetable.ui.theme.GndecAqua
 import com.gndec.timetable.ui.theme.GndecGreen
 import com.gndec.timetable.ui.theme.GndecMuted
@@ -282,7 +285,7 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onOpenAlerts: ()
 @Composable
 private fun SectionCard(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, content: @Composable () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.animateContentSize(motionTween(Motion.Normal)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconBadge(icon, size = 38.dp)
                 Spacer(Modifier.width(10.dp))

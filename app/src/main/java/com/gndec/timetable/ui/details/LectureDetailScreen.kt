@@ -1,6 +1,7 @@
 package com.gndec.timetable.ui.details
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -214,7 +215,7 @@ private fun AttendanceDetailCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Column(Modifier.padding(18.dp)) {
+        Column(Modifier.animateContentSize(motionTween(Motion.Normal)).padding(18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconBadge(Icons.Default.CheckCircle, containerColor = MaterialTheme.colorScheme.primaryContainer, tint = MaterialTheme.colorScheme.primary, size = 46.dp)
                 Spacer(Modifier.width(14.dp))

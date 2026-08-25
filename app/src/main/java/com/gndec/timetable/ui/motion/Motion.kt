@@ -5,8 +5,11 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.view.HapticFeedbackConstants
+import android.view.View
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.FiniteAnimationSpec
@@ -22,17 +25,22 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 
 /**
  * Central motion vocabulary for NextLecture.
@@ -47,6 +55,13 @@ object Motion {
     const val Normal = 200 // component-level change: colors, selection, labels
     const val Emphasized = 280 // larger in-screen content swaps
     const val Screen = 320 // full navigation transitions
+    const val Entrance = 380 // one-shot content entrance on fresh composition
+
+    // Stagger between consecutive items in an entrance choreography.
+    const val EntranceStaggerStep = 45
+
+    // How far content travels upward during its entrance.
+    val EntranceSlideDistance = 20.dp
 
     // iOS-inspired curves: gentle settle on entry, brisk departure on exit.
     val EasingStandard = CubicBezierEasing(0.2f, 0f, 0f, 1f)
@@ -139,4 +154,39 @@ fun Modifier.pressFeedback(
         scaleX = s
         scaleY = s
     }
+}
+
+/**
+ * One-shot entrance: content rises a short distance while fading in, staggered
+ * per call site. Plays once per saved composition state, so returning to a tab
+ * never replays it. Reads both values in the draw phase only — the entrance is
+ * GPU-composited and recomposes nothing — and collapses to a no-op under
+ * reduced motion.
+ */
+fun Modifier.itemEntrance(index: Int = 0): Modifier = composed {
+    if (LocalReducedMotion.current) {
+        Modifier
+    } else {
+        var played by rememberSaveable { mutableStateOf(false) }
+        val progress = remember { Animatable(if (played) 1f else 0f) }
+        LaunchedEffect(Unit) {
+            if (!played) {
+                played = true
+                delay((index.coerceAtLeast(0) * Motion.EntranceStaggerStep).toLong())
+                progress.animateTo(1f, tween(Motion.Entrance, easing = Motion.EasingEnter))
+            }
+        }
+        Modifier.graphicsLayer {
+            alpha = progress.value
+            translationY = (1f - progress.value) * Motion.EntranceSlideDistance.toPx()
+        }
+    }
+}
+
+/**
+ * Quiet confirmation tick for selections and tab switches. The system governs
+ * whether haptics actually fire, so no app-side gating is needed.
+ */
+fun View.hapticTick() {
+    performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
 }

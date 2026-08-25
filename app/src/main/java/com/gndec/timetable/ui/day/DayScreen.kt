@@ -2,11 +2,13 @@ package com.gndec.timetable.ui.day
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
@@ -17,9 +19,11 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -71,6 +75,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -82,7 +87,9 @@ import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.ui.PremiumBottomBarContentClearance
 import com.gndec.timetable.ui.PremiumPageHeader
 import com.gndec.timetable.ui.PremiumScreenBackground
+import com.gndec.timetable.ui.motion.LocalReducedMotion
 import com.gndec.timetable.ui.motion.Motion
+import com.gndec.timetable.ui.motion.hapticTick
 import com.gndec.timetable.ui.motion.motionSpring
 import com.gndec.timetable.ui.motion.motionTween
 import com.gndec.timetable.ui.motion.pressFeedback
@@ -109,6 +116,10 @@ private val TimelineCardGap = 8.dp
 private val TimelineItemGap = 10.dp
 private val RailColumnWidth = 116.dp
 private val RailNodeSize = 56.dp
+// Floor for every lecture card body. The rail content (~139dp) always fits
+// inside it, so each row is exactly as tall as its card and the gap between
+// cards stays constant regardless of subject length or venue presence.
+private val RailMinCardHeight = 150.dp
 private val RailCenterX = TimelineHorizontalPadding + RailColumnWidth / 2
 
 @Composable
@@ -139,6 +150,7 @@ fun DayScreen(
     val scheduledReminders by produceState(initialValue = 0, group, nowMillis / 60_000L) {
         value = if (group == null) 0 else container.db.alarmDao().countFuture(nowMillis)
     }
+    val reduced = LocalReducedMotion.current
     val time = Instant.ofEpochMilli(nowMillis).atZone(Zone)
     val nowMinutes = time.hour * 60 + time.minute
     val todayDow = time.dayOfWeek.value
@@ -172,8 +184,14 @@ fun DayScreen(
                     AnimatedContent(
                         targetState = viewMode == DayViewMode.WEEK,
                         transitionSpec = {
-                            fadeIn(tween(Motion.Emphasized, easing = Motion.EasingStandard)) togetherWith
-                                fadeOut(tween(Motion.Normal, easing = Motion.EasingStandard))
+                            if (reduced) {
+                                fadeIn(tween(Motion.Emphasized, easing = Motion.EasingStandard)) togetherWith
+                                    fadeOut(tween(Motion.Normal, easing = Motion.EasingStandard))
+                            } else {
+                                (scaleIn(tween(Motion.Emphasized, easing = Motion.EasingEnter), initialScale = 0.98f) +
+                                    fadeIn(tween(Motion.Emphasized, easing = Motion.EasingEnter))) togetherWith
+                                    fadeOut(tween(Motion.Normal, easing = Motion.EasingExit))
+                            }
                         },
                         label = "weekModeContent"
                     ) { isWeekMode ->
@@ -219,8 +237,18 @@ fun DayScreen(
                                 AnimatedContent(
                                     targetState = viewMode,
                                     transitionSpec = {
-                                        fadeIn(tween(Motion.Normal, easing = Motion.EasingStandard)) togetherWith
-                                            fadeOut(tween(Motion.Fast, easing = Motion.EasingStandard))
+                                        if (reduced) {
+                                            fadeIn(tween(Motion.Normal, easing = Motion.EasingStandard)) togetherWith
+                                                fadeOut(tween(Motion.Fast, easing = Motion.EasingStandard))
+                                        } else {
+                                            // Segmented-control motion: content slides toward the
+                                            // direction of the newly selected tab.
+                                            val dir = if (targetState.ordinal >= initialState.ordinal) 1 else -1
+                                            (slideInHorizontally(tween(Motion.Emphasized, easing = Motion.EasingEnter)) { dir * it / 12 } +
+                                                fadeIn(tween(Motion.Emphasized, easing = Motion.EasingEnter))) togetherWith
+                                                (slideOutHorizontally(tween(Motion.Normal, easing = Motion.EasingExit)) { -dir * it / 14 } +
+                                                    fadeOut(tween(Motion.Normal, easing = Motion.EasingExit)))
+                                        }
                                     },
                                     label = "dayTimetableFade"
                                 ) { mode ->
@@ -274,6 +302,7 @@ fun DayScreen(
 
 @Composable
 private fun DayModeSelector(mode: DayViewMode, onSelect: (DayViewMode) -> Unit) {
+    val view = LocalView.current
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
         DayViewMode.values().forEach { item ->
             val active = item == mode
@@ -294,7 +323,7 @@ private fun DayModeSelector(mode: DayViewMode, onSelect: (DayViewMode) -> Unit) 
             )
             val pressInteraction = remember { MutableInteractionSource() }
             Card(
-                onClick = { onSelect(item) },
+                onClick = { view.hapticTick(); onSelect(item) },
                 modifier = Modifier.weight(1f).pressFeedback(pressInteraction, pressedScale = 0.96f),
                 interactionSource = pressInteraction,
                 shape = RoundedCornerShape(14.dp),
@@ -314,7 +343,10 @@ private fun DayViewActionCard(mode: DayViewMode, cardColor: Color, primaryText: 
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Text("Explore more timetable views", color = primaryText, fontWeight = FontWeight.Bold)
             Text("Switch without leaving Today", color = muted, style = MaterialTheme.typography.bodySmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(
+                Modifier.animateContentSize(motionTween(Motion.Normal)),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 if (mode != DayViewMode.TODAY) TextButton(onClick = { onSelect(DayViewMode.TODAY) }) { Text("Today") }
                 if (mode != DayViewMode.TOMORROW) TextButton(onClick = { onSelect(DayViewMode.TOMORROW) }) { Text("Tomorrow") }
                 if (mode != DayViewMode.WEEK) TextButton(onClick = { onSelect(DayViewMode.WEEK) }) { Text("Full week") }
@@ -633,7 +665,7 @@ private fun TimelineLectureCard(lecture: LectureEntity, state: LectureState, now
         label = "timelineContentAlpha"
     )
     val pressInteraction = remember { MutableInteractionSource() }
-    Row(Modifier.fillMaxWidth().padding(horizontal = TimelineHorizontalPadding), verticalAlignment = Alignment.Top) {
+    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(horizontal = TimelineHorizontalPadding), verticalAlignment = Alignment.Top) {
         TimelineRail(lecture, state, nodeIndex, sectionCoords, registerNode, railColor, primaryText, muted)
         Spacer(Modifier.width(TimelineCardGap))
         Card(
@@ -644,7 +676,7 @@ private fun TimelineLectureCard(lecture: LectureEntity, state: LectureState, now
             colors = CardDefaults.cardColors(containerColor = cardColor),
             elevation = CardDefaults.cardElevation(defaultElevation = cardElevation)
         ) {
-            Column(Modifier.graphicsLayer { alpha = contentAlpha.value }.padding(horizontal = 18.dp, vertical = 17.dp)) {
+            Column(Modifier.heightIn(min = RailMinCardHeight).graphicsLayer { alpha = contentAlpha.value }.padding(horizontal = 18.dp, vertical = 17.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     AnimatedContent(
                         targetState = state,
@@ -689,8 +721,10 @@ private fun TimelineRail(lecture: LectureEntity, state: LectureState, nodeIndex:
         label = "railTimeColor"
     )
     // The original premium geometry is preserved: node first, timing labels
-    // underneath. The rail renderer masks the label band between both nodes.
-    Column(Modifier.width(RailColumnWidth).heightIn(min = 185.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    // underneath. The rail stretches to exactly the card height so no row is
+    // padded with dead space, and the rail renderer masks the label band
+    // between both nodes.
+    Column(Modifier.width(RailColumnWidth).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
         Spacer(Modifier.height(26.dp))
         Box(
             Modifier.size(RailNodeSize).onGloballyPositioned { coords -> registerNode(nodeIndex, coords) },

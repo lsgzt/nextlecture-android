@@ -56,6 +56,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -65,6 +66,7 @@ import com.gndec.timetable.data.db.LectureEntity
 import com.gndec.timetable.domain.Announcement
 import com.gndec.timetable.domain.ErpNotice
 import com.gndec.timetable.ui.motion.Motion
+import com.gndec.timetable.ui.motion.hapticTick
 import com.gndec.timetable.ui.motion.pressFeedback
 import com.gndec.timetable.ui.motion.motionTween
 import com.gndec.timetable.util.Formatters
@@ -344,7 +346,16 @@ fun PremiumTodayPreview(lectures: List<LectureEntity>, dateLabel: String, onOpen
                     Spacer(Modifier.height(7.dp))
                 }
             }
-            Text("Open full timetable", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable(onClick = onOpen).padding(top = 5.dp))
+            val openPress = remember { MutableInteractionSource() }
+            Text(
+                "Open full timetable",
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .pressFeedback(openPress, pressedScale = 0.96f)
+                    .clickable(interactionSource = openPress, indication = LocalIndication.current, onClick = onOpen)
+                    .padding(top = 5.dp)
+            )
         }
     }
 }
@@ -420,6 +431,7 @@ fun PremiumBottomBar(
     // Every dimension below is FIXED; selection is expressed purely through animated
     // color fills and draw-phase scaling, so tapping a destination never shifts layout.
     Surface(modifier = modifier, color = MaterialTheme.colorScheme.background, tonalElevation = 0.dp, shadowElevation = 0.dp) {
+        val hapticView = LocalView.current
         Row(
             Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars)
                 .height(78.dp).padding(horizontal = 10.dp),
@@ -447,7 +459,10 @@ fun PremiumBottomBar(
                     Modifier.weight(1f).fillMaxHeight()
                         .clip(RoundedCornerShape(18.dp))
                         .pressFeedback(pressInteraction, pressedScale = 0.95f)
-                        .clickable(interactionSource = pressInteraction, indication = LocalIndication.current) { onNavigate(route) },
+                        .clickable(interactionSource = pressInteraction, indication = LocalIndication.current) {
+                            hapticView.hapticTick()
+                            onNavigate(route)
+                        },
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
