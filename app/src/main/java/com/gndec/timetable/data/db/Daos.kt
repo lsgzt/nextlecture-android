@@ -34,6 +34,18 @@ interface LectureDao {
 }
 
 @Dao
+interface TimetableSnapshotDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putAll(items: List<TimetableSnapshotEntity>)
+
+    @Query("SELECT * FROM timetable_snapshots WHERE groupName = :groupName AND attendanceDate = :date ORDER BY startMinutes, id")
+    suspend fun getForGroupAndDate(groupName: String, date: String): List<TimetableSnapshotEntity>
+
+    @Query("DELETE FROM timetable_snapshots WHERE attendanceDate < :beforeDate")
+    suspend fun deleteBefore(beforeDate: String)
+}
+
+@Dao
 interface MetaDao {
     @Query("SELECT * FROM timetable_meta WHERE id = 1")
     fun observe(): Flow<TimetableMetaEntity?>

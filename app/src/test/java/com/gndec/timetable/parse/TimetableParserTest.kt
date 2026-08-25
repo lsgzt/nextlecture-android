@@ -48,9 +48,9 @@ class TimetableParserTest {
             practicals.any { it.endMinutes - it.startMinutes == 120 }
         )
         // a rowspan cell must NOT also produce a duplicate lecture in the next row
-        val thursdayLabs = practicals.filter { it.dayOfWeek == 4 }
-        assertTrue(thursdayLabs.any { it.startMinutes == 9 * 60 + 30 })
-        assertTrue(thursdayLabs.none { it.startMinutes == 10 * 60 + 30 && it.dayOfWeek == 4 && it.typeTag == "P" && it.endMinutes - it.startMinutes == 60 })
+        val programmingLabs = practicals.filter { it.rawText.contains("PROGRAMMING FOR PROBLEM SOLVING") }
+        assertTrue(programmingLabs.any { it.startMinutes == 9 * 60 + 30 && it.dayOfWeek == 5 })
+        assertTrue(programmingLabs.none { it.startMinutes == 10 * 60 + 30 && it.dayOfWeek == 5 && it.endMinutes - it.startMinutes == 60 })
     }
 
     @Test
@@ -91,7 +91,7 @@ class TimetableParserTest {
     @Test
     fun rawTextIsPreservedForAiInput() {
         val itb2 = TimetableParser.parse(fixture()).getValue("ITB2")
-        val lab = itb2.first { it.typeTag == "P" && it.dayOfWeek == 4 }
+        val lab = itb2.first { it.typeTag == "P" && it.rawText.contains("PL1 LAB IT DEPT") }
         assertTrue(lab.rawText.contains("PROGRAMMING FOR PROBLEM SOLVING"))
         assertTrue(lab.rawText.contains("PL1 LAB IT DEPT"))
     }

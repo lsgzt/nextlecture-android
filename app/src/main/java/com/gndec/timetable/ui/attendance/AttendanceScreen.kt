@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.EventBusy
@@ -59,7 +60,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.gndec.timetable.data.db.LectureEntity
+import com.gndec.timetable.data.db.TimetableSnapshotEntity
 import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.domain.AttendanceManager
 import com.gndec.timetable.net.AttendanceRecord
@@ -75,6 +78,7 @@ import com.gndec.timetable.ui.theme.GndecOrange
 import com.gndec.timetable.ui.theme.GndecTeal
 import com.gndec.timetable.util.Formatters
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -88,7 +92,10 @@ fun AttendanceScreen(
     onBack: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
-    var selectedDate by remember { mutableStateOf(LocalDate.now()) }
+    val today = LocalDate.now()
+    var selectedDate by remember { mutableStateOf(today) }
+    var calendarMonth by remember { mutableStateOf(YearMonth.from(today)) }
+    var fullCalendarOpen by remember { mutableStateOf(false) }
     var target by remember { mutableFloatStateOf(75f) }
     var response by remember { mutableStateOf<AttendanceResponse?>(null) }
     var loading by remember { mutableStateOf(true) }
@@ -96,7 +103,7 @@ fun AttendanceScreen(
     var savingKey by remember { mutableStateOf<String?>(null) }
     var activeGroup by remember { mutableStateOf("") }
     var lectures by remember { mutableStateOf<List<LectureEntity>>(emptyList()) }
-    val today = LocalDate.now()
+    var snapshotLectures by remember { mutableStateOf<List<TimetableSnapshotEntity>>(emptyList()) }
     val historyDates = remember(today) { (0L..13L).map { today.minusDays(it) }.reversed() }
 
     suspend fun reloadNow() {
@@ -106,6 +113,7 @@ fun AttendanceScreen(
             val cfg = container.settings.flow.first()
             activeGroup = cfg.studentSubsection.ifBlank { cfg.group.orEmpty() }
             lectures = if (activeGroup.isBlank()) emptyList() else container.db.lectureDao().getForGroup(activeGroup)
+            container.refreshManager.ensureCurrentWeekSnapshots(activeGroup)
             container.attendanceManager.load(today.minusDays(365), today, target.toDouble())
         }.onSuccess { loaded -> response = loaded }
             .onFailure { error = it.message ?: "Could not load attendance from the server" }
@@ -121,10 +129,22 @@ fun AttendanceScreen(
         reloadNow()
     }
 
-    val dayLectures = lectures.filter { it.dayOfWeek == selectedDate.dayOfWeek.value }
-        .sortedBy { it.startMinutes }
+    LaunchedEffect(activeGroup, selectedDate) {
+        snapshotLectures = if (activeGroup.isBlank()) {
+            emptyList()
+        } else {
+            container.db.timetableSnapshotDao().getForGroupAndDate(activeGroup, selectedDate.toString())
+        }
+    }
+
     val recordByKey = response?.records.orEmpty().associateBy { it.lectureKey }
     val selectedDateRecords = response?.records.orEmpty().filter { it.attendanceDate == selectedDate.toString() }
+    val snapshotLectureEntities = snapshotLectures.map { it.toLectureEntity() }
+    val markedLectureEntities = selectedDateRecords.map { it.toLectureEntity(activeGroup) }
+    val dayLectures = (snapshotLectureEntities + markedLectureEntities)
+        .ifEmpty { if (selectedDate == today) lectures.filter { it.dayOfWeek == selectedDate.dayOfWeek.value } else emptyList() }
+        .distinctBy { AttendanceManager.lectureKey(selectedDate, it) }
+        .sortedBy { it.startMinutes }
     val selectedDateStatus = selectedDateRecords.groupingBy { it.status }.eachCount()
 
     PremiumScreenBackground {
@@ -191,6 +211,15 @@ fun AttendanceScreen(
                             IconButton(onClick = { if (selectedDate.isBefore(today)) selectedDate = selectedDate.plusDays(1) }, enabled = selectedDate.isBefore(today)) { Icon(Icons.Default.ArrowForward, "Next date") }
                         }
                         Text("${selectedDateStatus["present"] ?: 0} present · ${selectedDateStatus["absent"] ?: 0} absent", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                        Spacer(Modifier.height(10.dp))
+                        OutlinedButton(
+                            onClick = { calendarMonth = YearMonth.from(selectedDate); fullCalendarOpen = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.CalendarMonth, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("View full calendar")
+                        }
                     }
                 }
             }
@@ -244,7 +273,18 @@ fun AttendanceScreen(
                     }
                 }
             }
+            item { SubjectSummaryCard(response?.records.orEmpty(), target) }
             item { AttendanceInfoCard("How the percentage works", "Only lectures you mark as present or absent are counted. Unmarked lectures stay neutral. You can update a mark later if you made a mistake.") }
+        }
+        if (fullCalendarOpen) {
+            FullCalendarDialog(
+                month = calendarMonth,
+                today = today,
+                records = response?.records.orEmpty(),
+                onMonthChange = { calendarMonth = it },
+                onDateSelected = { date -> selectedDate = date; fullCalendarOpen = false },
+                onDismiss = { fullCalendarOpen = false }
+            )
         }
     }
 }
@@ -352,32 +392,6 @@ private fun AttendanceLectureCard(
             }
         }
     }
-}
-
-@Composable
-private fun calculateSummary(records: List<AttendanceRecord>, target: Double): com.gndec.timetable.net.AttendanceSummary {
-    val present = records.count { it.status == "present" }
-    val absent = records.count { it.status == "absent" }
-    val marked = present + absent
-    val percentage = if (marked == 0) null else present.toDouble() * 100.0 / marked
-    val ratio = target / 100.0
-    val affordable = when {
-        ratio <= 0.0 -> 0
-        ratio >= 1.0 -> 0
-        else -> kotlin.math.max(0, kotlin.math.floor(present / ratio - marked + 1e-9).toInt())
-    }
-    val toAttend = if (ratio in 0.0..1.0 && ratio < 1.0 && marked > 0 && percentage != null && percentage < target) {
-        kotlin.math.ceil((ratio * marked - present) / (1.0 - ratio)).toInt()
-    } else null
-    return com.gndec.timetable.net.AttendanceSummary(
-        present = present,
-        absent = absent,
-        markedTotal = marked,
-        percentage = percentage,
-        target = target,
-        affordableMisses = affordable,
-        lecturesToAttend = toAttend
-    )
 }
 
 @Composable

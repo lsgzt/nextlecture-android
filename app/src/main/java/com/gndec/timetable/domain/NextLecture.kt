@@ -49,7 +49,6 @@ object NextLectureEngine {
         for (offset in 1..7) {
             val dow = ((todayDow - 1 + offset) % 7) + 1
             val candidates = lectures.filter { it.dayOfWeek == dow }
-                .filter { offset < 7 || it.startMinutes > nowMinutes }
                 .sortedBy { it.startMinutes }
             if (candidates.isNotEmpty()) return TimedLecture(candidates.first(), offset)
         }

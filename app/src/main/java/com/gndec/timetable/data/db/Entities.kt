@@ -21,6 +21,26 @@ data class LectureEntity(
     val fetchId: Long
 )
 
+@Entity(
+    tableName = "timetable_snapshots",
+    indices = [Index(value = ["groupName", "attendanceDate"]), Index(value = ["attendanceDate"])]
+)
+data class TimetableSnapshotEntity(
+    /** Stable snapshot identity derived from group/date/time/subject/teacher/venue. */
+    @PrimaryKey val id: String,
+    val groupName: String,
+    val attendanceDate: String,
+    val dayOfWeek: Int,
+    val startMinutes: Int,
+    val endMinutes: Int,
+    val subject: String?,
+    val teacher: String?,
+    val venue: String?,
+    val lectureType: String?,
+    val rawText: String,
+    val fetchId: Long
+)
+
 @Entity(tableName = "timetable_meta")
 data class TimetableMetaEntity(
     @PrimaryKey val id: Int = 1,

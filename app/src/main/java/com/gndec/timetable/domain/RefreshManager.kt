@@ -3,6 +3,7 @@ package com.gndec.timetable.domain
 import com.gndec.timetable.data.db.AppDatabase
 import com.gndec.timetable.data.db.LectureEntity
 import com.gndec.timetable.data.db.TimetableMetaEntity
+import com.gndec.timetable.data.db.TimetableSnapshotEntity
 import com.gndec.timetable.data.prefs.SecureKeyStore
 import com.gndec.timetable.data.prefs.SettingsManager
 import com.gndec.timetable.net.FetchOutcome
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.time.LocalDate
 
 sealed class RefreshResult {
     data class Success(val lecturesForGroup: Int) : RefreshResult()
@@ -71,6 +73,7 @@ class RefreshManager(
         when (val outcome = fetcher.fetch(resolved.url, etag, lastModified)) {
             is FetchOutcome.NotModified -> {
                 db.metaDao().put(markChecked())
+                snapshotCurrentWeekIfNeeded(cfg.group, now)
                 RefreshResult.UpToDate
             }
             is FetchOutcome.Failed -> {
@@ -133,6 +136,7 @@ class RefreshManager(
 
         db.lectureDao().deleteAll()
         db.lectureDao().insertAll(entities)
+        saveCurrentWeekSnapshots(entities, now)
         db.metaDao().put(
             TimetableMetaEntity(
                 id = 1, sourceUrl = sourceUrl,
@@ -145,6 +149,42 @@ class RefreshManager(
             scheduler.rescheduleAll(db, group, ReminderConfig.from(cfg))
         }
         return RefreshResult.Success(rawForGroup?.size ?: total)
+    }
+
+    suspend fun ensureCurrentWeekSnapshots(group: String? = null) {
+        val cfg = settings.flow.first()
+        snapshotCurrentWeekIfNeeded(group ?: cfg.group, System.currentTimeMillis())
+    }
+
+    private suspend fun snapshotCurrentWeekIfNeeded(group: String?, fetchId: Long) {
+        if (group.isNullOrBlank()) return
+        val today = LocalDate.now()
+        if (db.timetableSnapshotDao().getForGroupAndDate(group, today.toString()).isEmpty()) {
+            saveCurrentWeekSnapshots(db.lectureDao().getForGroup(group), fetchId)
+        }
+    }
+
+    private suspend fun saveCurrentWeekSnapshots(entities: List<LectureEntity>, fetchId: Long) {
+        val monday = LocalDate.now().minusDays((LocalDate.now().dayOfWeek.value - 1).toLong())
+        val snapshots = entities.map { lecture ->
+            val date = monday.plusDays((lecture.dayOfWeek - 1).toLong())
+            TimetableSnapshotEntity(
+                id = AttendanceManager.lectureKey(date, lecture),
+                groupName = lecture.groupName,
+                attendanceDate = date.toString(),
+                dayOfWeek = lecture.dayOfWeek,
+                startMinutes = lecture.startMinutes,
+                endMinutes = lecture.endMinutes,
+                subject = lecture.subject,
+                teacher = lecture.teacher,
+                venue = lecture.venue,
+                lectureType = lecture.lectureType,
+                rawText = lecture.rawText,
+                fetchId = fetchId
+            )
+        }
+        if (snapshots.isNotEmpty()) db.timetableSnapshotDao().putAll(snapshots)
+        db.timetableSnapshotDao().deleteBefore(LocalDate.now().minusDays(366).toString())
     }
 
     /**
