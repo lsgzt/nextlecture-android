@@ -56,6 +56,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -64,9 +65,15 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -101,6 +108,9 @@ private enum class DayViewMode(val title: String) { TODAY("Today"), TOMORROW("To
 
 private val Zone = ZoneId.systemDefault()
 private val DateFormatter = DateTimeFormatter.ofPattern("d MMMM")
+private val RailColumnWidth = 116.dp
+private val RailNodeSize = 56.dp
+private val RailCenterX = 20.dp + RailColumnWidth / 2
 
 @Composable
 fun DayScreen(
@@ -201,29 +211,15 @@ fun DayScreen(
                     if (timeline.isEmpty()) {
                         item { EmptyDayCard(cardColor = MaterialTheme.colorScheme.surface, primaryText = primaryText, muted = muted) }
                     } else {
-                        items(
-                            timeline,
-                            key = { item ->
-                                when (item) {
-                                    is TimelineItem.Lecture -> "${viewMode.name}-lecture-${item.lecture.id}"
-                                    is TimelineItem.Free -> "${viewMode.name}-free-${item.start}-${item.end}"
-                                }
-                            }
-                        ) { item ->
-                            Box(Modifier.animateItem()) {
-                                when (item) {
-                                    is TimelineItem.Lecture -> TimelineLectureCard(
-                                        lecture = item.lecture,
-                                        state = item.state,
-                                        nowMinutes = if (viewMode == DayViewMode.TODAY) nowMinutes else -1,
-                                        accent = accent,
-                                        primaryText = primaryText,
-                                        muted = muted,
-                                        onClick = { onOpenLecture(item.lecture) }
-                                    )
-                                    is TimelineItem.Free -> FreePeriod(start = item.start, end = item.end, muted = muted, accent = accent)
-                                }
-                            }
+                        item(key = "${viewMode.name}-timeline") {
+                            TimelineSection(
+                                timeline = timeline,
+                                nowMinutes = if (viewMode == DayViewMode.TODAY) nowMinutes else -1,
+                                accent = accent,
+                                primaryText = primaryText,
+                                muted = muted,
+                                onOpenLecture = onOpenLecture
+                            )
                         }
                     }
                 }
@@ -429,8 +425,111 @@ private fun EmptyDayCard(cardColor: Color, primaryText: Color, muted: Color) {
     }
 }
 
+/**
+ * The whole day rendered as one section so a single rail line runs behind every
+ * item — lectures and free periods alike — without breaking across list gaps.
+ * Each row reports its node coordinates; the spine and the glow progress stroke
+ * are drawn here in one pass, reading state only in the draw phase so progress
+ * changes never recompose.
+ */
 @Composable
-private fun TimelineLectureCard(lecture: LectureEntity, state: LectureState, nowMinutes: Int, accent: Color, primaryText: Color, muted: Color, onClick: () -> Unit) {
+private fun TimelineSection(
+    timeline: List<TimelineItem>,
+    nowMinutes: Int,
+    accent: Color,
+    primaryText: Color,
+    muted: Color,
+    onOpenLecture: (LectureEntity) -> Unit
+) {
+    var sectionCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    val nodeCoords = remember { mutableStateMapOf<Int, LayoutCoordinates>() }
+    val activeIndex = timeline.indexOfLast { it is TimelineItem.Lecture && it.state != LectureState.UPCOMING }
+    val glowTarget = run {
+        val section = sectionCoords
+        val node = nodeCoords[activeIndex]
+        if (section == null || node == null || !section.isAttached || !node.isAttached) 0f
+        else section.localPositionOf(node, Offset(node.size.width / 2f, node.size.height / 2f)).y
+    }
+    val glowEnd by animateFloatAsState(
+        targetValue = glowTarget,
+        animationSpec = motionTween(700),
+        label = "railGlowEnd"
+    )
+    Box(
+        Modifier.fillMaxWidth()
+            .onGloballyPositioned { sectionCoords = it }
+            .drawBehind {
+                val section = sectionCoords ?: return@drawBehind
+                if (!section.isAttached) return@drawBehind
+                fun nodeY(index: Int): Float? {
+                    val coords = nodeCoords[index] ?: return null
+                    if (!coords.isAttached) return null
+                    return section.localPositionOf(coords, Offset(coords.size.width / 2f, coords.size.height / 2f)).y
+                }
+                val first = nodeY(0)
+                val last = nodeY(timeline.lastIndex)
+                if (first == null || last == null || last <= first) return@drawBehind
+                val x = RailCenterX.toPx()
+                drawLine(
+                    color = muted.copy(alpha = 0.30f),
+                    start = Offset(x, first),
+                    end = Offset(x, last),
+                    strokeWidth = 2.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+                val tip = glowEnd.coerceIn(first, last)
+                if (tip > first + 2f) {
+                    val core = Brush.verticalGradient(
+                        0f to accent.copy(alpha = 0.95f),
+                        0.72f to accent.copy(alpha = 0.62f),
+                        1f to Color.Transparent,
+                        startY = first,
+                        endY = tip
+                    )
+                    val halo = Brush.verticalGradient(
+                        0f to accent.copy(alpha = 0.20f),
+                        0.72f to accent.copy(alpha = 0.08f),
+                        1f to Color.Transparent,
+                        startY = first,
+                        endY = tip
+                    )
+                    drawLine(halo, Offset(x, first), Offset(x, tip), strokeWidth = 10.dp.toPx(), cap = StrokeCap.Round)
+                    drawLine(core, Offset(x, first), Offset(x, tip), strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
+                }
+            }
+    ) {
+        Column {
+            timeline.forEachIndexed { index, item ->
+                when (item) {
+                    is TimelineItem.Lecture -> TimelineLectureCard(
+                        lecture = item.lecture,
+                        state = item.state,
+                        nowMinutes = nowMinutes,
+                        nodeIndex = index,
+                        sectionCoords = { sectionCoords },
+                        registerNode = { i, coords -> nodeCoords[i] = coords },
+                        accent = accent,
+                        primaryText = primaryText,
+                        muted = muted,
+                        onClick = { onOpenLecture(item.lecture) }
+                    )
+                    is TimelineItem.Free -> FreePeriod(
+                        start = item.start,
+                        end = item.end,
+                        nodeIndex = index,
+                        sectionCoords = { sectionCoords },
+                        registerNode = { i, coords -> nodeCoords[i] = coords },
+                        muted = muted,
+                        accent = accent
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimelineLectureCard(lecture: LectureEntity, state: LectureState, nowMinutes: Int, nodeIndex: Int, sectionCoords: () -> LayoutCoordinates?, registerNode: (Int, LayoutCoordinates) -> Unit, accent: Color, primaryText: Color, muted: Color, onClick: () -> Unit) {
     val live = state == LectureState.HAPPENING
     // State colors glide between UPCOMING / LIVE / COMPLETED instead of snapping.
     val cardColor by animateColorAsState(
@@ -464,7 +563,7 @@ private fun TimelineLectureCard(lecture: LectureEntity, state: LectureState, now
     )
     val pressInteraction = remember { MutableInteractionSource() }
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.Top) {
-        TimelineRail(lecture, state, railColor, primaryText, muted)
+        TimelineRail(lecture, state, nodeIndex, sectionCoords, registerNode, railColor, primaryText, muted)
         Spacer(Modifier.width(12.dp))
         Card(
             onClick = onClick,
@@ -509,7 +608,7 @@ private fun TimelineLectureCard(lecture: LectureEntity, state: LectureState, now
 }
 
 @Composable
-private fun TimelineRail(lecture: LectureEntity, state: LectureState, railColor: Color, primaryText: Color, muted: Color) {
+private fun TimelineRail(lecture: LectureEntity, state: LectureState, nodeIndex: Int, sectionCoords: () -> LayoutCoordinates?, registerNode: (Int, LayoutCoordinates) -> Unit, railColor: Color, primaryText: Color, muted: Color) {
     val iconSwapIn = motionTween<Float>(Motion.Fast)
     val iconSwapOut = motionTween<Float>(Motion.Fast)
     val live = state == LectureState.HAPPENING
@@ -522,13 +621,14 @@ private fun TimelineRail(lecture: LectureEntity, state: LectureState, railColor:
     // row is actually happening, and its values are read exclusively inside
     // graphicsLayer blocks — idle rows cost nothing and nothing ever recomposes.
     val pulse = if (live) rememberLiveRailPulse() else null
-    Column(Modifier.width(116.dp).heightIn(min = 185.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    // The connecting line itself is drawn by TimelineSection behind this column;
+    // only the node (ring + circle + times) lives here.
+    Column(Modifier.width(RailColumnWidth).heightIn(min = 185.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Spacer(Modifier.height(26.dp))
         Box(
-            Modifier.width(2.dp).height(26.dp)
-                .graphicsLayer { alpha = pulse?.breath?.value ?: 1f }
-                .background(railColor.copy(alpha = 0.45f))
-        )
-        Box(Modifier.size(56.dp), contentAlignment = Alignment.Center) {
+            Modifier.size(RailNodeSize).onGloballyPositioned { coords -> registerNode(nodeIndex, coords) },
+            contentAlignment = Alignment.Center
+        ) {
             if (pulse != null) {
                 Box(
                     Modifier.fillMaxSize().graphicsLayer {
@@ -539,7 +639,7 @@ private fun TimelineRail(lecture: LectureEntity, state: LectureState, railColor:
                     }.background(railColor, CircleShape)
                 )
             }
-            Box(Modifier.size(56.dp).background(railColor.copy(alpha = 0.18f), CircleShape), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(RailNodeSize).background(railColor.copy(alpha = 0.18f), CircleShape), contentAlignment = Alignment.Center) {
             AnimatedContent(
                 targetState = state,
                 transitionSpec = { fadeIn(iconSwapIn) togetherWith fadeOut(iconSwapOut) },
@@ -557,17 +657,11 @@ private fun TimelineRail(lecture: LectureEntity, state: LectureState, railColor:
         Spacer(Modifier.height(9.dp))
         Text(formatTime(lecture.startMinutes), color = timeColor, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Text(formatTime(lecture.endMinutes), color = muted, style = MaterialTheme.typography.bodyLarge)
-        Spacer(Modifier.height(7.dp))
-        Box(
-            Modifier.width(2.dp).weight(1f)
-                .graphicsLayer { alpha = pulse?.breath?.value ?: 1f }
-                .background(railColor.copy(alpha = 0.35f))
-        )
     }
 }
 
 /** Owns the infinite "live" animations; null under reduced motion so nothing runs. */
-private class LiveRailPulse(val scale: State<Float>, val fade: State<Float>, val breath: State<Float>)
+private class LiveRailPulse(val scale: State<Float>, val fade: State<Float>)
 
 @Composable
 private fun rememberLiveRailPulse(): LiveRailPulse? {
@@ -585,13 +679,7 @@ private fun rememberLiveRailPulse(): LiveRailPulse? {
         animationSpec = infiniteRepeatable(tween(1400, easing = LinearEasing), RepeatMode.Restart),
         label = "pulseFade"
     )
-    val breath = transition.animateFloat(
-        initialValue = 0.5f,
-        targetValue = 0.9f,
-        animationSpec = infiniteRepeatable(tween(1400, easing = Motion.EasingStandard), RepeatMode.Reverse),
-        label = "lineBreath"
-    )
-    return LiveRailPulse(scale, fade, breath)
+    return LiveRailPulse(scale, fade)
 }
 
 @Composable
@@ -604,12 +692,13 @@ private fun TimelineMetaRow(icon: ImageVector, text: String, primaryText: Color,
 }
 
 @Composable
-private fun FreePeriod(start: Int, end: Int, muted: Color, accent: Color) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 1.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.width(116.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(Modifier.width(2.dp).height(22.dp).background(muted.copy(alpha = 0.32f)))
-            Box(Modifier.size(14.dp).background(accent.copy(alpha = 0.35f), CircleShape))
-            Box(Modifier.width(2.dp).height(22.dp).background(muted.copy(alpha = 0.32f)))
+private fun FreePeriod(start: Int, end: Int, nodeIndex: Int, sectionCoords: () -> LayoutCoordinates?, registerNode: (Int, LayoutCoordinates) -> Unit, muted: Color, accent: Color) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.width(RailColumnWidth), horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(
+                Modifier.size(14.dp).onGloballyPositioned { coords -> registerNode(nodeIndex, coords) }
+                    .background(accent.copy(alpha = 0.45f), CircleShape)
+            )
         }
         Spacer(Modifier.width(12.dp))
         Text("${formatDurationUpper(end - start)} FREE PERIOD", color = muted, style = MaterialTheme.typography.titleMedium, letterSpacing = 1.7.sp, fontWeight = FontWeight.Medium)

@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -48,6 +49,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -64,6 +66,7 @@ import com.gndec.timetable.net.PyqGroupDetailResponse
 import com.gndec.timetable.ui.motion.Motion
 import com.gndec.timetable.ui.motion.motionTween
 import com.gndec.timetable.ui.motion.pressFeedback
+import com.gndec.timetable.ui.theme.GndecTeal
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -385,7 +388,17 @@ fun FrequentlyAskedScreen(container: AppContainer, onBack: () -> Unit, onOpenGro
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
             )
             Text("Examples: PCME-110 · PCCE-111 · BBA-101", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 24.dp))
-            Button(onClick = { vm.load(settings.pyqRagBackendUrl) }, enabled = !loading, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)) { Text("Find repeated questions") }
+            Button(
+                onClick = { vm.load(settings.pyqRagBackendUrl) },
+                enabled = !loading,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = GndecTeal,
+                    contentColor = Color.White,
+                    disabledContainerColor = Color(0xFF244746),
+                    disabledContentColor = Color.White.copy(alpha = 0.72f)
+                )
+            ) { Text("Find repeated questions", fontWeight = FontWeight.SemiBold) }
             error?.let { message ->
                 Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer), elevation = CardDefaults.cardElevation(0.dp)) {
                     Text(message, color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.padding(14.dp))
