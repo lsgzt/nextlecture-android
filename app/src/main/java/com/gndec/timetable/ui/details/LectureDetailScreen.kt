@@ -62,6 +62,7 @@ import com.gndec.timetable.ui.theme.GndecTeal
 import com.gndec.timetable.ui.theme.GndecTealDark
 import com.gndec.timetable.util.Formatters
 import java.time.LocalDate
+import java.time.LocalTime
 import kotlinx.coroutines.launch
 
 @Composable
@@ -78,13 +79,21 @@ fun LectureDetailScreen(
     val settings by container.settings.flow.collectAsStateWithLifecycle(initialValue = com.gndec.timetable.data.prefs.AppSettings())
     val scope = rememberCoroutineScope()
     val attendanceDate = remember { LocalDate.now() }
+    val today = LocalDate.now()
     val detailDayLabel = remember(lectureDate) {
-        val today = LocalDate.now()
         when (lectureDate) {
             today -> "Today"
             today.plusDays(1) -> "Tomorrow"
             else -> "${Formatters.dayName(lectureDate.dayOfWeek.value)} · ${lectureDate.dayOfMonth} ${lectureDate.month.name.lowercase().replaceFirstChar(Char::titlecase)}"
         }
+    }
+    val currentMinutes = LocalTime.now().let { it.hour * 60 + it.minute }
+    val detailStatus = when {
+        lectureDate.isBefore(today) -> "Completed"
+        lectureDate.isAfter(today) -> "Upcoming"
+        lecture.endMinutes <= currentMinutes -> "Completed"
+        lecture.startMinutes <= currentMinutes -> "Live now"
+        else -> "Upcoming"
     }
     var attendanceStatus by remember { mutableStateOf<String?>(null) }
     var attendanceBusy by remember { mutableStateOf(true) }
@@ -119,7 +128,11 @@ fun LectureDetailScreen(
                         Column(Modifier.weight(1f)) {
                             Text(lecture.subject ?: "Lecture", style = MaterialTheme.typography.headlineSmall)
                             Text("$detailDayLabel · ${Formatters.hm(lecture.startMinutes)}", style = MaterialTheme.typography.titleMedium)
-                            Text("◷ Upcoming", color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                if (detailStatus == "Completed") "✓ Completed" else "◷ $detailStatus",
+                                color = if (detailStatus == "Completed") MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.tertiary,
+                                style = MaterialTheme.typography.bodyLarge
+                            )
                         }
                     }
                 }
