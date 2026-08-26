@@ -129,7 +129,7 @@ fun DayScreen(
     onOpenAlerts: () -> Unit,
     onOpenNotice: () -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenLecture: (LectureEntity) -> Unit
+    onOpenLecture: (LectureEntity, java.time.LocalDate) -> Unit
 ) {
     val settings by container.settings.flow.collectAsStateWithLifecycle(initialValue = AppSettings())
     val group = settings.group
@@ -268,6 +268,7 @@ fun DayScreen(
                                             railBackground = background,
                                             primaryText = primaryText,
                                             muted = muted,
+                                            lectureDate = if (mode == DayViewMode.TODAY) time.toLocalDate() else time.toLocalDate().plusDays(1),
                                             onOpenLecture = onOpenLecture
                                         )
                                     }
@@ -373,7 +374,7 @@ private fun WeekSummary(totalLectures: Int, weekStart: java.time.LocalDate, card
 }
 
 @Composable
-private fun WeekDaySection(date: java.time.LocalDate, lectures: List<LectureEntity>, primaryText: Color, muted: Color, accent: Color, onOpenLecture: (LectureEntity) -> Unit) {
+private fun WeekDaySection(date: java.time.LocalDate, lectures: List<LectureEntity>, primaryText: Color, muted: Color, accent: Color, onOpenLecture: (LectureEntity, java.time.LocalDate) -> Unit) {
     Card(Modifier.fillMaxWidth().padding(horizontal = 20.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), elevation = CardDefaults.cardElevation(0.dp)) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 13.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -388,7 +389,7 @@ private fun WeekDaySection(date: java.time.LocalDate, lectures: List<LectureEnti
                 Text("No lectures scheduled", color = muted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 10.dp))
             } else {
                 lectures.forEachIndexed { index, lecture ->
-                    WeekLectureRow(lecture, primaryText, muted, accent, onOpenLecture)
+                    WeekLectureRow(lecture, date, primaryText, muted, accent, onOpenLecture)
                     if (index < lectures.lastIndex) androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
             }
@@ -397,12 +398,12 @@ private fun WeekDaySection(date: java.time.LocalDate, lectures: List<LectureEnti
 }
 
 @Composable
-private fun WeekLectureRow(lecture: LectureEntity, primaryText: Color, muted: Color, accent: Color, onOpenLecture: (LectureEntity) -> Unit) {
+private fun WeekLectureRow(lecture: LectureEntity, date: java.time.LocalDate, primaryText: Color, muted: Color, accent: Color, onOpenLecture: (LectureEntity, java.time.LocalDate) -> Unit) {
     val pressInteraction = remember { MutableInteractionSource() }
     Row(
         Modifier.fillMaxWidth()
             .pressFeedback(pressInteraction, pressedScale = 0.98f)
-            .clickable(interactionSource = pressInteraction, indication = LocalIndication.current) { onOpenLecture(lecture) }
+            .clickable(interactionSource = pressInteraction, indication = LocalIndication.current) { onOpenLecture(lecture, date) }
             .padding(vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -497,7 +498,8 @@ private fun TimelineSection(
     railBackground: Color,
     primaryText: Color,
     muted: Color,
-    onOpenLecture: (LectureEntity) -> Unit
+    lectureDate: java.time.LocalDate,
+    onOpenLecture: (LectureEntity, java.time.LocalDate) -> Unit
 ) {
     var sectionCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val nodeCoords = remember { mutableStateMapOf<Int, LayoutCoordinates>() }
@@ -614,7 +616,7 @@ private fun TimelineSection(
                         accent = accent,
                         primaryText = primaryText,
                         muted = muted,
-                        onClick = { onOpenLecture(item.lecture) }
+                        onClick = { onOpenLecture(item.lecture, lectureDate) }
                     )
                     is TimelineItem.Free -> FreePeriod(
                         start = item.start,

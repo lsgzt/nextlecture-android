@@ -68,6 +68,7 @@ import kotlinx.coroutines.launch
 fun LectureDetailScreen(
     container: AppContainer,
     lecture: LectureEntity,
+    lectureDate: LocalDate,
     onBack: () -> Unit,
     onOpenHome: () -> Unit,
     onOpenToday: () -> Unit,
@@ -77,6 +78,14 @@ fun LectureDetailScreen(
     val settings by container.settings.flow.collectAsStateWithLifecycle(initialValue = com.gndec.timetable.data.prefs.AppSettings())
     val scope = rememberCoroutineScope()
     val attendanceDate = remember { LocalDate.now() }
+    val detailDayLabel = remember(lectureDate) {
+        val today = LocalDate.now()
+        when (lectureDate) {
+            today -> "Today"
+            today.plusDays(1) -> "Tomorrow"
+            else -> "${Formatters.dayName(lectureDate.dayOfWeek.value)} · ${lectureDate.dayOfMonth} ${lectureDate.month.name.lowercase().replaceFirstChar(Char::titlecase)}"
+        }
+    }
     var attendanceStatus by remember { mutableStateOf<String?>(null) }
     var attendanceBusy by remember { mutableStateOf(true) }
     var attendanceSaving by remember { mutableStateOf(false) }
@@ -109,7 +118,7 @@ fun LectureDetailScreen(
                         Spacer(Modifier.width(16.dp))
                         Column(Modifier.weight(1f)) {
                             Text(lecture.subject ?: "Lecture", style = MaterialTheme.typography.headlineSmall)
-                            Text("Today · ${Formatters.hm(lecture.startMinutes)}", style = MaterialTheme.typography.titleMedium)
+                            Text("$detailDayLabel · ${Formatters.hm(lecture.startMinutes)}", style = MaterialTheme.typography.titleMedium)
                             Text("◷ Upcoming", color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodyLarge)
                         }
                     }

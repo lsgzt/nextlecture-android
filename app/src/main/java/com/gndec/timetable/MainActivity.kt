@@ -49,6 +49,7 @@ import com.gndec.timetable.ui.theme.GndecTheme
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 class MainActivity : ComponentActivity() {
     override fun onStart() {
@@ -104,6 +105,7 @@ class MainActivity : ComponentActivity() {
                 val settingsFlow = remember(container.settings) { container.settings.flow.map { value: AppSettings -> value as AppSettings? } }
                 val settings by settingsFlow.collectAsState(initial = null)
                 var selectedLecture by remember { mutableStateOf<LectureEntity?>(null) }
+                var selectedLectureDate by remember { mutableStateOf(LocalDate.now()) }
 
                 if (settings == null) {
                     GndecTheme(mode = "light") {
@@ -164,7 +166,7 @@ class MainActivity : ComponentActivity() {
                                             onOpenNotice = { navigate("notice") },
                                             onOpenSettings = { navigate("settings") },
                                             onOpenProfile = { navigate("profile") },
-                                            onOpenLecture = { selectedLecture = it; navigate("detail") }
+                                            onOpenLecture = { selectedLecture = it; selectedLectureDate = LocalDate.now(); navigate("detail") }
                                         )
                                     }
                                     composable("today") {
@@ -174,7 +176,7 @@ class MainActivity : ComponentActivity() {
                                             onOpenAlerts = { navigate("syllabus") },
                                             onOpenNotice = { navigate("notice") },
                                             onOpenSettings = { navigate("settings") },
-                                            onOpenLecture = { selectedLecture = it; navigate("detail") }
+                                            onOpenLecture = { lecture, date -> selectedLecture = lecture; selectedLectureDate = date; navigate("detail") }
                                         )
                                     }
                                     composable("syllabus") {
@@ -210,7 +212,7 @@ class MainActivity : ComponentActivity() {
                                             onOpenToday = { navigate("today") },
                                             onOpenNotice = { navigate("notice") },
                                             onOpenSettings = { navigate("settings") },
-                                            onOpenLecture = { selectedLecture = it; navigate("detail") },
+                                            onOpenLecture = { selectedLecture = it; selectedLectureDate = LocalDate.now(); navigate("detail") },
                                             onBack = { nav.popBackStack() }
                                         )
                                     }
@@ -228,6 +230,7 @@ class MainActivity : ComponentActivity() {
                                             LectureDetailScreen(
                                                 container = container,
                                                 lecture = lecture,
+                                                lectureDate = selectedLectureDate,
                                                 onBack = { nav.popBackStack() },
                                                 onOpenHome = { navigate("home") },
                                                 onOpenToday = { navigate("today") },
