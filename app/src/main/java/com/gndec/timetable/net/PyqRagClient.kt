@@ -97,6 +97,26 @@ data class TimetableSourceResponse(
 )
 
 @Serializable
+data class ServerNotice(
+    val id: String,
+    val title: String,
+    val publishedDate: String,
+    val displayDate: String,
+    val url: String,
+    val author: String = "",
+    val source: String = ""
+)
+
+@Serializable
+data class NoticeFeedResponse(
+    val notices: List<ServerNotice> = emptyList(),
+    val fetchedAt: String? = null,
+    val servedFromCache: Boolean = false,
+    val stale: Boolean = false,
+    val refreshError: String? = null
+)
+
+@Serializable
 data class PyqRetryRequest(val course: String)
 
 @Serializable
@@ -151,6 +171,13 @@ class PyqRagClient(private val client: OkHttpClient = Net.client) {
     suspend fun timetableSource(baseUrl: String): TimetableSourceResponse = withContext(Dispatchers.IO) {
         val url = buildUrl(baseUrl, "api/timetable-source") ?: throw IllegalArgumentException("Invalid timetable source backend URL")
         execute(url, TimetableSourceResponse.serializer())
+    }
+
+    suspend fun notices(baseUrl: String, forceRefresh: Boolean = false): NoticeFeedResponse = withContext(Dispatchers.IO) {
+        val url = buildUrl(baseUrl, "api/notices")?.newBuilder()
+            ?.apply { if (forceRefresh) addQueryParameter("refresh", "true") }
+            ?.build() ?: throw IllegalArgumentException("Invalid notice backend URL")
+        execute(url, NoticeFeedResponse.serializer())
     }
 
     suspend fun retryCourse(baseUrl: String, course: String): PyqRetryResponse = withContext(Dispatchers.IO) {

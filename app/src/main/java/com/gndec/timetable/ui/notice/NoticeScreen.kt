@@ -101,10 +101,10 @@ fun NoticeScreen(
                             Icon(Icons.Default.Campaign, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(25.dp))
                             Spacer(Modifier.width(11.dp))
                             Column(Modifier.weight(1f)) {
-                                Text("GNDEC ERP NOTICE BOARD", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
-                                Text("Updated every time the app opens", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                                Text("GNDEC OFFICIAL NOTICE FEED", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
+                                Text("ERP + homepage notices · cached for instant loading", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                             }
-                            TextButton(onClick = { container.appScope.launch { container.erpNoticeManager.refresh() } }, enabled = !refreshing) {
+                            TextButton(onClick = { container.appScope.launch { container.erpNoticeManager.refresh(forceRefresh = true) } }, enabled = !refreshing) {
                                 Icon(Icons.Default.Refresh, contentDescription = "Refresh notices", modifier = Modifier.size(18.dp))
                             }
                         }

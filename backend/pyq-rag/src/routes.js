@@ -25,6 +25,7 @@ import {
   writeCache,
 } from './db.js';
 import { buildEvidence, processPaper } from './rag.js';
+import { getNoticeFeed } from './notices.js';
 import {
   authenticateAttendance,
   attendanceRecordSchema,
@@ -205,6 +206,20 @@ export function buildRouter() {
   router.get('/timetable-source', publicLimit, async (_req, res) => {
     const url = isAllowedTimetableUrl(config.timetableUrl);
     return res.json({ url, source: url ? 'server-config' : 'none', fetchedAt: new Date().toISOString() });
+  });
+
+  router.get('/notices', publicLimit, async (req, res) => {
+    try {
+      const force = ['1', 'true'].includes(String(req.query.refresh || '').toLowerCase());
+      const feed = await getNoticeFeed({ force });
+      return res.set('cache-control', 'public, max-age=60, stale-while-revalidate=300').json({
+        ...feed,
+        sources: { erp: 'https://erp.gndec.ac.in/notice', homepage: 'https://gndec.ac.in/' },
+      });
+    } catch (error) {
+      console.error('[NOTICE] feed failed', error.message);
+      return res.status(503).json({ error: 'notice feed unavailable' });
+    }
   });
 
   router.post('/pyq/retry-course', retryLimit, async (req, res) => {

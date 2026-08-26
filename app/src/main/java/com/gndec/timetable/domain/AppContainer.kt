@@ -23,8 +23,8 @@ class AppContainer(val context: Context) {
     val normalizer by lazy { AiNormalizer(db.aiCacheDao(), GeminiClient(), BackendClient()) }
     val scheduler by lazy { AlarmScheduler(context) }
     val announcementManager by lazy { AnnouncementManager(context, settings) }
-    val erpNoticeManager by lazy { ErpNoticeManager(context, settings) }
     val pyqRagClient by lazy { PyqRagClient() }
+    val erpNoticeManager by lazy { ErpNoticeManager(context, settings, pyqRagClient) }
     val attendanceClient by lazy { AttendanceClient() }
     val attendanceManager by lazy { AttendanceManager(attendanceClient, keys, settings) }
     val timetableSourceResolver by lazy { TimetableSourceResolver(pyqRagClient) }

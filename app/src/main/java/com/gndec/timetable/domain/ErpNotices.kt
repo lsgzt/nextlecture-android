@@ -1,11 +1,10 @@
 package com.gndec.timetable.domain
 
 import android.content.Context
+import com.gndec.timetable.data.prefs.AppSettings
 import com.gndec.timetable.data.prefs.SettingsManager
-import com.gndec.timetable.net.Net
+import com.gndec.timetable.net.PyqRagClient
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,8 +17,6 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import okhttp3.Request
-import org.jsoup.Jsoup
 
 @Serializable
 data class ErpNotice(
@@ -33,15 +30,11 @@ data class ErpNotice(
 
 class ErpNoticeManager(
     private val context: Context,
-    private val settings: SettingsManager
+    private val settings: SettingsManager,
+    private val backend: PyqRagClient
 ) {
     companion object {
         const val NOTICE_URL = "https://erp.gndec.ac.in/notice"
-        private const val MAX_NOTICES = 10
-        private val datePattern = Regex(
-            "(?i)(January|February|March|April|May|June|July|August|September|October|November|December)\\s+\\d{1,2},\\s+\\d{4}"
-        )
-        private val dateFormatter = DateTimeFormatter.ofPattern("MMMM d, uuuu", Locale.ENGLISH)
     }
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
@@ -58,22 +51,22 @@ class ErpNoticeManager(
         _notices.value = decode(cached.erpNoticeJson)
     }
 
-    suspend fun refresh(): List<ErpNotice> = mutex.withLock {
+    suspend fun refresh(forceRefresh: Boolean = false): List<ErpNotice> = mutex.withLock {
         _refreshing.value = true
         _lastError.value = null
         try {
-            val request = Request.Builder()
-                .url(NOTICE_URL)
-                .header("Cache-Control", "no-cache")
-                .header("User-Agent", "GNDEC-Timetable/1.8")
-                .get()
-                .build()
-            val notices = withContext(Dispatchers.IO) {
-                Net.client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) error("ERP returned HTTP ${response.code}")
-                    val body = response.body?.string() ?: error("ERP returned an empty response")
-                    parse(body)
-                }
+            val configuredBackend = settings.flow.first().pyqRagBackendUrl.trim()
+                .ifBlank { AppSettings.DEFAULT_PYQ_RAG_BACKEND_URL }
+            val feed = backend.notices(configuredBackend, forceRefresh = forceRefresh)
+            val notices = feed.notices.map { notice ->
+                ErpNotice(
+                    id = notice.id,
+                    title = notice.title,
+                    publishedDate = notice.publishedDate,
+                    displayDate = notice.displayDate,
+                    url = notice.url,
+                    author = notice.author.ifBlank { notice.source }
+                )
             }
             if (notices.isEmpty()) error("No notices found in the ERP response")
             _notices.value = notices
@@ -89,31 +82,6 @@ class ErpNoticeManager(
 
     fun latestForToday(today: LocalDate = LocalDate.now()): ErpNotice? =
         _notices.value.firstOrNull { it.publishedDate == today.toString() }
-
-    private fun parse(html: String): List<ErpNotice> {
-        val document = Jsoup.parse(html, NOTICE_URL)
-        val result = document.selectFirst("div.website-list div.result") ?: return emptyList()
-        return result.children()
-            .mapNotNull { card ->
-                val anchor = card.selectFirst("a[href*=noticeboard/]") ?: return@mapNotNull null
-                val title = anchor.text().trim().replace(Regex("\\s+"), " ")
-                val href = anchor.absUrl("href").ifBlank { NOTICE_URL.trimEnd('/') + "/" + anchor.attr("href").trimStart('/') }
-                val dateMatch = datePattern.find(card.text()) ?: return@mapNotNull null
-                val displayDate = dateMatch.value.replace(Regex("\\s+"), " ")
-                val parsedDate = runCatching { LocalDate.parse(displayDate, dateFormatter) }.getOrNull() ?: return@mapNotNull null
-                val author = card.selectFirst("p")?.text()?.trim()?.removeSuffix(displayDate)?.trim().orEmpty()
-                ErpNotice(
-                    id = href.substringAfter("/noticeboard/").ifBlank { href },
-                    title = title,
-                    publishedDate = parsedDate.toString(),
-                    displayDate = displayDate,
-                    url = href,
-                    author = author
-                )
-            }
-            .distinctBy { it.id }
-            .take(MAX_NOTICES)
-    }
 
     private fun decode(value: String): List<ErpNotice> = runCatching {
         if (value.isBlank()) emptyList() else json.decodeFromString<List<ErpNotice>>(value)
