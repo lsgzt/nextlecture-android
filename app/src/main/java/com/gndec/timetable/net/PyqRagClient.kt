@@ -104,12 +104,36 @@ data class ServerNotice(
     val displayDate: String,
     val url: String,
     val author: String = "",
-    val source: String = ""
+    val source: String = "",
+    val firstSeenAt: String = "",
+    val bannerStartDate: String = "",
+    val bannerUntilDate: String = ""
 )
 
 @Serializable
 data class NoticeFeedResponse(
     val notices: List<ServerNotice> = emptyList(),
+    val fetchedAt: String? = null,
+    val servedFromCache: Boolean = false,
+    val stale: Boolean = false,
+    val refreshError: String? = null
+)
+
+@Serializable
+data class ServerHoliday(
+    val id: String,
+    val name: String,
+    val date: String,
+    val displayDate: String,
+    val weekday: String,
+    val category: String,
+    val year: Int,
+    val source: String = ""
+)
+
+@Serializable
+data class HolidayFeedResponse(
+    val holidays: List<ServerHoliday> = emptyList(),
     val fetchedAt: String? = null,
     val servedFromCache: Boolean = false,
     val stale: Boolean = false,
@@ -178,6 +202,13 @@ class PyqRagClient(private val client: OkHttpClient = Net.client) {
             ?.apply { if (forceRefresh) addQueryParameter("refresh", "true") }
             ?.build() ?: throw IllegalArgumentException("Invalid notice backend URL")
         execute(url, NoticeFeedResponse.serializer())
+    }
+
+    suspend fun holidays(baseUrl: String, forceRefresh: Boolean = false): HolidayFeedResponse = withContext(Dispatchers.IO) {
+        val url = buildUrl(baseUrl, "api/holidays")?.newBuilder()
+            ?.apply { if (forceRefresh) addQueryParameter("refresh", "true") }
+            ?.build() ?: throw IllegalArgumentException("Invalid holiday backend URL")
+        execute(url, HolidayFeedResponse.serializer())
     }
 
     suspend fun retryCourse(baseUrl: String, course: String): PyqRetryResponse = withContext(Dispatchers.IO) {

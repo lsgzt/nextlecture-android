@@ -10,7 +10,7 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "test": "node --test",
-    "check": "node --check src/server.js && node --check src/config.js && node --check src/catalog.js && node --check src/pdf.js && node --check src/gemini.js && node --check src/rag.js && node --check src/attendance.js && node --check src/notices.js && node --check src/routes.js"
+    "check": "node --check src/server.js && node --check src/config.js && node --check src/catalog.js && node --check src/pdf.js && node --check src/gemini.js && node --check src/rag.js && node --check src/attendance.js && node --check src/notices.js && node --check src/holidays.js && node --check src/routes.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",

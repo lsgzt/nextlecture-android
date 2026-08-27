@@ -109,7 +109,14 @@ fun HomeScreen(
     }
     val updatedText = state.lastFetch?.let { Formatters.freshnessText(it, state.nowMillis).removePrefix("Updated ") } ?: "No sync yet"
     val todayIso = Instant.ofEpochMilli(state.nowMillis).atZone(ZoneId.systemDefault()).toLocalDate().toString()
-    val todayNotice = erpNotices.firstOrNull { it.publishedDate == todayIso }
+    val todayNotice = erpNotices
+        .filter { notice ->
+            notice.source != "GNDEC ERP Notice Board" &&
+                notice.bannerStartDate.isNotBlank() &&
+                notice.bannerUntilDate.isNotBlank() &&
+                todayIso >= notice.bannerStartDate && todayIso <= notice.bannerUntilDate
+        }
+        .maxByOrNull { it.firstSeenAt.ifBlank { it.bannerStartDate } }
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         PremiumScreenBackground {
@@ -128,7 +135,7 @@ fun HomeScreen(
                     )
                 }
                 todayNotice?.let { notice ->
-                    item(key = "erp-notice") {
+                    item(key = "homepage-notice") {
                         PremiumErpNoticeBanner(
                             notice = notice,
                             onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(notice.url))) },

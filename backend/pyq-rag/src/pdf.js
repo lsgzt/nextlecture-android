@@ -48,6 +48,22 @@ function pageTextFromContent(content) {
     .trim();
 }
 
+function pageLinesFromContent(content) {
+  const positioned = content.items
+    .filter((item) => typeof item?.str === 'string' && item.str.trim())
+    .map((item) => ({ text: item.str.trim(), x: Number(item.transform?.[4] || 0), y: Number(item.transform?.[5] || 0) }))
+    .sort((left, right) => right.y - left.y || left.x - right.x);
+  const lines = [];
+  for (const item of positioned) {
+    const line = lines.find((candidate) => Math.abs(candidate.y - item.y) <= 3);
+    if (line) line.items.push(item);
+    else lines.push({ y: item.y, items: [item] });
+  }
+  return lines
+    .map((line) => line.items.sort((left, right) => left.x - right.x).map((item) => item.text).join(' ').replace(/[ \\t]+/g, ' ').trim())
+    .filter(Boolean);
+}
+
 export async function inspectPdf(buffer) {
   assertPdfBytes(buffer);
   const pdfjsLib = await getPdfjs();
@@ -66,7 +82,7 @@ export async function inspectPdf(buffer) {
       const text = pageTextFromContent(content);
       const letters = (text.match(/[A-Za-z\u00C0-\u024F]/g) || []).length;
       const digits = (text.match(/\d/g) || []).length;
-      pages.push({ page: pageNumber, text, letters, digits });
+      pages.push({ page: pageNumber, text, lines: pageLinesFromContent(content), letters, digits });
       page.cleanup();
     }
   } finally {

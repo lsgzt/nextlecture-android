@@ -26,6 +26,7 @@ import {
 } from './db.js';
 import { buildEvidence, processPaper } from './rag.js';
 import { getNoticeFeed } from './notices.js';
+import { getHolidayFeed } from './holidays.js';
 import {
   authenticateAttendance,
   attendanceRecordSchema,
@@ -219,6 +220,20 @@ export function buildRouter() {
     } catch (error) {
       console.error('[NOTICE] feed failed', error.message);
       return res.status(503).json({ error: 'notice feed unavailable' });
+    }
+  });
+
+  router.get('/holidays', publicLimit, async (req, res) => {
+    try {
+      const force = ['1', 'true'].includes(String(req.query.refresh || '').toLowerCase());
+      const feed = await getHolidayFeed({ force });
+      return res.set('cache-control', 'public, max-age=300, stale-while-revalidate=3600').json({
+        ...feed,
+        source: 'https://gndec.ac.in/?q=holidays',
+      });
+    } catch (error) {
+      console.error('[HOLIDAY] feed failed', error.message);
+      return res.status(503).json({ error: 'holiday feed unavailable' });
     }
   });
 

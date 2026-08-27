@@ -34,6 +34,10 @@ class TimetableApp : Application() {
             runCatching { container.erpNoticeManager.loadCached() }
         }
         container.appScope.launch {
+            runCatching { container.holidayManager.loadCached() }
+            runCatching { container.holidayManager.refresh() }
+        }
+        container.appScope.launch {
             runCatching { container.releaseUpdateManager.loadCached() }
             runCatching { container.releaseUpdateManager.refreshIfStale() }
         }

@@ -25,7 +25,11 @@ data class ErpNotice(
     val publishedDate: String,
     val displayDate: String,
     val url: String,
-    val author: String = ""
+    val author: String = "",
+    val source: String = "",
+    val firstSeenAt: String = "",
+    val bannerStartDate: String = "",
+    val bannerUntilDate: String = ""
 )
 
 class ErpNoticeManager(
@@ -65,7 +69,11 @@ class ErpNoticeManager(
                     publishedDate = notice.publishedDate,
                     displayDate = notice.displayDate,
                     url = notice.url,
-                    author = notice.author.ifBlank { notice.source }
+                    author = notice.author,
+                    source = notice.source,
+                    firstSeenAt = notice.firstSeenAt,
+                    bannerStartDate = notice.bannerStartDate,
+                    bannerUntilDate = notice.bannerUntilDate
                 )
             }
             if (notices.isEmpty()) error("No notices found in the ERP response")

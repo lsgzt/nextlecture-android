@@ -12,6 +12,7 @@ class RefreshWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
         val app = applicationContext as TimetableApp
         runCatching { app.container.announcementManager.refreshAndNotify() }
         runCatching { app.container.erpNoticeManager.refresh() }
+        runCatching { app.container.holidayManager.refresh() }
         runCatching { app.container.releaseUpdateManager.refreshIfStale() }
         return when (val r = app.container.refreshManager.refresh(force = false)) {
             is RefreshResult.Failed -> if (runAttemptCount < 3) Result.retry() else Result.success()

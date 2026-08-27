@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeNoticeFeeds, parseErpNotices, parseHomepageNotices } from './notices.js';
+import { attachHomepageSeenWindow, mergeNoticeFeeds, parseErpNotices, parseHomepageNotices } from './notices.js';
 
 test('parses dated ERP notice cards', () => {
   const html = `
@@ -29,6 +29,15 @@ test('filters mixed homepage panel and includes active announcement items', () =
   assert.ok(notices.some((notice) => notice.title.includes('original documents')));
   assert.ok(notices.every((notice) => notice.source === 'GNDEC homepage'));
   assert.ok(notices.every((notice) => !/Spot Counselling|Fee Structure/i.test(notice.title)));
+});
+
+test('keeps homepage first-seen date stable and gives it a two-day window', () => {
+  const current = { id: 'home-1', title: 'Holiday announcement', publishedDate: '2026-08-27', url: 'https://gndec.ac.in/', source: 'GNDEC homepage' };
+  const previous = [{ ...current, firstSeenAt: '2026-08-26T15:00:00.000Z', bannerStartDate: '2026-08-26', bannerUntilDate: '2026-08-27' }];
+  const retained = attachHomepageSeenWindow(current, previous, '2026-08-27T04:00:00.000Z');
+  assert.equal(retained.firstSeenAt, '2026-08-26T15:00:00.000Z');
+  assert.equal(retained.bannerStartDate, '2026-08-26');
+  assert.equal(retained.bannerUntilDate, '2026-08-27');
 });
 
 test('merges ERP and homepage notices by normalized title and date', () => {

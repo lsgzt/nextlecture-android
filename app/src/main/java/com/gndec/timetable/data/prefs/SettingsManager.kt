@@ -50,6 +50,8 @@ data class AppSettings(
     val lastAnnouncementPublishedAt: String = "",
     val erpNoticeJson: String = "",
     val erpNoticeUpdatedAt: Long = 0L,
+    val holidayJson: String = "",
+    val holidayUpdatedAt: Long = 0L,
     val lastReleaseMarker: String = "",
     val lastReleaseName: String = "",
     val lastReleaseNotes: String = "",
@@ -105,6 +107,8 @@ class SettingsManager(private val context: Context) {
         val LAST_ANNOUNCEMENT_PUBLISHED_AT = stringPreferencesKey("last_announcement_published_at")
         val ERP_NOTICE_JSON = stringPreferencesKey("erp_notice_json")
         val ERP_NOTICE_UPDATED_AT = longPreferencesKey("erp_notice_updated_at")
+        val HOLIDAY_JSON = stringPreferencesKey("holiday_json")
+        val HOLIDAY_UPDATED_AT = longPreferencesKey("holiday_updated_at")
         val LAST_RELEASE_MARKER = stringPreferencesKey("last_release_marker")
         val LAST_RELEASE_NAME = stringPreferencesKey("last_release_name")
         val LAST_RELEASE_NOTES = stringPreferencesKey("last_release_notes")
@@ -151,6 +155,8 @@ class SettingsManager(private val context: Context) {
             lastAnnouncementPublishedAt = p[K.LAST_ANNOUNCEMENT_PUBLISHED_AT] ?: "",
             erpNoticeJson = p[K.ERP_NOTICE_JSON] ?: "",
             erpNoticeUpdatedAt = p[K.ERP_NOTICE_UPDATED_AT] ?: 0L,
+            holidayJson = p[K.HOLIDAY_JSON] ?: "",
+            holidayUpdatedAt = p[K.HOLIDAY_UPDATED_AT] ?: 0L,
             lastReleaseMarker = p[K.LAST_RELEASE_MARKER] ?: "",
             lastReleaseName = p[K.LAST_RELEASE_NAME] ?: "",
             lastReleaseNotes = p[K.LAST_RELEASE_NOTES] ?: "",
@@ -229,6 +235,10 @@ class SettingsManager(private val context: Context) {
     suspend fun setErpNoticeCache(json: String, updatedAt: Long) = context.dataStore.edit {
         it[K.ERP_NOTICE_JSON] = json
         it[K.ERP_NOTICE_UPDATED_AT] = updatedAt
+    }
+    suspend fun setHolidayCache(json: String, updatedAt: Long) = context.dataStore.edit {
+        it[K.HOLIDAY_JSON] = json
+        it[K.HOLIDAY_UPDATED_AT] = updatedAt
     }
     suspend fun setReleaseCache(marker: String, name: String, notes: String, checkedAt: Long) = context.dataStore.edit {
         it[K.LAST_RELEASE_MARKER] = marker.trim()

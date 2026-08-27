@@ -8,6 +8,7 @@ export const GNDEC_HOME_URL = 'https://gndec.ac.in/';
 
 const MAX_NOTICES = 20;
 const CACHE_ID = 'global';
+const GNDEC_TIME_ZONE = 'Asia/Kolkata';
 const MONTHS = 'January|February|March|April|May|June|July|August|September|October|November|December';
 const DATE_PATTERNS = [
   new RegExp(`\\b(?:${MONTHS})\\s+\\d{1,2},\\s+\\d{4}\\b`, 'i'),
@@ -88,7 +89,10 @@ function displayDate(isoDate) {
 }
 
 function stableId(source, title, publishedDate, url) {
-  const value = `${source}|${normalizeTitle(title)}|${publishedDate || ''}|${url || ''}`;
+  // Homepage content has no trustworthy publication date; its identity must remain
+  // stable across daily refreshes so first-seen metadata is not reset.
+  const identityDate = source === 'GNDEC ERP Notice Board' ? (publishedDate || '') : '';
+  const value = `${source}|${normalizeTitle(title)}|${identityDate}|${url || ''}`;
   return `${source.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${crypto.createHash('sha256').update(value).digest('hex').slice(0, 20)}`;
 }
 
@@ -103,6 +107,47 @@ function makeNotice({ source, title, publishedDate, url, author = '' }) {
     url: cleanUrl,
     author: cleanText(author),
     source,
+    firstSeenAt: '',
+    bannerStartDate: '',
+    bannerUntilDate: '',
+  };
+}
+
+function localDateForInstant(instant) {
+  const date = new Date(instant);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('en-CA', { timeZone: GNDEC_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+}
+
+function addCalendarDays(isoDate, days) {
+  const date = new Date(`${isoDate}T12:00:00Z`);
+  if (Number.isNaN(date.getTime())) return isoDate;
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function noticeMatches(left, right) {
+  return left?.id === right?.id || (
+    left?.source !== 'GNDEC ERP Notice Board' &&
+    right?.source !== 'GNDEC ERP Notice Board' &&
+    normalizeTitle(left?.title) === normalizeTitle(right?.title) &&
+    canonicalUrl(left?.url, GNDEC_HOME_URL) === canonicalUrl(right?.url, GNDEC_HOME_URL)
+  );
+}
+
+export function attachHomepageSeenWindow(notice, previousNotices, fetchedAt) {
+  if (notice.source === 'GNDEC ERP Notice Board') return notice;
+  const previous = (previousNotices || []).find((candidate) => noticeMatches(candidate, notice));
+  const firstSeenAt = previous?.firstSeenAt || (previous?.publishedDate ? `${previous.publishedDate}T12:00:00.000Z` : fetchedAt);
+  const bannerStartDate = previous?.bannerStartDate || localDateForInstant(firstSeenAt) || localDateForInstant(fetchedAt);
+  const bannerUntilDate = previous?.bannerUntilDate || addCalendarDays(bannerStartDate, 1);
+  return {
+    ...notice,
+    firstSeenAt,
+    bannerStartDate,
+    bannerUntilDate,
+    publishedDate: bannerStartDate,
+    displayDate: displayDate(bannerStartDate),
   };
 }
 
@@ -129,6 +174,13 @@ export function parseErpNotices(html, fetchedDate = new Date().toISOString().sli
   }).filter(Boolean);
 }
 
+function homepageSection($, heading) {
+  const title = $('h2.block-title').filter((_, element) => cleanText($(element).text()).toLowerCase().includes(heading)).first();
+  if (!title.length) return $('body');
+  const block = title.closest('.block-wrapper');
+  return block.length ? block : title.parent();
+}
+
 function homepagePanel($) {
   const title = $('h2.block-title').filter((_, element) => cleanText($(element).text()).toLowerCase().includes('admission')).first();
   if (!title.length) return $('body');
@@ -136,27 +188,33 @@ function homepagePanel($) {
   return block.length ? block : title.parent();
 }
 
-export function parseHomepageNotices(html, fetchedDate = new Date().toISOString().slice(0, 10)) {
-  const $ = cheerio.load(String(html || ''), { decodeEntities: true });
-  const roots = [homepagePanel($)];
-  $('div.marquee').each((_, element) => roots.push($(element)));
-  const candidates = roots.flatMap((root) => root.find('.content p a, p a').toArray());
+function parseHomepageSectionNotices($, root, source, fetchedDate, { requireSignal = true } = {}) {
+  const candidates = root.find('.content p a, p a').toArray();
   return candidates.map((anchor) => {
     const link = $(anchor);
     const title = cleanText(link.text());
     if (!title || EXCLUDED_HOME_ITEMS.some((pattern) => pattern.test(title))) return null;
-    // Homepage text commonly contains the event date (for example, a holiday date),
-    // not the publication date. The fetch date is the only reliable publication date
-    // unless the page exposes a separate metadata field.
-    const publishedDate = fetchedDate;
-    if (!ANNOUNCEMENT_SIGNALS.test(title) && !DATE_PATTERNS.some((pattern) => pattern.test(title))) return null;
+    if (requireSignal && !ANNOUNCEMENT_SIGNALS.test(title) && !DATE_PATTERNS.some((pattern) => pattern.test(title))) return null;
     return makeNotice({
-      source: 'GNDEC homepage',
+      source,
       title,
-      publishedDate,
+      publishedDate: fetchedDate,
       url: link.attr('href') || GNDEC_HOME_URL,
     });
   }).filter(Boolean);
+}
+
+export function parseHomepageNotices(html, fetchedDate = new Date().toISOString().slice(0, 10)) {
+  const $ = cheerio.load(String(html || ''), { decodeEntities: true });
+  const roots = [homepagePanel($)];
+  $('div.marquee').each((_, element) => roots.push($(element)));
+  const notices = roots.flatMap((root) => parseHomepageSectionNotices($, root, 'GNDEC homepage', fetchedDate));
+  const studentCorner = homepageSection($, 'student corner');
+  const studentNotices = parseHomepageSectionNotices($, studentCorner, 'GNDEC Student Corner', fetchedDate)
+    .filter((notice) => /notice|scholarship|fee\s+notice|original documents|document(?:s)? submission/i.test(notice.title))
+    .map((notice) => ({ ...notice, source: 'GNDEC Student Corner', id: stableId('GNDEC Student Corner', notice.title, '', notice.url) }));
+  return [...notices, ...studentNotices]
+    .filter((notice, index, list) => list.findIndex((candidate) => noticeMatches(candidate, notice)) === index);
 }
 
 export function mergeNoticeFeeds(erpNotices, homepageNotices) {
@@ -215,7 +273,9 @@ async function refreshNoticeFeedOnce() {
   const [erpResult, homepageResult] = await Promise.allSettled([fetchHtml(ERP_NOTICE_URL), fetchHtml(GNDEC_HOME_URL)]);
   const erpNotices = erpResult.status === 'fulfilled' ? parseErpNotices(erpResult.value, fetchedDate) : [];
   const homepageNotices = homepageResult.status === 'fulfilled' ? parseHomepageNotices(homepageResult.value, fetchedDate) : [];
-  const notices = mergeNoticeFeeds(erpNotices, homepageNotices);
+  const rawNotices = mergeNoticeFeeds(erpNotices, homepageNotices);
+  const previousNotices = (await readCache())?.notices || [];
+  const notices = rawNotices.map((notice) => attachHomepageSeenWindow(notice, previousNotices, fetchedAt));
   if (!notices.length) {
     const reasons = [erpResult, homepageResult].filter((result) => result.status === 'rejected').map((result) => result.reason?.message).filter(Boolean);
     throw new Error(`No official notices found${reasons.length ? ` (${reasons.join('; ')})` : ''}`);

@@ -163,6 +163,17 @@ export async function saveNoticeFeedCache({ id = 'global', notices, fetchedAt })
   if (error) throw new Error(`Supabase notice cache write failed: ${error.message}`);
 }
 
+export async function getHolidayFeedCache(id = 'global') {
+  const { data, error } = await getDb().from('holiday_feed_cache').select('id,holidays,fetched_at').eq('id', id).maybeSingle();
+  if (error) throw new Error(`Supabase holiday cache read failed: ${error.message}`);
+  return data ? { id: data.id, holidays: data.holidays || [], fetchedAt: data.fetched_at } : null;
+}
+
+export async function saveHolidayFeedCache({ id = 'global', holidays, fetchedAt }) {
+  const { error } = await getDb().from('holiday_feed_cache').upsert({ id, holidays, fetched_at: fetchedAt, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+  if (error) throw new Error(`Supabase holiday cache write failed: ${error.message}`);
+}
+
 export async function getGroupQuestions(groupId) {
   const { data, error } = await getDb().from('pyq_question_group_members').select('similarity_score,question:pyq_questions(id,paper_id,question_number,question_text,source_page,extraction_method,extraction_confidence,paper:pyq_papers(id,title,course_code,year,exam_session,drive_url))').eq('group_id', groupId).order('similarity_score', { ascending: false }).limit(200);
   if (error) throw new Error(`Supabase group detail read failed: ${error.message}`);

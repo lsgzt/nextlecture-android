@@ -25,6 +25,7 @@ class AppContainer(val context: Context) {
     val announcementManager by lazy { AnnouncementManager(context, settings) }
     val pyqRagClient by lazy { PyqRagClient() }
     val erpNoticeManager by lazy { ErpNoticeManager(context, settings, pyqRagClient) }
+    val holidayManager by lazy { HolidayManager(settings, pyqRagClient) }
     val attendanceClient by lazy { AttendanceClient() }
     val attendanceManager by lazy { AttendanceManager(attendanceClient, keys, settings) }
     val timetableSourceResolver by lazy { TimetableSourceResolver(pyqRagClient) }
