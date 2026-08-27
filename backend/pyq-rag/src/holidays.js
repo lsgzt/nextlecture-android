@@ -36,11 +36,15 @@ function repairPdfText(value) {
     .replace(/\bDec\s+ember\b/gi, 'December')
     .replace(/\bSa\s+urday\b/gi, 'Saturday')
     .replace(/\bFa\s+ehgarh\b/gi, 'Fatehgarh')
+    .replace(/\bGran\s+h\b/gi, 'Granth')
+    .replace(/\bChris\s+mas\b/gi, 'Christmas')
+    .replace(/\bKir\s+an\b/gi, 'Kirtan')
     .replace(/\bSarabha\s+Ji\b/gi, 'Sarabha Ji')
     .replace(/\bKar\s+ar\b/gi, 'Kartar')
     .replace(/\bres\s+ric\s+ed\b/gi, 'restricted')
     .replace(/\bwo\s+res\b/gi, 'two restricted')
-    .replace(/\bGurparab\b/gi, 'Gurparab');
+    .replace(/\bGurparab\b/gi, 'Gurparab')
+    .replace(/\bIn\s+respec\b/gi, 'In respect');
 }
 
 function yearFromText(text, fallbackYear = new Date().getUTCFullYear()) {
@@ -82,8 +86,12 @@ export function parseHolidayPdfText(text, fallbackYear = new Date().getUTCFullYe
   let previous = null;
   for (const line of rawLines) {
     const lower = line.toLowerCase();
-    if (lower.includes('restricted holidays')) category = 'Restricted holiday';
-    if (lower.includes('half day holidays') || lower.includes('second half-day holidays')) category = 'Half-day holiday';
+    const startsRestrictedSection = lower.includes('restricted holidays');
+    const startsHalfDaySection = lower.includes('half day holidays') || lower.includes('second half-day holidays') || lower.includes('second half day holidays');
+    const isSectionBoundary = startsRestrictedSection || startsHalfDaySection || lower.includes('in respect') || lower.includes('following four') || lower.includes('nagar kirtan') || lower.includes('sobha yatra');
+    if (startsRestrictedSection) category = 'Restricted holiday';
+    if (startsHalfDaySection || lower.includes('in respect')) category = 'Half-day holiday';
+    if (isSectionBoundary || /^sr\.no\.|^name of holiday/i.test(line)) previous = null;
     const match = line.match(ROW_PATTERN);
     if (match) {
       const holiday = makeHoliday({ name: match[1], day: match[2], month: match[3], weekday: match[5] || match[4], category, year });
@@ -94,7 +102,9 @@ export function parseHolidayPdfText(text, fallbackYear = new Date().getUTCFullYe
       continue;
     }
     // The PDF wraps long holiday names onto the next physical line.
-    if (previous && !/^Sr\.No\.|^The following|^In respect|^Nagar|^and the/i.test(line) && !DATE_PATTERN.test(line)) {
+    const isProseOrHeader = /^(?:sr\.no\.|the following|in respect|nagar|name of holiday)/i.test(line)
+      || /(?:half[- ]day holidays|second half[- ]day holidays|following four|will be notified|calendar year|sobha yatra|in connection)/i.test(line);
+    if (previous && !isProseOrHeader && !DATE_PATTERN.test(line)) {
       previous.name = repairPdfText(`${previous.name} ${line}`);
       previous.id = stableId(previous.date, previous.name, previous.category);
     }

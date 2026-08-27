@@ -214,14 +214,37 @@ private fun HolidaysSection(
                 enter = expandVertically(animationSpec = motionTween(Motion.Normal)) + fadeIn(motionTween(Motion.Normal)),
                 exit = shrinkVertically(animationSpec = motionTween(Motion.Fast)) + fadeOut(motionTween(Motion.Fast))
             ) {
-                Column(Modifier.padding(top = 13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    holidays.forEach { holiday ->
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                            Column(Modifier.width(92.dp)) {
-                                Text(holiday.displayDate.removeSuffix(", ${holiday.year}"), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                                Text(holiday.weekday, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+                val categoryGroups = listOf(
+                    Triple("PUBLIC HOLIDAYS", "Public holiday", MaterialTheme.colorScheme.primary),
+                    Triple("RESTRICTED HOLIDAYS", "Restricted holiday", MaterialTheme.colorScheme.tertiary),
+                    Triple("HALF-DAY HOLIDAYS", "Half-day holiday", MaterialTheme.colorScheme.secondary)
+                )
+                Column(Modifier.padding(top = 13.dp)) {
+                    var visibleGroupCount = 0
+                    categoryGroups.forEach { (label, category, color) ->
+                        val group = holidays.filter { it.category == category }
+                        if (group.isNotEmpty()) {
+                            if (visibleGroupCount > 0) Spacer(Modifier.size(14.dp))
+                            visibleGroupCount += 1
+                            Text(
+                                "$label · ${group.size}",
+                                color = color,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.9.sp
+                            )
+                            Spacer(Modifier.size(7.dp))
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                group.forEach { holiday ->
+                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                                        Column(Modifier.width(92.dp)) {
+                                            Text(holiday.displayDate.removeSuffix(", ${holiday.year}"), color = color, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                            Text(holiday.weekday, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+                                        }
+                                        Text(holiday.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                                    }
+                                }
                             }
-                            Text(holiday.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                         }
                     }
                 }
