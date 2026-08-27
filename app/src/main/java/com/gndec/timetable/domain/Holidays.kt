@@ -49,8 +49,7 @@ class HolidayManager(
         _refreshing.value = true
         _lastError.value = null
         try {
-            val configuredBackend = settings.flow.first().pyqRagBackendUrl.trim()
-                .ifBlank { AppSettings.DEFAULT_PYQ_RAG_BACKEND_URL }
+            val configuredBackend = AppSettings.DEFAULT_HOLIDAY_BACKEND_URL
             val feed = backend.holidays(configuredBackend, forceRefresh = forceRefresh)
             val holidays = feed.holidays.map { item ->
                 Holiday(
