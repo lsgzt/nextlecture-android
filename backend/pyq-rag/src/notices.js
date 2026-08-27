@@ -6,7 +6,7 @@ import { getNoticeFeedCache, saveNoticeFeedCache } from './db.js';
 export const ERP_NOTICE_URL = 'https://erp.gndec.ac.in/notice';
 export const GNDEC_HOME_URL = 'https://gndec.ac.in/';
 
-const MAX_NOTICES = 20;
+const MAX_NOTICES = 30;
 const CACHE_ID = 'global';
 const GNDEC_TIME_ZONE = 'Asia/Kolkata';
 const MONTHS = 'January|February|March|April|May|June|July|August|September|October|November|December';
@@ -210,7 +210,7 @@ export function parseHomepageNotices(html, fetchedDate = new Date().toISOString(
   $('div.marquee').each((_, element) => roots.push($(element)));
   const notices = roots.flatMap((root) => parseHomepageSectionNotices($, root, 'GNDEC homepage', fetchedDate));
   const studentCorner = homepageSection($, 'student corner');
-  const studentNotices = parseHomepageSectionNotices($, studentCorner, 'GNDEC Student Corner', fetchedDate)
+  const studentNotices = parseHomepageSectionNotices($, studentCorner, 'GNDEC Student Corner', fetchedDate, { requireSignal: false })
     .filter((notice) => /notice|scholarship|fee\s+notice|original documents|document(?:s)? submission/i.test(notice.title))
     .map((notice) => ({ ...notice, source: 'GNDEC Student Corner', id: stableId('GNDEC Student Corner', notice.title, '', notice.url) }));
   return [...notices, ...studentNotices]
