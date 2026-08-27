@@ -23,6 +23,7 @@ class AttendanceManager(
     private val settings: SettingsManager
 ) {
     private val sessionMutex = Mutex()
+    private var synchronizedFingerprint: String? = null
 
     suspend fun load(from: LocalDate, to: LocalDate, target: Double): AttendanceResponse {
         val cfg = settings.flow.first()
@@ -59,6 +60,13 @@ class AttendanceManager(
         }
     }
 
+    suspend fun leaderboard(scope: String, value: String = ""): com.gndec.timetable.net.LeaderboardResponse {
+        val cfg = settings.flow.first()
+        return withSession(cfg) { token ->
+            client.leaderboard(cfg.pyqRagBackendUrl, token, scope, value)
+        }
+    }
+
     suspend fun currentToken(): String? = keys.getAttendanceToken()
 
     suspend fun <T> withSession(cfg: com.gndec.timetable.data.prefs.AppSettings, operation: suspend (String) -> T): T {
@@ -68,6 +76,7 @@ class AttendanceManager(
         } catch (error: HttpException) {
             if (error.code != 401) throw error
             keys.removeAttendanceSession()
+            synchronizedFingerprint = null
             operation(ensureSession(cfg))
         }
     }
@@ -77,7 +86,22 @@ class AttendanceManager(
         val installationId = keys.getAttendanceInstallationId()
         val savedToken = keys.getAttendanceToken()
         if (!installationId.isNullOrBlank() && !savedToken.isNullOrBlank() && keys.getAttendanceProfileFingerprint() == fingerprint) {
-            return@withLock savedToken
+            if (synchronizedFingerprint == fingerprint) return@withLock savedToken
+            val refreshed = client.createSession(
+                cfg.pyqRagBackendUrl,
+                AttendanceSessionRequest(
+                    installationId = installationId,
+                    profileFingerprint = fingerprint,
+                    branch = cfg.branch,
+                    subsection = cfg.studentSubsection.ifBlank { cfg.group.orEmpty() },
+                    timetableGroup = cfg.group.orEmpty(),
+                    displayName = cfg.studentName,
+                    section = cfg.studentSection
+                )
+            )
+            keys.setAttendanceSession(installationId, refreshed.accessToken, fingerprint)
+            synchronizedFingerprint = fingerprint
+            return@withLock refreshed.accessToken
         }
         val id = installationId ?: UUID.randomUUID().toString()
         val created = client.createSession(
@@ -87,10 +111,13 @@ class AttendanceManager(
                 profileFingerprint = fingerprint,
                 branch = cfg.branch,
                 subsection = cfg.studentSubsection.ifBlank { cfg.group.orEmpty() },
-                timetableGroup = cfg.group.orEmpty()
+                timetableGroup = cfg.group.orEmpty(),
+                displayName = cfg.studentName,
+                section = cfg.studentSection
             )
         )
         keys.setAttendanceSession(id, created.accessToken, fingerprint)
+        synchronizedFingerprint = fingerprint
         created.accessToken
     }
 

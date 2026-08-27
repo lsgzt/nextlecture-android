@@ -17,7 +17,9 @@ data class AttendanceSessionRequest(
     val profileFingerprint: String,
     val branch: String = "",
     val subsection: String = "",
-    val timetableGroup: String = ""
+    val timetableGroup: String = "",
+    val displayName: String = "",
+    val section: String = ""
 )
 
 @Serializable
@@ -65,6 +67,43 @@ data class AttendanceSummary(
 )
 
 @Serializable
+data class LeaderboardRow(
+    val rank: Int = 0,
+    val name: String = "",
+    val percentage: Double = 0.0,
+    val present: Int = 0,
+    val absent: Int = 0,
+    val markedTotal: Int = 0,
+    val currentStreak: Int = 0,
+    val selfReported: Boolean = true,
+    val lastMarkedAt: String? = null
+)
+
+@Serializable
+data class LeaderboardMe(
+    val rank: Int = 0,
+    val name: String = "",
+    val percentage: Double = 0.0,
+    val present: Int = 0,
+    val absent: Int = 0,
+    val markedTotal: Int = 0,
+    val currentStreak: Int = 0,
+    val selfReported: Boolean = true,
+    val lastMarkedAt: String? = null
+)
+
+@Serializable
+data class LeaderboardResponse(
+    val scope: String = "subsection",
+    val scopeValue: String = "",
+    val scopeLabel: String = "",
+    val participants: Int = 0,
+    val rows: List<LeaderboardRow> = emptyList(),
+    val me: LeaderboardMe? = null,
+    val eligibility: String = ""
+)
+
+@Serializable
 data class AttendanceResponse(
     val from: String,
     val to: String,
@@ -90,6 +129,15 @@ class AttendanceClient(private val client: okhttp3.OkHttpClient = Net.client) {
             ?.build() ?: throw IllegalArgumentException("Invalid attendance backend URL")
         val request = Request.Builder().url(url).header("Authorization", "Bearer $accessToken").get().build()
         execute(request, AttendanceResponse.serializer())
+    }
+
+    suspend fun leaderboard(baseUrl: String, accessToken: String, scope: String, value: String): LeaderboardResponse = withContext(Dispatchers.IO) {
+        val url = buildUrl(baseUrl, "api/attendance/leaderboard")?.newBuilder()
+            ?.addQueryParameter("scope", scope)
+            ?.addQueryParameter("value", value)
+            ?.build() ?: throw IllegalArgumentException("Invalid attendance backend URL")
+        val request = Request.Builder().url(url).header("Authorization", "Bearer $accessToken").get().build()
+        execute(request, LeaderboardResponse.serializer())
     }
 
     suspend fun save(baseUrl: String, accessToken: String, request: AttendanceRecordRequest): AttendanceRecord = withContext(Dispatchers.IO) {

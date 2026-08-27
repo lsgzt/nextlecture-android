@@ -36,6 +36,7 @@ import {
   removeAttendance,
   upsertAttendance,
 } from './attendance.js';
+import { getLeaderboard, leaderboardQuery } from './leaderboard.js';
 
 const paperIdSchema = z.string().trim().min(5).max(200);
 const courseSchema = z.string().trim().toUpperCase().transform((value) => value.replace(/^([A-Z]{2,12})-?(\d{2,4})$/, '$1-$2')).pipe(z.string().regex(/^[A-Z]{2,12}-\d{2,4}$/));
@@ -113,6 +114,7 @@ export function buildRouter() {
   const retryLimit = createRateLimiter(2);
   const attendanceSessionLimit = createRateLimiter(8);
   const attendanceMutationLimit = createRateLimiter(120);
+  const leaderboardLimit = createRateLimiter(30);
 
   router.get('/admin/status', requireAdmin, async (_req, res) => {
     try {
@@ -173,6 +175,20 @@ export function buildRouter() {
       if (error?.name === 'ZodError') return res.status(400).json({ error: 'invalid attendance request' });
       console.error('[ATTENDANCE] list failed', error.message);
       return res.status(503).json({ error: 'attendance unavailable' });
+    }
+  });
+
+  router.get('/attendance/leaderboard', leaderboardLimit, async (req, res) => {
+    try {
+      const student = await authenticateAttendance(req);
+      if (!student) return res.status(401).json({ error: 'attendance authentication required' });
+      const parsed = leaderboardQuery(req.query);
+      const result = await getLeaderboard(student, parsed);
+      return res.set('cache-control', 'no-store').json(result);
+    } catch (error) {
+      if (error?.name === 'ZodError') return res.status(400).json({ error: 'invalid leaderboard request' });
+      console.error('[ATTENDANCE] leaderboard failed', error.message);
+      return res.status(503).json({ error: 'leaderboard unavailable' });
     }
   });
 

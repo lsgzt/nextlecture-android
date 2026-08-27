@@ -15,6 +15,8 @@ export const attendanceSessionSchema = z.object({
   branch: text(80),
   subsection: text(40),
   timetableGroup: text(40),
+  displayName: text(160),
+  section: text(40),
 }).strict();
 
 export const attendanceRecordSchema = z.object({
@@ -103,7 +105,7 @@ export async function authenticateAttendance(req) {
   const accessTokenHash = hash(raw);
   const { data, error } = await getDb()
     .from('attendance_students')
-    .select('id,branch,subsection,timetable_group')
+    .select('id,branch,subsection,timetable_group,display_name,section')
     .eq('access_token_hash', accessTokenHash)
     .maybeSingle();
   if (error) throw new Error(`attendance session lookup failed: ${error.message}`);
@@ -125,6 +127,8 @@ export async function createAttendanceSession(input) {
     branch: parsed.branch,
     subsection: parsed.subsection,
     timetable_group: parsed.timetableGroup,
+    display_name: parsed.displayName,
+    section: parsed.section,
     last_seen_at: new Date().toISOString(),
   };
   const db = getDb();
@@ -186,6 +190,15 @@ export async function listAttendance(studentId, query) {
 export async function upsertAttendance(studentId, input) {
   const parsed = attendanceRecordSchema.parse(input);
   if (parsed.attendanceDate > maxAllowedDate()) throw new Error('future attendance cannot be marked');
+  const db = getDb();
+  const existing = await db
+    .from('attendance_records')
+    .select('status')
+    .eq('student_id', studentId)
+    .eq('attendance_date', parsed.attendanceDate)
+    .eq('lecture_key', parsed.lectureKey)
+    .maybeSingle();
+  if (existing.error) throw new Error(`attendance existing-record lookup failed: ${existing.error.message}`);
   const payload = {
     student_id: studentId,
     attendance_date: parsed.attendanceDate,
@@ -197,25 +210,56 @@ export async function upsertAttendance(studentId, input) {
     start_minutes: parsed.startMinutes,
     end_minutes: parsed.endMinutes,
   };
-  const { data, error } = await getDb()
+  const { data, error } = await db
     .from('attendance_records')
     .upsert(payload, { onConflict: 'student_id,attendance_date,lecture_key' })
     .select('attendance_date,lecture_key,status,subject,teacher,venue,start_minutes,end_minutes,created_at,updated_at')
     .single();
   if (error) throw new Error(`attendance record write failed: ${error.message}`);
+  if (!existing.data || existing.data.status !== parsed.status) {
+    const audit = await db.from('attendance_record_events').insert({
+      student_id: studentId,
+      attendance_date: parsed.attendanceDate,
+      lecture_key: parsed.lectureKey,
+      previous_status: existing.data?.status || null,
+      new_status: parsed.status,
+      source: 'self_reported',
+    });
+    if (audit.error) console.warn(`attendance audit write failed: ${audit.error.message}`);
+  }
   return data;
 }
 
 export async function removeAttendance(studentId, attendanceDate, lectureKey) {
   const parsedDate = isoDate.parse(attendanceDate);
   const parsedKey = z.string().trim().min(16).max(128).parse(lectureKey);
-  const { error } = await getDb()
+  const db = getDb();
+  const existing = await db
+    .from('attendance_records')
+    .select('status')
+    .eq('student_id', studentId)
+    .eq('attendance_date', parsedDate)
+    .eq('lecture_key', parsedKey)
+    .maybeSingle();
+  if (existing.error) throw new Error(`attendance existing-record lookup failed: ${existing.error.message}`);
+  const { error } = await db
     .from('attendance_records')
     .delete()
     .eq('student_id', studentId)
     .eq('attendance_date', parsedDate)
     .eq('lecture_key', parsedKey);
   if (error) throw new Error(`attendance record delete failed: ${error.message}`);
+  if (existing.data) {
+    const audit = await db.from('attendance_record_events').insert({
+      student_id: studentId,
+      attendance_date: parsedDate,
+      lecture_key: parsedKey,
+      previous_status: existing.data.status,
+      new_status: null,
+      source: 'self_reported',
+    });
+    if (audit.error) console.warn(`attendance audit write failed: ${audit.error.message}`);
+  }
 }
 
 export function chooseAttendanceOwner(candidates, records) {

@@ -67,6 +67,7 @@ import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.domain.AttendanceManager
 import com.gndec.timetable.net.AttendanceRecord
 import com.gndec.timetable.net.AttendanceResponse
+import com.gndec.timetable.net.LeaderboardResponse
 import com.gndec.timetable.ui.PremiumPageHeader
 import com.gndec.timetable.ui.PremiumScreenBackground
 import com.gndec.timetable.ui.motion.Motion
@@ -104,6 +105,10 @@ fun AttendanceScreen(
     var activeGroup by remember { mutableStateOf("") }
     var lectures by remember { mutableStateOf<List<LectureEntity>>(emptyList()) }
     var snapshotLectures by remember { mutableStateOf<List<TimetableSnapshotEntity>>(emptyList()) }
+    var leaderboardScope by remember { mutableStateOf("subsection") }
+    var leaderboardResponse by remember { mutableStateOf<LeaderboardResponse?>(null) }
+    var leaderboardLoading by remember { mutableStateOf(true) }
+    var leaderboardError by remember { mutableStateOf<String?>(null) }
     val historyDates = remember(today) { (0L..13L).map { today.minusDays(it) }.reversed() }
 
     suspend fun reloadNow() {
@@ -124,9 +129,26 @@ fun AttendanceScreen(
         scope.launch { reloadNow() }
     }
 
+    suspend fun reloadLeaderboardNow() {
+        leaderboardLoading = true
+        leaderboardError = null
+        runCatching { container.attendanceManager.leaderboard(leaderboardScope) }
+            .onSuccess { leaderboardResponse = it }
+            .onFailure { leaderboardError = it.message ?: "Could not load the leaderboard" }
+        leaderboardLoading = false
+    }
+
+    fun reloadLeaderboard() {
+        scope.launch { reloadLeaderboardNow() }
+    }
+
     LaunchedEffect(Unit) {
         target = container.settings.flow.first().attendanceTarget
         reloadNow()
+    }
+
+    LaunchedEffect(leaderboardScope) {
+        reloadLeaderboardNow()
     }
 
     LaunchedEffect(activeGroup, selectedDate) {
@@ -162,6 +184,16 @@ fun AttendanceScreen(
                         target = value
                         scope.launch { container.settings.setAttendanceTarget(value) }
                     }
+                )
+            }
+            item(key = "attendance-leaderboard") {
+                AttendanceLeaderboardSection(
+                    response = leaderboardResponse,
+                    selectedScope = leaderboardScope,
+                    loading = leaderboardLoading,
+                    error = leaderboardError,
+                    onScopeChange = { leaderboardScope = it },
+                    onRetry = ::reloadLeaderboard
                 )
             }
             item {
