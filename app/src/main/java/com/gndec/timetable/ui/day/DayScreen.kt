@@ -259,7 +259,12 @@ fun DayScreen(
                                     }.sortedBy { it.startMinutes }
                                     val animatedTimeline = buildTimeline(animatedLectures, if (mode == DayViewMode.TODAY) nowMinutes else -1)
                                     if (animatedTimeline.isEmpty()) {
-                                        EmptyDayCard(cardColor = MaterialTheme.colorScheme.surface, primaryText = primaryText, muted = muted)
+                                        EmptyDayCard(
+                                            cardColor = MaterialTheme.colorScheme.surface,
+                                            primaryText = primaryText,
+                                            muted = muted,
+                                            dayLabel = if (mode == DayViewMode.TODAY) "today" else "tomorrow"
+                                        )
                                     } else {
                                         TimelineSection(
                                             timeline = animatedTimeline,
@@ -463,7 +468,7 @@ private fun MetricCard(value: String, label: String, valueColor: Color, primaryT
 }
 
 @Composable
-private fun EmptyDayCard(cardColor: Color, primaryText: Color, muted: Color) {
+private fun EmptyDayCard(cardColor: Color, primaryText: Color, muted: Color, dayLabel: String) {
     Card(Modifier.fillMaxWidth().padding(horizontal = 20.dp), shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = cardColor), elevation = CardDefaults.cardElevation(0.dp)) {
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 28.dp),
@@ -476,7 +481,7 @@ private fun EmptyDayCard(cardColor: Color, primaryText: Color, muted: Color) {
                 Icon(Icons.Default.WbSunny, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(26.dp))
             }
             Spacer(Modifier.height(12.dp))
-            Text("You’re free today", color = primaryText, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Text("You’re free $dayLabel", color = primaryText, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             Spacer(Modifier.height(5.dp))
             Text("No lectures are scheduled for this day.", color = muted, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         }
