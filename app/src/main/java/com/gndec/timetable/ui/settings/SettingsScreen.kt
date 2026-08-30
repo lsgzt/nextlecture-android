@@ -270,7 +270,7 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onOpenAlerts: ()
                 }
                 item {
                     SectionCard("About", Icons.Default.CheckCircle) {
-                        Text("GNDEC Timetable v${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleMedium)
+                        Text("NextLecture v${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleMedium)
                         Text("An open-source Android app for GNDEC students. Reminders are local and offline-capable.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SOURCE_CODE_URL))) }) {
                             Text("View code on GitHub")

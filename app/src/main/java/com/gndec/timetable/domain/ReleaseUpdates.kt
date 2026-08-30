@@ -127,7 +127,7 @@ class ReleaseUpdateManager(
             val current = settings.flow.first()
             val next = ReleaseUpdateState(
                 latestMarker = release.tag_name.trim().removePrefix("v"),
-                releaseName = release.name.ifBlank { "GNDEC Timetable ${release.tag_name}" },
+                releaseName = release.name.ifBlank { "NextLecture ${release.tag_name}" },
                 notes = release.body.trim(),
                 checkedAt = now,
                 updateAvailable = available,

@@ -106,7 +106,7 @@ object NotificationHelper {
         val message = "A newer app release is available. Tap to download release $latestMarker."
         val notification = NotificationCompat.Builder(context, CHANNEL_UPDATES)
             .setSmallIcon(R.drawable.ic_launcher)
-            .setContentTitle(releaseName.ifBlank { "GNDEC Timetable update $latestMarker" })
+            .setContentTitle(releaseName.ifBlank { "NextLecture update $latestMarker" })
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
             .setContentIntent(openIntent)
@@ -160,7 +160,7 @@ object NotificationHelper {
         val notification = NotificationCompat.Builder(context, CHANNEL_REMINDERS)
             .setSmallIcon(R.drawable.ic_launcher)
             .setSound(lectureSound(context))
-            .setContentTitle("GNDEC Timetable notifications work")
+            .setContentTitle("NextLecture notifications work")
             .setContentText("This is a test reminder from your timetable app.")
             .setStyle(NotificationCompat.BigTextStyle().bigText("This is a test reminder from your timetable app. Your lecture reminders are ready to alert you on time."))
             .setContentIntent(openIntent)
