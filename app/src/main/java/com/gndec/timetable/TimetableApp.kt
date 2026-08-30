@@ -1,6 +1,9 @@
 package com.gndec.timetable
 
 import android.app.Application
+import com.microsoft.clarity.Clarity
+import com.microsoft.clarity.ClarityConfig
+import com.microsoft.clarity.models.LogLevel
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
@@ -19,6 +22,14 @@ class TimetableApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+
+        // Microsoft Clarity analytics (initialized once, before any other app logic).
+        val config = ClarityConfig(
+            projectId = "yaflc6peum",
+            logLevel = LogLevel.None
+        )
+        Clarity.initialize(applicationContext, config)
+
         container = AppContainer(this)
         NotificationHelper.ensureChannels(this)
 

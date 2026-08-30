@@ -87,6 +87,7 @@ dependencies {
     implementation("org.jsoup:jsoup:1.18.1")
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.microsoft.clarity:clarity-compose:3.3.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.2")
     debugImplementation("androidx.compose.ui:ui-tooling")
