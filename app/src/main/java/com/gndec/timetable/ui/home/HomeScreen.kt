@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -61,6 +63,11 @@ import com.gndec.timetable.ui.PremiumStatusRow
 import com.gndec.timetable.ui.PremiumTodayPreview
 import com.gndec.timetable.ui.theme.GndecOrange
 import com.gndec.timetable.util.Formatters
+import androidx.compose.material.icons.filled.MeetingRoom
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.text.font.FontWeight
+import com.gndec.timetable.ui.motion.pressFeedback
 import java.time.Instant
 import java.time.ZoneId
 
@@ -72,6 +79,7 @@ fun HomeScreen(
     onOpenNotice: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenProfile: () -> Unit,
+    onOpenVacantRooms: () -> Unit,
     onOpenLecture: (LectureEntity) -> Unit
 ) {
     val vm = remember { HomeViewModel(container) }
@@ -258,8 +266,14 @@ fun HomeScreen(
                         )
                     }
                 }
+                item(key = "vacant-rooms") {
+                    VacantRoomsEntryCard(
+                        onOpen = onOpenVacantRooms,
+                        modifier = androidx.compose.ui.Modifier.itemEntrance(6).padding(horizontal = 20.dp).animateItem()
+                    )
+                }
                 item(key = "offline") {
-                    PremiumOfflineCard(androidx.compose.ui.Modifier.itemEntrance(6).padding(horizontal = 20.dp).animateItem())
+                    PremiumOfflineCard(androidx.compose.ui.Modifier.itemEntrance(7).padding(horizontal = 20.dp).animateItem())
                 }
             }
         }
@@ -275,6 +289,33 @@ private fun FetchMessage(text: String, isError: Boolean) {
         style = MaterialTheme.typography.bodySmall,
         modifier = androidx.compose.ui.Modifier.padding(horizontal = 24.dp, vertical = 2.dp)
     )
+}
+
+/** Quick-action card that opens the Find vacant rooms screen. */
+@Composable
+private fun VacantRoomsEntryCard(onOpen: () -> Unit, modifier: Modifier = Modifier) {
+    val pressInteraction = remember { MutableInteractionSource() }
+    androidx.compose.material3.Card(
+        onClick = onOpen,
+        modifier = modifier.fillMaxWidth().pressFeedback(pressInteraction),
+        interactionSource = pressInteraction,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = androidx.compose.material3.CardDefaults.cardElevation(0.dp)
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(38.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.13f), CircleShape), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.MeetingRoom, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Find vacant rooms", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("See which rooms are free right now or at any slot", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            }
+            Icon(Icons.Default.ChevronRight, contentDescription = "Open vacant rooms", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
 }
 
 @Composable

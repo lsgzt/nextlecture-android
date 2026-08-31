@@ -46,6 +46,7 @@ import com.gndec.timetable.ui.syllabus.FrequentlyAskedScreen
 import com.gndec.timetable.ui.syllabus.PreviousYearPapersScreen
 import com.gndec.timetable.ui.syllabus.SyllabusScreen
 import com.gndec.timetable.ui.theme.GndecTheme
+import com.gndec.timetable.ui.vacant.VacantRoomsScreen
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -166,6 +167,7 @@ class MainActivity : ComponentActivity() {
                                             onOpenNotice = { navigate("notice") },
                                             onOpenSettings = { navigate("settings") },
                                             onOpenProfile = { navigate("profile") },
+                                            onOpenVacantRooms = { navigate("vacant_rooms") },
                                             onOpenLecture = { selectedLecture = it; selectedLectureDate = LocalDate.now(); navigate("detail") }
                                         )
                                     }
@@ -247,6 +249,9 @@ class MainActivity : ComponentActivity() {
                                     }
                                     composable("attendance") {
                                         AttendanceScreen(container = container, onBack = { nav.popBackStack() })
+                                    }
+                                    composable("vacant_rooms") {
+                                        VacantRoomsScreen(container = container, onBack = { nav.popBackStack() })
                                     }
                                 }
                                 val backStackEntry by nav.currentBackStackEntryAsState()

@@ -84,7 +84,7 @@ private val DarkAqua = Color(0xFF183B3A)
 
 /** Signature aqua wash shared by the hero card and the sync strip. */
 @Composable
-private fun premiumAquaBrush(): Brush = Brush.linearGradient(
+fun premiumAquaBrush(): Brush = Brush.linearGradient(
     if (MaterialTheme.colorScheme.background.luminance() > 0.5f) listOf(LightAqua, LightAquaStrong)
     else listOf(Color(0xFF1C4443), DarkAqua)
 )
