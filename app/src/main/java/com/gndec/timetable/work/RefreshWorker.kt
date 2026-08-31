@@ -14,6 +14,7 @@ class RefreshWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
         runCatching { app.container.erpNoticeManager.refresh() }
         runCatching { app.container.holidayManager.refresh() }
         runCatching { app.container.releaseUpdateManager.refreshIfStale() }
+        runCatching { app.container.studentDirectoryManager.refreshSavedBranch() }
         return when (val r = app.container.refreshManager.refresh(force = false)) {
             is RefreshResult.Failed -> if (runAttemptCount < 3) Result.retry() else Result.success()
             is RefreshResult.Success, RefreshResult.UpToDate -> Result.success()
