@@ -149,6 +149,8 @@ class StudentDirectoryManager(
         val current = settings.flow.first()
         val branch = current.branch.trim().uppercase()
         if (branch !in BRANCHES) return
+        // Background refresh only matters for the first-year directory workflow.
+        if (current.academicYear >= 2) return
         val cached = readCacheFile(branch)
         if (cached != null && isFresh(cached.fetchedAt)) return
         runCatching { load(branch, force = false) }
@@ -163,6 +165,9 @@ class StudentDirectoryManager(
     suspend fun migrateSavedProfileIfNeeded(): Boolean = withContext(Dispatchers.IO) {
         val current = settings.flow.first()
         if (current.studentName.isBlank() || current.branch !in BRANCHES || current.profileSource == "manual") return@withContext false
+        // The directory PDFs describe FIRST-YEAR permanent sections only — a
+        // 2nd/3rd/4th-year profile must never be re-linked against them.
+        if (current.academicYear >= 2) return@withContext false
 
         val directory = when (val result = load(current.branch, force = false)) {
             is StudentDirectoryResult.Ready -> result.records

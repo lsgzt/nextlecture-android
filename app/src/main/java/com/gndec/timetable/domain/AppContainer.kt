@@ -32,6 +32,7 @@ class AppContainer(val context: Context) {
     val syllabusManager by lazy { SyllabusManager(context, settings, keys, GeminiClient(), db.syllabusChatDao()) }
     val releaseUpdateManager by lazy { ReleaseUpdateManager(context, settings) }
     val studentDirectoryManager by lazy { StudentDirectoryManager(context, settings, keys) }
+    val groupTimetableManager by lazy { GroupTimetableManager(context) }
     val vacantRoomsManager by lazy { VacantRoomsManager(context) }
     val refreshManager by lazy { RefreshManager(db, settings, keys, fetcher, timetableSourceResolver, normalizer, scheduler) }
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

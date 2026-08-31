@@ -6,6 +6,7 @@ import com.gndec.timetable.data.db.TimetableMetaEntity
 import com.gndec.timetable.data.db.TimetableSnapshotEntity
 import com.gndec.timetable.data.prefs.SecureKeyStore
 import com.gndec.timetable.data.prefs.SettingsManager
+import com.gndec.timetable.net.DeptGroupSourceResolver
 import com.gndec.timetable.net.FetchOutcome
 import com.gndec.timetable.net.TimetableFetcher
 import com.gndec.timetable.net.TimetableSourceResolver
@@ -38,7 +39,9 @@ class RefreshManager(
     private val fetcher: TimetableFetcher,
     private val sourceResolver: TimetableSourceResolver,
     private val normalizer: AiNormalizer,
-    private val scheduler: AlarmScheduler
+    private val scheduler: AlarmScheduler,
+    /** Used when the profile's academic year is 2..4; the appsc resolver stays for 1st year. */
+    private val deptResolver: DeptGroupSourceResolver = DeptGroupSourceResolver()
 ) {
     /** Minimum age of last check before an automatic (non-forced) refresh is attempted. */
     var autoRefreshMinAgeMillis: Long = 6L * 3_600_000
@@ -57,7 +60,21 @@ class RefreshManager(
         val cfg = settings.flow.first()
         val meta = db.metaDao().get()
         val now = System.currentTimeMillis()
-        val resolved = sourceResolver.resolve(cfg.pyqRagBackendUrl, cfg.sourceUrl)
+        val resolved = when {
+            // 2nd/3rd/4th year: resolve the OFFICIAL departmental document.
+            // No silent fallback to the 1st-year file — if discovery fails the
+            // refresh fails honestly and the cached timetable stays untouched.
+            cfg.academicYear >= 2 -> {
+                val dept = deptResolver.resolve(cfg.branch, cfg.academicYear, meta?.sourceUrl)
+                dept?.let { TimetableSourceResolver.Resolution(it.url, it.source) }
+                    ?: return RefreshResult.Failed(
+                        "Could not reach the official ${cfg.branch.uppercase()} timetable page. " +
+                            "Check your internet connection and refresh again.",
+                        hadCachedTimetable = db.lectureDao().countAll() > 0
+                    )
+            }
+            else -> sourceResolver.resolve(cfg.pyqRagBackendUrl, cfg.sourceUrl)
+        }
         val sourceUrlChanged = meta?.sourceUrl != resolved.url
         val etag = if (sourceUrlChanged) null else meta?.etag
         val lastModified = if (sourceUrlChanged) null else meta?.lastModified

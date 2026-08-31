@@ -3,6 +3,7 @@ package com.gndec.timetable.data.prefs
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.floatPreferencesKey
@@ -40,6 +41,8 @@ data class AppSettings(
     val mentorMobile: String = "",
     val mentorVenue: String = "",
     val profileSource: String = "manual",
+    /** 0 = unset (legacy profiles), 1..4 = academic year of B.Tech. */
+    val academicYear: Int = 0,
     val studentDirectoryBranch: String = "",
     val studentDirectoryJson: String = "",
     val studentDirectoryUpdatedAt: Long = 0L,
@@ -98,6 +101,7 @@ class SettingsManager(private val context: Context) {
         val MENTOR_MOBILE = stringPreferencesKey("mentor_mobile")
         val MENTOR_VENUE = stringPreferencesKey("mentor_venue")
         val PROFILE_SOURCE = stringPreferencesKey("profile_source")
+        val ACADEMIC_YEAR = intPreferencesKey("academic_year")
         val STUDENT_DIRECTORY_BRANCH = stringPreferencesKey("student_directory_branch")
         val STUDENT_DIRECTORY_JSON = stringPreferencesKey("student_directory_json")
         val STUDENT_DIRECTORY_UPDATED_AT = longPreferencesKey("student_directory_updated_at")
@@ -146,6 +150,7 @@ class SettingsManager(private val context: Context) {
             mentorMobile = p[K.MENTOR_MOBILE] ?: "",
             mentorVenue = p[K.MENTOR_VENUE] ?: "",
             profileSource = p[K.PROFILE_SOURCE] ?: "manual",
+            academicYear = (p[K.ACADEMIC_YEAR] ?: 0).coerceIn(0, 4),
             studentDirectoryBranch = p[K.STUDENT_DIRECTORY_BRANCH] ?: "",
             studentDirectoryJson = p[K.STUDENT_DIRECTORY_JSON] ?: "",
             studentDirectoryUpdatedAt = p[K.STUDENT_DIRECTORY_UPDATED_AT] ?: 0L,
@@ -191,6 +196,7 @@ class SettingsManager(private val context: Context) {
     suspend fun setMentorMobile(value: String) = context.dataStore.edit { it[K.MENTOR_MOBILE] = value.trim() }
     suspend fun setMentorVenue(value: String) = context.dataStore.edit { it[K.MENTOR_VENUE] = value.trim() }
     suspend fun setProfileSource(value: String) = context.dataStore.edit { it[K.PROFILE_SOURCE] = value.trim() }
+    suspend fun setAcademicYear(year: Int) = context.dataStore.edit { it[K.ACADEMIC_YEAR] = year.coerceIn(0, 4) }
     suspend fun setStudentDirectoryCache(branch: String, json: String, updatedAt: Long = System.currentTimeMillis()) = context.dataStore.edit {
         it[K.STUDENT_DIRECTORY_BRANCH] = branch
         it[K.STUDENT_DIRECTORY_JSON] = json

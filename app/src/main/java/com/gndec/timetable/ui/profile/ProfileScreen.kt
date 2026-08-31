@@ -66,11 +66,14 @@ import androidx.compose.ui.platform.LocalContext
 import com.gndec.timetable.data.prefs.AppSettings
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gndec.timetable.domain.AppContainer
+import com.gndec.timetable.domain.GroupTimetableManager
+import com.gndec.timetable.domain.RefreshResult
 import com.gndec.timetable.domain.StudentDirectoryManager
 import com.gndec.timetable.domain.StudentDirectoryRecord
 import com.gndec.timetable.domain.StudentDirectoryResult
 import com.gndec.timetable.domain.matchingStudents
 import com.gndec.timetable.domain.studentDisplayName
+import com.gndec.timetable.parse.GroupMatcher
 import com.gndec.timetable.ui.PremiumPageHeader
 import com.gndec.timetable.ui.PremiumScreenBackground
 import com.gndec.timetable.ui.motion.Motion
@@ -101,6 +104,72 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit, onOpenAttendance:
     var manualSection by remember(settings.studentSection) { mutableStateOf(settings.studentSection) }
     var manualSubsection by remember(settings.studentSubsection) { mutableStateOf(settings.studentSubsection) }
     var savedMessage by remember { mutableStateOf<String?>(null) }
+    // Academic-year editing (2nd/3rd/4th year group re-pick lives here too).
+    var yearEditing by remember { mutableStateOf(false) }
+    var catalogGroups by remember { mutableStateOf<List<String>>(emptyList()) }
+    var catalogFromCache by remember { mutableStateOf(false) }
+    var catalogLoading by remember { mutableStateOf(false) }
+    var pickedSection by remember { mutableStateOf(settings.studentSection) }
+    var pickedGroup by remember(settings.studentSubsection) { mutableStateOf<String?>(settings.studentSubsection.ifBlank { null }) }
+    var yearError by remember { mutableStateOf<String?>(null) }
+
+    fun loadCatalog(year: Int, force: Boolean) {
+        scope.launch {
+            catalogLoading = true
+            yearError = null
+            when (val result = container.groupTimetableManager.load(savedBranch, year, force)) {
+                is GroupTimetableManager.CatalogResult.Ready -> {
+                    catalogGroups = result.groups
+                    catalogFromCache = result.fromCache
+                    catalogLoading = false
+                }
+                is GroupTimetableManager.CatalogResult.Failed -> {
+                    catalogGroups = result.cached
+                    catalogLoading = false
+                    yearError = result.reason
+                }
+            }
+        }
+    }
+
+    /** Year switch for an existing profile: persists the year and, for 2nd–4th
+     *  years, re-links the timetable group chosen from the live document. */
+    fun applyYear(year: Int) {
+        scope.launch {
+            container.settings.setAcademicYear(year)
+            if (year >= 2) {
+                loadCatalog(year, force = false)
+            } else if (settings.academicYear >= 2) {
+                // Downgrading back to 1st year: keep identity, restore appsc flow.
+                savedMessage = "Year set to 1st — reconnect your official record below"
+                lookupOpen = true
+            }
+        }
+    }
+
+    fun saveSeniorGroup(year: Int) {
+        scope.launch {
+            val group = pickedGroup?.trim().orEmpty()
+            if (group.isBlank()) return@launch
+            container.keys.removeAttendanceSession()
+            container.settings.setAcademicYear(year)
+            container.settings.saveStudentProfile(
+                settings.studentName, settings.rollNumber, savedBranch, settings.registrationNumber,
+                settings.fatherName, settings.motherName, settings.mentorName,
+                pickedSection?.trim().orEmpty(), group, "",
+                settings.mentorMobile, settings.mentorVenue,
+                "manual_departmental"
+            )
+            val refreshed = container.refreshManager.refresh(force = true)
+            if (refreshed is RefreshResult.Failed && !refreshed.hadCachedTimetable) {
+                yearError = refreshed.reason
+                return@launch
+            }
+            runCatching { container.refreshManager.changeGroup(group) }
+            savedMessage = "Saved: ${ordinalLabel(year)} year · $group"
+            yearError = null
+        }
+    }
 
     suspend fun loadBranch(force: Boolean) {
         if (branch.isBlank()) return
@@ -179,6 +248,7 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit, onOpenAttendance:
                 }
                 item {
                     SavedProfileCard(
+                        academicYear = settings.academicYear,
                         name = settings.studentName,
                         branch = settings.branch,
                         crn = settings.rollNumber,
@@ -214,11 +284,43 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit, onOpenAttendance:
                         }
                     )
                 }
-                item {
-                    ProfileActionRow(
-                        text = "Want to search your name on the official record again?",
-                        onClick = { lookupOpen = true; query = ""; error = null }
+                item(key = "year-editor") {
+                    AcademicYearCard(
+                        year = settings.academicYear,
+                        expanded = yearEditing,
+                        onToggle = { yearEditing = !yearEditing; yearError = null },
+                        onYear = { applyYear(it) }
                     )
+                }
+                if (yearEditing && settings.academicYear >= 2) {
+                    item(key = "year-group-picker") {
+                        SeniorGroupEditor(
+                            branch = savedBranch,
+                            year = settings.academicYear,
+                            groups = catalogGroups,
+                            fromCache = catalogFromCache,
+                            loading = catalogLoading,
+                            error = yearError,
+                            pickedSection = pickedSection,
+                            pickedGroup = pickedGroup,
+                            onSection = { section ->
+                                pickedSection = section
+                                val options = GroupMatcher.groupsForSection(catalogGroups, savedBranch, settings.academicYear, section)
+                                pickedGroup = options.singleOrNull()
+                            },
+                            onGroup = { pickedGroup = it },
+                            onReload = { loadCatalog(settings.academicYear, force = true) },
+                            onSave = { saveSeniorGroup(settings.academicYear) }
+                        )
+                    }
+                }
+                if (settings.academicYear <= 1) {
+                    item {
+                        ProfileActionRow(
+                            text = "Want to search your name on the official record again?",
+                            onClick = { lookupOpen = true; query = ""; error = null }
+                        )
+                    }
                 }
             } else {
                 item(key = "connect-title") {
@@ -285,11 +387,12 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit, onOpenAttendance:
 }
 
 @Composable
-private fun SavedProfileCard(name: String, branch: String, crn: String, registration: String, section: String, subsection: String, studentGroup: String, father: String, mother: String, mentor: String, mentorMobile: String, mentorVenue: String, onCopyCrn: () -> Unit, onCopyRegistration: () -> Unit, onCopyMentorMobile: () -> Unit) {
+private fun SavedProfileCard(academicYear: Int, name: String, branch: String, crn: String, registration: String, section: String, subsection: String, studentGroup: String, father: String, mother: String, mentor: String, mentorMobile: String, mentorVenue: String, onCopyCrn: () -> Unit, onCopyRegistration: () -> Unit, onCopyMentorMobile: () -> Unit) {
     Card(Modifier.fillMaxWidth().padding(horizontal = 20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), shape = RoundedCornerShape(20.dp), elevation = CardDefaults.cardElevation(0.dp)) {
         Column(Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text("SAVED STUDENT DETAILS", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
             Text(name.ifBlank { "Name not added" }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Detail("Academic year", if (academicYear in 1..4) "${ordinalLabel(academicYear)} Year" else "Not set")
             Detail("Branch", branch.ifBlank { "Not added" })
             CopyableDetail("CRN (Class Roll Number)", crn.ifBlank { "Not added" }, onCopyCrn)
             if (registration.isNotBlank()) CopyableDetail("Registration number", registration, onCopyRegistration)
@@ -357,6 +460,7 @@ private fun SourceStatus(source: String, loading: Boolean, saved: String?) {
             loading -> "Reading the official branch PDF…"
             saved != null -> saved
             source == "gndec_permanent_pdf" -> "Linked to GNDEC’s bundled permanent 2026 list"
+            source == "manual_departmental" -> "Manual profile · departmental timetable group"
             else -> "Manual profile details"
         }
         val textSwapIn = motionTween<Float>(Motion.Normal)
@@ -544,6 +648,128 @@ private fun AttendanceProfileAction(onClick: () -> Unit) {
                 Text("Mark lectures and track your percentage", color = MaterialTheme.colorScheme.onPrimaryContainer, style = MaterialTheme.typography.bodySmall)
             }
             Icon(Icons.Default.ArrowForward, contentDescription = "Open attendance", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
+internal fun ordinalLabel(year: Int): String = when (year) {
+    1 -> "1st"
+    2 -> "2nd"
+    3 -> "3rd"
+    4 -> "4th"
+    else -> year.toString()
+}
+
+@Composable
+private fun AcademicYearCard(year: Int, expanded: Boolean, onToggle: () -> Unit, onYear: (Int) -> Unit) {
+    Card(Modifier.fillMaxWidth().padding(horizontal = 20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), shape = RoundedCornerShape(20.dp), elevation = CardDefaults.cardElevation(0.dp)) {
+        Column(Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("ACADEMIC YEAR", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                    Text(
+                        if (year in 1..4) "${ordinalLabel(year)} Year" else "Not set — pick your year",
+                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold
+                    )
+                }
+                OutlinedButton(onClick = onToggle, enabled = true, contentPadding = PaddingValues(horizontal = 12.dp), shape = RoundedCornerShape(12.dp)) {
+                    Text(if (expanded) "Close" else "Change")
+                }
+            }
+            if (expanded) {
+                Text(
+                    "1st year keeps the official directory lookup. 2nd–4th years switch to their department's official timetable and re-pick the section.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    listOf(1, 2, 3, 4).forEach { value ->
+                        SurfaceChip(ordinalLabel(value), value == year, onClick = { onYear(value) })
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SeniorGroupEditor(
+    branch: String,
+    year: Int,
+    groups: List<String>,
+    fromCache: Boolean,
+    loading: Boolean,
+    error: String?,
+    pickedSection: String?,
+    pickedGroup: String?,
+    onSection: (String) -> Unit,
+    onGroup: (String) -> Unit,
+    onReload: () -> Unit,
+    onSave: () -> Unit
+) {
+    Card(Modifier.fillMaxWidth().padding(horizontal = 20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), shape = RoundedCornerShape(20.dp), elevation = CardDefaults.cardElevation(0.dp)) {
+        Column(Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+            Text("${ordinalLabel(year)} YEAR · $branch SECTIONS", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+            when {
+                loading -> Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(10.dp))
+                    Text("Loading official groups…", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                }
+                groups.isEmpty() -> {
+                    Text(error ?: "The official timetable could not be loaded. Try again once you are online.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    OutlinedButton(onClick = onReload, enabled = !loading) {
+                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Retry")
+                    }
+                }
+                else -> {
+                    if (fromCache) {
+                        Text("Offline copy — refresh for the latest revision.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                    }
+                    val sections = GroupMatcher.sectionsForYear(groups, branch, year)
+                    if (sections.isEmpty()) {
+                        Text("No $branch groups for year $year in the current official timetable yet.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            sections.chunked(5).forEach { rowSections ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                    rowSections.forEach { section ->
+                                        SurfaceChip(GroupMatcher.sectionLabel(section), section == pickedSection, onClick = { onSection(section) })
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    val sectionGroups = pickedSection?.let { GroupMatcher.groupsForSection(groups, branch, year, it) }.orEmpty()
+                    if (sectionGroups.size > 1) {
+                        Text("Which practical group?", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            sectionGroups.chunked(3).forEach { rowGroups ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                    rowGroups.forEach { group ->
+                                        SurfaceChip(group, group == pickedGroup, onClick = { onGroup(group) })
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    pickedGroup?.let {
+                        Text("Timetable group: $it", fontWeight = FontWeight.SemiBold)
+                    }
+                    error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedButton(onClick = onReload, enabled = !loading) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Refresh")
+                        }
+                        Button(onClick = onSave, enabled = pickedGroup != null) {
+                            Text("Save group")
+                        }
+                    }
+                }
+            }
         }
     }
 }
