@@ -34,7 +34,9 @@ class GroupMatcherTest {
     private val meGroups = listOf(
         "D2 RAI A1", "D2 RAI A2", "D2MEA", "D2MEB", "D3ME A", "D3ME B",
         "D4 ME MANUFACTURING", "D4 ME THERMAL", "D4 ME DESIGN", "D4 ME A1", "D4 ME B3",
-        "M.TECH OE Automatic Group", "CSE A", "D3 ECE A", "D1 BCA A"
+        "M.TECH OE Automatic Group", "CSE A", "D3 ECE A", "D1 BCA A",
+        // Published in the live ME document (Jul-Dec 2026) with no branch token.
+        "D3 BCA A", "D3 BCA B"
     )
     private val eceGroups = listOf(
         "D4ECA1", "D4ECA2", "D4ECA3", "D4ECB1", "D4ECB2", "D4ECB3",
@@ -140,5 +142,57 @@ class GroupMatcherTest {
         assertEquals(2, pg.year)
         assertEquals("IT", pg.branch)
         assertEquals("B", pg.section)
+    }
+
+    // ---- matchGroup: linking an onboarding catalog pick to the stored cache ----
+
+    @Test
+    fun matchGroupPrefersExactPublishedName() {
+        assertEquals("D2 CS A", GroupMatcher.matchGroup(cseGroups, "D2 CS A"))
+    }
+
+    @Test
+    fun matchGroupToleratesSeparatorAndCaseDrift() {
+        // The picker/free-text path may produce differently spaced/cased names;
+        // the stored Room groups keep the published spelling.
+        assertEquals("D2 CS A", GroupMatcher.matchGroup(cseGroups, "D2CSA"))
+        assertEquals("D2 CS A", GroupMatcher.matchGroup(cseGroups, "d2 cs-a"))
+        assertEquals("D2IT_A", GroupMatcher.matchGroup(itGroups, "D2IT-A"))
+        assertEquals("D4CE (STR)", GroupMatcher.matchGroup(ceGroups, "D4CESTR"))
+        assertEquals("D2A", GroupMatcher.matchGroup(eeGroups, "d2 a"))
+    }
+
+    @Test
+    fun matchGroupReturnsNullForUnknownOrBlank() {
+        assertEquals(null, GroupMatcher.matchGroup(cseGroups, "D9 CS Z"))
+        assertEquals(null, GroupMatcher.matchGroup(cseGroups, ""))
+        assertEquals(null, GroupMatcher.matchGroup(cseGroups, "   "))
+    }
+
+    @Test
+    fun raiCatalogRoundTripWithMeDocument() {
+        // RAI students study under the ME department's document; their groups
+        // carry the RAI token ("D2 RAI A1"). Previously GroupTimetableManager
+        // rejected the 3-letter branch code outright.
+        assertTrue(GroupMatcher.hasGroupsFor(meGroups, "RAI", 2))
+        val sections = GroupMatcher.sectionsForYear(meGroups, "RAI", 2)
+        assertTrue(sections.containsAll(listOf("A1", "A2")))
+        val picked = GroupMatcher.groupsForSection(meGroups, "RAI", 2, "A1")
+        assertEquals(listOf("D2 RAI A1"), picked)
+        // And a free-text drift of the same group still links back to it.
+        assertEquals("D2 RAI A1", GroupMatcher.matchGroup(meGroups, "D2RAIA1"))
+    }
+
+    @Test
+    fun nonBtechProgrammeSectionsNeverLeakIntoPickers() {
+        // The ME document publishes BCA sections ("D3 BCA A") with no branch
+        // token; they must not be offered to ME/RAI seniors as sections.
+        val me3 = GroupMatcher.sectionsForYear(meGroups, "ME", 3)
+        assertTrue(me3.containsAll(listOf("A", "B")))
+        assertFalse("BCA sections leaked into ME year 3: $me3", me3.any { it.startsWith("BCA") })
+        // The live ME document really does carry them — the filter is what saves us.
+        assertTrue(meGroups.any { GroupMatcher.normalize(it).startsWith("D3BCA") })
+        // And a department with no year-3 RAI document sections honestly reports none.
+        assertFalse(GroupMatcher.hasGroupsFor(meGroups, "RAI", 3))
     }
 }

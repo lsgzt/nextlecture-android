@@ -77,13 +77,24 @@ object GroupMatcher {
      * A group qualifies when its year matches and either it carries the
      * department's branch token or it carries no branch token at all (EE style,
      * and elective groups like CE's "D4_EIA(OA)"). Groups of OTHER branches
-     * published inside the same file (cross-department classes) are excluded.
+     * published inside the same file (cross-department classes) are excluded,
+     * as are non-B.Tech programmes published by the same department (BCA/MCA
+     * sections carry no branch token and would otherwise leak into the senior
+     * section picker).
      */
     fun groupsForYear(allGroups: List<String>, dept: String, year: Int): List<ParsedGroup> {
         require(dept in BRANCHES) { "unknown branch $dept" }
         return allGroups.map { parseGroup(it) }.filter { pg ->
-            pg.year == year && (pg.branch == null || pg.branch == dept)
+            pg.year == year && (pg.branch == null || pg.branch == dept) && !isForeignProgramme(pg)
         }
+    }
+
+    /** Non-B.Tech programmes whose sections would otherwise match "no branch token". */
+    private val FOREIGN_PROGRAMME_TOKENS = listOf("BCA", "MCA", "MBA")
+
+    private fun isForeignProgramme(pg: ParsedGroup): Boolean {
+        if (pg.year == null || pg.branch != null) return false
+        return FOREIGN_PROGRAMME_TOKENS.any { pg.section.startsWith(it) }
     }
 
     /** Distinct section suffixes for (year, dept), in a human-friendly order. */
@@ -122,6 +133,19 @@ object GroupMatcher {
      */
     fun hasGroupsFor(allGroups: List<String>, dept: String, year: Int): Boolean =
         groupsForYear(allGroups, dept, year).isNotEmpty()
+
+    /**
+     * Best group in [candidates] for [wanted]: the exact published name wins,
+     * otherwise the group whose normalized form (case/separator-insensitive)
+     * equals the wanted one. Returns null when nothing matches. Used to link a
+     * group picked from the onboarding catalog to the group names actually
+     * stored in the Room cache — the two can drift by punctuation/case only.
+     */
+    fun matchGroup(candidates: List<String>, wanted: String): String? {
+        if (wanted.isBlank()) return null
+        return candidates.firstOrNull { it == wanted }
+            ?: candidates.firstOrNull { normalize(it) == normalize(wanted) }
+    }
 
     /** Friendly chip label: plain letters stay "A"/"B"; exotic suffixes show as-is. */
     fun sectionLabel(section: String): String = section.ifEmpty { "All" }

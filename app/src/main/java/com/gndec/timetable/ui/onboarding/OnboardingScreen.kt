@@ -152,12 +152,24 @@ fun OnboardingScreen(container: AppContainer, onDone: () -> Unit) {
      * 2nd/3rd/4th year: manual identity + FET group chosen from the live
      * departmental timetable. The departmental document is fetched and stored
      * BEFORE the group switch so changeGroup finds cached lectures.
+     *
+     * Correctness rule: the app must NEVER enter the notifications step while
+     * the displayed timetable still belongs to the 1st-year (appsc) source.
+     * When the refresh fails we stay here with an honest error — the only
+     * exception is when the picked group's lectures are ALREADY cached from an
+     * earlier successful departmental refresh (offline tolerance with the
+     * RIGHT data).
      */
     fun finishSeniorProfile() {
         scope.launch {
             loading = true
             error = null
             val group = pickedGroup.orEmpty().ifBlank { manualSubsection.trim() }
+            if (group.isBlank()) {
+                loading = false
+                error = "Pick your section (and practical group if one is shown) before saving."
+                return@launch
+            }
             container.keys.removeAttendanceSession()
             container.settings.setAcademicYear(academicYear)
             container.settings.setBranch(branch)
@@ -168,25 +180,37 @@ fun OnboardingScreen(container: AppContainer, onDone: () -> Unit) {
                 "", "",
                 "manual_departmental"
             )
-            when (val result = container.refreshManager.refresh(force = true)) {
-                is RefreshResult.Failed -> {
+            // Validate the PICKED group against the official document, not the
+            // previously saved (possibly 1st-year) group.
+            val refreshFailure = when (val result = container.refreshManager.refresh(force = true, expectedGroup = group)) {
+                is RefreshResult.Failed -> result
+                else -> null
+            }
+            // Link the picked group. After a failed refresh this only succeeds
+            // when the group's lectures are already cached from an earlier
+            // departmental refresh — never silently keep 1st-year data.
+            val linked = runCatching { container.refreshManager.changeGroup(group) }.getOrDefault(false)
+            when {
+                linked -> {
                     loading = false
-                    error = if (result.hadCachedTimetable) {
-                        "Saved the profile, but the official timetable could not be refreshed right now. Open the app again once you are online."
-                    } else {
-                        result.reason
-                    }
-                    if (!result.hadCachedTimetable) return@launch
                     step = STEP_NOTIFICATIONS
-                    return@launch
                 }
-                else -> Unit
+                refreshFailure != null -> {
+                    loading = false
+                    error = if (refreshFailure.hadCachedTimetable) {
+                        "Saved your profile, but the official ${branch.uppercase()} timetable could not be " +
+                            "downloaded just now, so your year's timetable is not on this device yet. " +
+                            "Check your internet connection and tap Save profile again."
+                    } else {
+                        "${refreshFailure.reason} Your profile is saved — tap Save profile again once you are online."
+                    }
+                }
+                else -> {
+                    loading = false
+                    error = "Saved your profile, but \"$group\" was not found in the downloaded official " +
+                            "timetable. Tap Refresh to load the latest sections, pick your group again and save."
+                }
             }
-            if (group.isNotBlank()) {
-                runCatching { container.refreshManager.changeGroup(group) }
-            }
-            loading = false
-            step = STEP_NOTIFICATIONS
         }
     }
 
@@ -297,7 +321,12 @@ fun OnboardingScreen(container: AppContainer, onDone: () -> Unit) {
                                             }
                                         }
                                     } else {
+                                        // Advance immediately: the senior details step comes
+                                        // first, and the group catalog loads in the background
+                                        // while the user types their name. Without this the
+                                        // loading spinner finished and the flow stayed stuck.
                                         loadCatalog(force = false)
+                                        step = STEP_LOOKUP
                                     }
                                 },
                                 onManual = {
@@ -345,7 +374,6 @@ fun OnboardingScreen(container: AppContainer, onDone: () -> Unit) {
                                         error = error,
                                         pickedSection = pickedSection,
                                         pickedGroup = pickedGroup,
-                                        manualName = manualName,
                                         onSection = { section ->
                                             pickedSection = section
                                             val options = GroupMatcher.groupsForSection(catalogGroups, branch, academicYear, section)
@@ -697,7 +725,6 @@ private fun GroupPickerStep(
     error: String?,
     pickedSection: String?,
     pickedGroup: String?,
-    manualName: String,
     onSection: (String) -> Unit,
     onGroup: (String) -> Unit,
     onReload: () -> Unit,
@@ -737,7 +764,8 @@ private fun GroupPickerStep(
                 Spacer(Modifier.height(10.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     TextButton(onClick = onBack) { Text("Back") }
-                    PrimaryAction("Save profile", Icons.Default.ArrowForward, enabled = manualGroupValue.isNotBlank() && manualName.isNotBlank(), onClick = onSave, modifier = Modifier.weight(1f))
+                    // Name is optional for seniors — never block saving the group on it.
+                    PrimaryAction("Save profile", Icons.Default.ArrowForward, enabled = manualGroupValue.isNotBlank(), onClick = onSave, modifier = Modifier.weight(1f))
                 }
             }
             else -> {
@@ -758,6 +786,9 @@ private fun GroupPickerStep(
                         Spacer(Modifier.height(6.dp))
                         Text("Which practical group?", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                         ChipGrid(sectionGroups, pickedGroup) { onGroup(it) }
+                        if (pickedSection != null && pickedGroup == null) {
+                            Text("Pick your practical group to finish saving.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                        }
                     }
                     pickedGroup?.let { group ->
                         Spacer(Modifier.height(10.dp))
@@ -785,7 +816,9 @@ private fun GroupPickerStep(
                                 Spacer(Modifier.width(4.dp))
                                 Text("Refresh")
                             }
-                            PrimaryAction("Save profile", Icons.Default.ArrowForward, enabled = pickedGroup != null && manualName.isNotBlank(), onClick = onSave)
+                            // Name is optional for seniors — the group is what drives the
+                            // timetable, reminders and vacant-room-free correctness.
+                            PrimaryAction("Save profile", Icons.Default.ArrowForward, enabled = pickedGroup != null, onClick = onSave)
                         }
                     }
                 }

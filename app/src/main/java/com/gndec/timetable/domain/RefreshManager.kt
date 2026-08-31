@@ -10,6 +10,7 @@ import com.gndec.timetable.net.DeptGroupSourceResolver
 import com.gndec.timetable.net.FetchOutcome
 import com.gndec.timetable.net.TimetableFetcher
 import com.gndec.timetable.net.TimetableSourceResolver
+import com.gndec.timetable.parse.GroupMatcher
 import com.gndec.timetable.parse.ParseException
 import com.gndec.timetable.parse.TimetableParser
 import kotlinx.coroutines.Dispatchers
@@ -56,10 +57,14 @@ class RefreshManager(
         return refresh(force = false)
     }
 
-    suspend fun refresh(force: Boolean): RefreshResult = mutex.withLock {
+    suspend fun refresh(force: Boolean, expectedGroup: String? = null): RefreshResult = mutex.withLock {
         val cfg = settings.flow.first()
         val meta = db.metaDao().get()
         val now = System.currentTimeMillis()
+        // During senior onboarding / year switching the SAVED group still points
+        // at the 1st-year document — the caller passes the newly picked group so
+        // validation checks the document that is actually being downloaded.
+        val wantedGroup = expectedGroup?.takeIf { it.isNotBlank() } ?: cfg.group
         val resolved = when {
             // 2nd/3rd/4th year: resolve the OFFICIAL departmental document.
             // No silent fallback to the 1st-year file — if discovery fails the
@@ -90,7 +95,7 @@ class RefreshManager(
         when (val outcome = fetcher.fetch(resolved.url, etag, lastModified)) {
             is FetchOutcome.NotModified -> {
                 db.metaDao().put(markChecked())
-                snapshotCurrentWeekIfNeeded(cfg.group, now)
+                snapshotCurrentWeekIfNeeded(wantedGroup, now)
                 RefreshResult.UpToDate
             }
             is FetchOutcome.Failed -> {
@@ -98,7 +103,7 @@ class RefreshManager(
                 RefreshResult.Failed(outcome.reason, hadCachedTimetable = db.lectureDao().countAll() > 0)
             }
             is FetchOutcome.Changed ->
-                parseAndSave(outcome.html, cfg.group, resolved.url, outcome.etag, outcome.lastModified, now)
+                parseAndSave(outcome.html, wantedGroup, resolved.url, outcome.etag, outcome.lastModified, now)
         }
     }
 
@@ -119,9 +124,13 @@ class RefreshManager(
         }
 
         val rawForGroup = group?.let {
-            parsed[it] ?: return RefreshResult.Failed(
-                "group \"$it\" was not found in the fetched timetable", hadCache
-            )
+            parsed[it] ?: run {
+                return RefreshResult.Failed(
+                    "Your group \"$it\" is not in the current official timetable. " +
+                        "Reload the sections and pick your section again from the latest document.",
+                    hadCache
+                )
+            }
         }
         // Validation: refuse catastrophically small parses — never overwrite a good cache with junk
         val total = parsed.values.sumOf { it.size }
@@ -207,12 +216,17 @@ class RefreshManager(
     /**
      * Group change: lectures for ALL groups are cached locally, so this is instant —
      * save preference, cancel old alarms, schedule alarms for the new group.
+     *
+     * Matching tolerates small naming drift between the onboarding catalog and
+     * the refreshed document ("D2 CS A" vs "D2CSA" vs "d2-cs-a"): the exact
+     * name wins; otherwise the group whose normalized form matches is linked.
      */
     suspend fun changeGroup(newGroup: String): Boolean {
-        if (db.lectureDao().countForGroup(newGroup) == 0) return false
-        settings.setGroup(newGroup)
+        val target = if (db.lectureDao().countForGroup(newGroup) > 0) newGroup
+        else GroupMatcher.matchGroup(db.lectureDao().distinctGroups(), newGroup) ?: return false
+        settings.setGroup(target)
         val cfg = settings.flow.first()
-        scheduler.rescheduleAll(db, newGroup, ReminderConfig.from(cfg))
+        scheduler.rescheduleAll(db, target, ReminderConfig.from(cfg))
         return true
     }
 }

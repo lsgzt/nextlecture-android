@@ -52,7 +52,9 @@ class GroupTimetableManager(
     suspend fun load(branch: String, year: Int, force: Boolean = false): CatalogResult =
         withContext(Dispatchers.IO) {
             val key = branch.trim().uppercase()
-            if (key.length != 2) return@withContext CatalogResult.Failed("Choose your branch first.")
+            // Branch codes are "CE","CS","EC","EE","IT","ME","RAI" — RAI is three
+            // letters, so only reject a MISSING branch, not a longer code.
+            if (key.isBlank()) return@withContext CatalogResult.Failed("Choose your branch first.")
             if (year !in 2..4) return@withContext CatalogResult.Failed("Choose your academic year first.")
 
             val inMemory = memory[key]

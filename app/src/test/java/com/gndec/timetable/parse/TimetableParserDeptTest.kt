@@ -205,4 +205,64 @@ class TimetableParserDeptTest {
         }
         assertTrue(byDay.keys.none { it > 5 })
     }
+
+    // ---------- Onboarding group-picker round trip on REAL documents ----------
+    //
+    // Mirrors exactly what the senior onboarding / profile editor does:
+    //   parse document → sectionsForYear (section chips) → groupsForSection
+    //   (practical chips) → matchGroup (link against the stored cache).
+
+    @Test
+    fun onboardingPickerRoundTripOnEveryLiveDocument() {
+        val docs = mapOf(
+            "cse_groups_2026.html" to "CS",
+            "it_groups_2026.html" to "IT",
+            "ee_groups_2026.html" to "EE",
+            "ce_groups_2026.html" to "CE",
+            "me_groups_2026.html" to "ME",
+            "me_groups_2026.html" to "RAI",
+            "ece_groups_2026.html" to "EC"
+        )
+        for ((file, dept) in docs) {
+            val parsed = groupsOf(file)
+            val allGroups = parsed.keys.toList()
+            for (year in 2..4) {
+                if (!GroupMatcher.hasGroupsFor(allGroups, dept, year)) continue
+                val sections = GroupMatcher.sectionsForYear(allGroups, dept, year)
+                assertTrue("$file $dept year $year: no section chips rendered", sections.isNotEmpty())
+                for (section in sections) {
+                    val options = GroupMatcher.groupsForSection(allGroups, dept, year, section)
+                    assertTrue(
+                        "$file $dept year $year section '$section': chip exists but maps to no group",
+                        options.isNotEmpty()
+                    )
+                    // Single-group sections must auto-pick; every option must
+                    // link back through the cached-cache matcher.
+                    if (options.size == 1) {
+                        assertEquals(options.single(), GroupMatcher.matchGroup(allGroups, options.single()))
+                    }
+                    for (option in options) {
+                        assertNotNull(
+                            "$file: picked group '$option' must link to the parsed document",
+                            GroupMatcher.matchGroup(allGroups, option)
+                        )
+                        assertTrue("picked group must have lectures", parsed.getValue(option).isNotEmpty())
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun cseOnboardingPickAutoLinksAndSaves() {
+        // The exact flow from the bug report: CSE, 2nd year, section A.
+        val allGroups = groupsOf("cse_groups_2026.html").keys.toList()
+        val sections = GroupMatcher.sectionsForYear(allGroups, "CS", 2)
+        assertTrue("A" in sections && "F" in sections)
+        val options = GroupMatcher.groupsForSection(allGroups, "CS", 2, "A")
+        assertEquals(listOf("D2 CS A"), options)               // auto-picked (singleOrNull)
+        assertEquals("D2 CS A", GroupMatcher.matchGroup(allGroups, "D2 CS A"))
+        // A drifted free-text entry from the offline manual fallback also links.
+        assertEquals("D2 CS A", GroupMatcher.matchGroup(allGroups, "d2csa"))
+    }
 }

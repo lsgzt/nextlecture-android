@@ -160,14 +160,25 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit, onOpenAttendance:
                 settings.mentorMobile, settings.mentorVenue,
                 "manual_departmental"
             )
-            val refreshed = container.refreshManager.refresh(force = true)
-            if (refreshed is RefreshResult.Failed && !refreshed.hadCachedTimetable) {
-                yearError = refreshed.reason
-                return@launch
+            // Validate the newly picked group against the official document —
+            // the SAVED group may still be the old 1st-year one, and validating
+            // it against a departmental document always fails.
+            val refreshed = container.refreshManager.refresh(force = true, expectedGroup = group)
+            // Link the picked group; on a failed refresh this only succeeds when
+            // the group's lectures are already cached from an earlier success.
+            val linked = runCatching { container.refreshManager.changeGroup(group) }.getOrDefault(false)
+            when {
+                linked -> {
+                    savedMessage = "Saved: ${ordinalLabel(year)} year · $group"
+                    yearError = null
+                }
+                refreshed is RefreshResult.Failed ->
+                    yearError = "Saved the year, but the official timetable could not be updated " +
+                        "(${refreshed.reason}) The previous timetable is still shown. Try again once you are online."
+                else ->
+                    yearError = "Group \"$group\" is not present in the downloaded official timetable. " +
+                        "Reload the sections and pick again."
             }
-            runCatching { container.refreshManager.changeGroup(group) }
-            savedMessage = "Saved: ${ordinalLabel(year)} year · $group"
-            yearError = null
         }
     }
 
