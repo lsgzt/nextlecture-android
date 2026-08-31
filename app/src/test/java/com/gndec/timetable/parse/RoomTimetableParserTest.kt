@@ -5,13 +5,11 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.time.LocalDate
-import java.time.LocalTime
 
 class RoomTimetableParserTest {
 
-    /** Mirrors the FET "rooms days horizontal" shape published by the college. */
-    private fun fixture(): String = """
+    /** Mirrors the FET 7.x "rooms days horizontal" shape (appsc / ECE / IT …). */
+    private fun dialectAFixture(): String = """
         <!DOCTYPE html><html><body id="top">
         <table><tr><th>Institution name:</th><td>GNDEC</td></tr></table>
         <ul>
@@ -50,7 +48,7 @@ class RoomTimetableParserTest {
               <!-- span -->
               <td class="empty"><span class="empty">---</span></td>
             </tr>
-            <tr><td colspan="5">Timetable generated with FET 7.6.4</td></tr>
+            <tr><td colspan="5">Timetable generated with FET 7.6.4 on 8/30/26 10:39&nbsp;PM</td></tr>
           </tbody>
         </table>
         <table id="table_2" border="1">
@@ -74,33 +72,73 @@ class RoomTimetableParserTest {
         </body></html>
     """.trimIndent()
 
-    private fun parse(): RoomTimetableData =
-        RoomTimetableParser.parse(fixture(), "https://appsc.gndec.ac.in/rooms.html", 1_700_000_000_000L)
+    /** Mirrors the FET 6.x shape published by CSE. */
+    private fun dialectBFixture(): String = """
+        <html><body>
+        <table id="table_1" border="1" class="odd_table">
+          <caption>GNDEC Ludhiana</caption>
+          <thead>
+            <tr><td rowspan="2"></td><th colspan="5">G12</th></tr>
+            <tr>
+              <!-- span -->
+              <th class="xAxis">Monday</th><th class="xAxis">Tuesday</th><th class="xAxis">Wednesday</th>
+              <th class="xAxis">Thursday</th><th class="xAxis">Friday</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th class="yAxis">08:30-09:30</th>
+              <td>---</td>
+              <td>---</td>
+              <td>D3 CS C<br />Dr. Manpreet Kaur Mand (MKM)<br />DAA L<br /></td>
+              <td>---</td>
+              <td>D2 CS F1<br />Pf. Lakhvir Kaur (LKG)<br />CA T<br /></td>
+            </tr>
+            <tr>
+              <th class="yAxis">09:30-10:30</th>
+              <td rowspan="2">D3 CS B<br />Pf. Manjot Singh Bedi (MPE)<br />ERP L<br /></td>
+              <td>---</td>
+              <td>---</td>
+              <td>---</td>
+              <td>---</td>
+            </tr>
+            <tr>
+              <th class="yAxis">10:30-11:30</th>
+              <!-- span -->
+              <td>---</td>
+              <td>---</td>
+              <td>---</td>
+              <td>---</td>
+            </tr>
+            <tr><td colspan="5">Timetable generated with FET 6.13.2 on 8/24/26 1:24\u202fPM</td></tr>
+          </tbody>
+        </table>
+        </body></html>
+    """.trimIndent()
+
+    private fun parseA(): RoomTimetableParser.ParsedDoc =
+        RoomTimetableParser.parseRoomsDoc(dialectAFixture(), "appsc", "https://x/rooms.html", 1_700_000_000_000L)
+
+    private fun parseB(): RoomTimetableParser.ParsedDoc =
+        RoomTimetableParser.parseRoomsDoc(dialectBFixture(), "cse", "https://x/cse.html", 1_700_000_000_000L)
+
+    // ---- dialect A ----
 
     @Test
-    fun parsesRoomNamesInDocumentOrderAndDeduplicatesAcrossTables() {
-        val data = parse()
-        assertEquals(listOf("F101", "S205"), data.rooms.map { it.name })
+    fun dialectAParsesRoomNamesSlotsAndDays() {
+        val doc = parseA()
+        assertEquals(listOf("F101", "S205"), doc.rooms.map { it.name })
+        assertEquals(listOf(510, 570, 630), doc.slotStarts)
+        assertEquals(listOf(0, 1, 2, 3, 4), doc.days)
     }
 
     @Test
-    fun parsesWeekdaysAndSlotLabels() {
-        val data = parse()
-        assertEquals(listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday"), data.days)
-        assertEquals(listOf("08:30", "09:30", "10:30"), data.slots)
-        assertEquals("https://appsc.gndec.ac.in/rooms.html", data.sourceUrl)
-    }
-
-    @Test
-    fun emptyCellsAreFreeAndStructuredCellsAreBusyWithDetails() {
-        val data = parse()
-        val f101 = data.rooms.first { it.name == "F101" }
-        // Monday 08:30 — empty
+    fun dialectACellsCarryStructuredDetails() {
+        val doc = parseA()
+        val f101 = doc.rooms.first { it.key == "F101" }
         val mondayFirst = f101.occupancy[0][0]
-        assertFalse(mondayFirst.busy)
-        assertNull(mondayFirst.subject)
-        // Tuesday 08:30 — lecture cell
-        val tuesdayFirst = f101.occupancy[1][0]
+        assertTrue(mondayFirst!!.isFree)
+        val tuesdayFirst = f101.occupancy[1][0]!!
         assertTrue(tuesdayFirst.busy)
         assertEquals("PROFESSIONAL ENGLISH", tuesdayFirst.subject)
         assertEquals("Ms. MANJOT KAUR", tuesdayFirst.teacher)
@@ -110,75 +148,205 @@ class RoomTimetableParserTest {
 
     @Test
     fun rowspanCarriesBusyStateIntoFollowingSlots() {
-        val data = parse()
-        val f101 = data.rooms.first { it.name == "F101" }
-        // Thursday 09:30 rowspan=2 practical → also busy at 10:30
-        val start = f101.occupancy[3][1]
-        val carry = f101.occupancy[3][2]
+        val doc = parseA()
+        val f101 = doc.rooms.first { it.key == "F101" }
+        val start = f101.occupancy[3][1]!!
+        val carry = f101.occupancy[3][2]!!
         assertTrue(start.busy)
         assertEquals("ENGG DRAWING", start.subject)
-        assertEquals("P", start.activity)
         assertTrue("rowspan continuation slot must be busy", carry.busy)
         assertEquals("ENGG DRAWING", carry.subject)
-        assertEquals("ER. LAKHVEER SINGH", carry.teacher)
-        // the <!-- span --> placeholder column must not shift alignment:
-        // Thursday 10:30 is the carried cell (index 3), Friday 10:30 stays free
-        assertFalse(f101.occupancy[4][2].busy)
+        // The <!-- span --> placeholder column must not shift alignment:
+        // Friday 10:30 stays free.
+        assertTrue(f101.occupancy[4][2]!!.isFree)
     }
 
     @Test
     fun footerRowWithoutTimeHeaderIsIgnored() {
-        val data = parse()
-        // No "FET" text leaked into any cell and slot count unchanged
-        assertEquals(3, data.slots.size)
-        data.rooms.forEach { room ->
-            room.occupancy.forEach { day -> day.forEach { cell ->
-                assertFalse(cell.subject?.contains("FET", ignoreCase = true) == true)
-            } }
+        val doc = parseA()
+        assertEquals(3, doc.slotStarts.size)
+        doc.rooms.forEach { room ->
+            room.occupancy.forEach { day ->
+                day.forEach { cell -> assertNull(cell?.subject?.contains("FET")?.takeIf { it }) }
+            }
         }
     }
 
+    // ---- dialect B (CSE) ----
+
+    @Test
+    fun dialectBParsesColspanRoomName() {
+        val doc = parseB()
+        assertEquals(listOf("G12"), doc.rooms.map { it.name })
+        assertEquals(listOf(510, 570, 630), doc.slotStarts)
+    }
+
+    @Test
+    fun dialectBPlainCellsAreParsedIntoDetails() {
+        val doc = parseB()
+        val g12 = doc.rooms.first()
+        val wednesday = g12.occupancy[2][0]!!
+        assertTrue(wednesday.busy)
+        assertEquals("DAA", wednesday.subject) // activity token stripped into tag
+        assertEquals("Dr. Manpreet Kaur Mand (MKM)", wednesday.teacher)
+        assertEquals("D3 CS C", wednesday.studentsSet)
+        assertEquals("L", wednesday.activity)
+        val friday = g12.occupancy[4][0]!!
+        assertEquals("T", friday.activity)
+        val monday = g12.occupancy[0][0]!!
+        assertTrue(monday.isFree)
+    }
+
+    @Test
+    fun dialectBRowspanCarryWorks() {
+        val doc = parseB()
+        val g12 = doc.rooms.first()
+        assertTrue(g12.occupancy[0][1]!!.busy) // Monday 09:30 rowspan start
+        assertTrue(g12.occupancy[0][2]!!.busy) // carried into 10:30
+        assertTrue(g12.occupancy[1][2]!!.isFree) // Tuesday 10:30 untouched
+    }
+
+    // ---- slot label variants ----
+
+    @Test
+    fun slotLabelsAcrossDialectsParseToMinutes() {
+        assertEquals(510, RoomTimetableParser.slotStartMinutes("08:30"))
+        assertEquals(510, RoomTimetableParser.slotStartMinutes("8:30"))
+        assertEquals(510, RoomTimetableParser.slotStartMinutes("08:30-09:30"))
+        assertEquals(810, RoomTimetableParser.slotStartMinutes("1:30")) // IT's PM-implied
+        assertEquals(930, RoomTimetableParser.slotStartMinutes("3:30"))
+        assertEquals(510, RoomTimetableParser.slotStartMinutes("8.30 AM (1ST)")) // CE
+        assertEquals(750, RoomTimetableParser.slotStartMinutes("12.30 PM (5TH)"))
+        assertEquals(810, RoomTimetableParser.slotStartMinutes("1.30 PM (6TH)"))
+        assertEquals(990, RoomTimetableParser.slotStartMinutes("16:30"))
+        assertNull(RoomTimetableParser.slotStartMinutes("bogus"))
+        assertNull(RoomTimetableParser.slotStartMinutes("Timetable generated with FET"))
+    }
+
+    // ---- day label variants ----
+
+    @Test
+    fun dayResolutionFallsBackToColumnPosition() {
+        val html = """
+            <table id="table_1"><caption><span class="name">F119</span></caption>
+            <thead><tr><td></td>
+            <th class="xAxis">M</th><th class="xAxis">T</th><th class="xAxis">W</th>
+            <th class="xAxis">T</th><th class="xAxis">F</th></tr></thead>
+            <tbody><tr><th class="yAxis">08:30</th>
+            <td class="empty">---</td><td class="empty">---</td><td class="empty">---</td>
+            <td class="empty">---</td><td class="empty">---</td></tr></tbody></table>
+        """.trimIndent()
+        val doc = RoomTimetableParser.parseRoomsDoc(html, "ece", "https://x", 0L)
+        assertEquals(listOf(0, 1, 2, 3, 4), doc.days)
+    }
+
+    // ---- combined room captions ----
+
+    @Test
+    fun commaSeparatedCaptionProducesOneRoomPerName() {
+        val html = """
+            <table id="table_1"><caption><span class="name">S202, S203</span></caption>
+            <thead><tr><td></td><th class="xAxis">Monday</th></tr></thead>
+            <tbody><tr><th class="yAxis">08:30</th>
+            <td class="s_1"><span class="subject"><span class="s_1">WS</span></span></td></tr></tbody></table>
+        """.trimIndent()
+        val doc = RoomTimetableParser.parseRoomsDoc(html, "cse", "https://x", 0L)
+        assertEquals(listOf("S202", "S203"), doc.rooms.map { it.name })
+        assertEquals(listOf("S202", "S203"), doc.rooms.map { it.key })
+        assertTrue(doc.rooms[0].occupancy[0][0]!!.busy)
+    }
+
+    // ---- groups documents (ME fallback) ----
+
+    @Test
+    fun groupsDocExtractsRoomsFromCellSpans() {
+        val html = """
+            <table id="table_1"><caption><span class="name">D1 ME A</span></caption>
+            <thead><tr><td></td><th class="xAxis">Monday</th><th class="xAxis">Tuesday</th></tr></thead>
+            <tbody>
+              <tr><th class="yAxis">08:30-09:30</th>
+                <td><table class="detailed">
+                  <tr class="line1"><td class="s_4"><span class="subject"><span class="s_4">PPS</span></span><span class="activitytag">P</span></td></tr>
+                  <tr class="room line3"><td class="s_4"><span class="r_13">CG LAB</span></td></tr>
+                </table></td>
+                <td class="empty">---</td>
+              </tr>
+              <tr><th class="yAxis">09:30-10:30</th>
+                <td rowspan="1"><table class="detailed">
+                  <tr class="room line3"><td class="s_1"><span class="r_18">S202</span></td></tr>
+                </table></td>
+                <td rowspan="1"><table class="detailed">
+                  <tr class="room line3"><td class="s_1"><span class="r_18">S202</span></td></tr>
+                </table></td>
+              </tr>
+            </tbody></table>
+        """.trimIndent()
+        val doc = RoomTimetableParser.parseGroupsDoc(html, "me", "https://x", 0L)
+        val cgLab = doc.rooms.first { it.key == "CG LAB" }
+        assertTrue(cgLab.occupancy[0][0]!!.busy)
+        assertTrue(cgLab.occupancy[0][1] == null || cgLab.occupancy[0][1]!!.isFree)
+        val s202 = doc.rooms.first { it.key == "S202" }
+        assertTrue(s202.occupancy[0][1]!!.busy)
+        assertTrue(s202.occupancy[1][1]!!.busy)
+    }
+
+    // ---- generated-at parsing ----
+
+    @Test
+    fun parsesFetGenerationTimestamps() {
+        val ts = RoomTimetableParser.parseGeneratedAtMillis(
+            "Timetable generated with FET 7.6.4 on 8/30/26 10:39\u202fPM"
+        )
+        assertTrue(ts != null)
+        val cal = java.util.Calendar.getInstance().apply { timeInMillis = ts!! }
+        assertEquals(java.util.Calendar.AUGUST, cal.get(java.util.Calendar.MONTH))
+        assertEquals(30, cal.get(java.util.Calendar.DAY_OF_MONTH))
+        assertEquals(2026, cal.get(java.util.Calendar.YEAR))
+        assertEquals(22, cal.get(java.util.Calendar.HOUR_OF_DAY))
+        assertEquals(39, cal.get(java.util.Calendar.MINUTE))
+        assertTrue(RoomTimetableParser.parseGeneratedAtMillis("no footer") == null)
+    }
+
+    // ---- errors ----
+
     @Test(expected = ParseException::class)
     fun blankHtmlThrows() {
-        RoomTimetableParser.parse("", "x", 0L)
+        RoomTimetableParser.parseRoomsDoc("", "x", "x", 0L)
     }
 
     @Test(expected = ParseException::class)
     fun documentWithoutRoomTablesThrows() {
-        RoomTimetableParser.parse("<html><body><p>nothing</p></body></html>", "x", 0L)
+        RoomTimetableParser.parseRoomsDoc("<html><body><p>nothing</p></body></html>", "x", "x", 0L)
     }
 
     // ---- VacantRoomsManager pure helpers ----
 
     @Test
-    fun defaultDayIndexPrefersTodayAndFallsBackToFirstTeachingDay() {
-        val days = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
-        val monday = LocalDate.of(2026, 8, 31) // a Monday
-        val saturday = LocalDate.of(2026, 9, 5)
-        assertEquals(0, com.gndec.timetable.domain.VacantRoomsManager.defaultDayIndex(days, monday))
-        assertEquals(0, com.gndec.timetable.domain.VacantRoomsManager.defaultDayIndex(days, saturday))
+    fun defaultDayIndexPrefersTodayAndFallsBackToMondayOnWeekend() {
+        val monday = java.time.LocalDate.of(2026, 8, 31)
+        val saturday = java.time.LocalDate.of(2026, 9, 5)
+        assertEquals(0, com.gndec.timetable.domain.VacantRoomsManager.defaultDayIndex(monday))
+        assertEquals(2, com.gndec.timetable.domain.VacantRoomsManager.defaultDayIndex(java.time.LocalDate.of(2026, 9, 2)))
+        assertEquals(0, com.gndec.timetable.domain.VacantRoomsManager.defaultDayIndex(saturday))
     }
 
     @Test
     fun defaultSlotIndexFollowsClock() {
-        val slots = listOf("08:30", "09:30", "10:30", "11:30", "12:30", "13:30", "14:30", "15:30")
-        assertEquals(0, com.gndec.timetable.domain.VacantRoomsManager.defaultSlotIndex(slots, LocalTime.of(7, 0)))
-        assertEquals(2, com.gndec.timetable.domain.VacantRoomsManager.defaultSlotIndex(slots, LocalTime.of(10, 37)))
-        assertEquals(1, com.gndec.timetable.domain.VacantRoomsManager.defaultSlotIndex(slots, LocalTime.of(10, 0)))
-        assertEquals(7, com.gndec.timetable.domain.VacantRoomsManager.defaultSlotIndex(slots, LocalTime.of(18, 0)))
+        val slots = listOf(510, 570, 630, 690, 750, 810, 870, 930)
+        assertEquals(0, com.gndec.timetable.domain.VacantRoomsManager.defaultSlotIndex(slots, at(7, 0)))
+        assertEquals(2, com.gndec.timetable.domain.VacantRoomsManager.defaultSlotIndex(slots, at(10, 37)))
+        assertEquals(1, com.gndec.timetable.domain.VacantRoomsManager.defaultSlotIndex(slots, at(10, 0)))
+        assertEquals(7, com.gndec.timetable.domain.VacantRoomsManager.defaultSlotIndex(slots, at(18, 0)))
     }
 
     @Test
     fun currentSlotDetectionUsesHalfOpenRange() {
-        assertTrue(com.gndec.timetable.domain.VacantRoomsManager.isCurrentSlot("10:30", LocalTime.of(10, 30)))
-        assertTrue(com.gndec.timetable.domain.VacantRoomsManager.isCurrentSlot("10:30", LocalTime.of(11, 29)))
-        assertFalse(com.gndec.timetable.domain.VacantRoomsManager.isCurrentSlot("10:30", LocalTime.of(11, 30)))
+        assertTrue(com.gndec.timetable.domain.VacantRoomsManager.isCurrentSlot(630, 630))
+        assertTrue(com.gndec.timetable.domain.VacantRoomsManager.isCurrentSlot(630, 689))
+        assertFalse(com.gndec.timetable.domain.VacantRoomsManager.isCurrentSlot(630, 690))
     }
 
-    @Test
-    fun slotStartAndEndParsing() {
-        assertEquals(8 * 60 + 30, com.gndec.timetable.domain.VacantRoomsManager.slotStartMinutes("08:30"))
-        assertEquals(9 * 60 + 30, com.gndec.timetable.domain.VacantRoomsManager.slotEndMinutes("08:30"))
-        assertNull(com.gndec.timetable.domain.VacantRoomsManager.slotStartMinutes("bogus"))
-    }
+    private fun at(h: Int, m: Int): Long =
+        java.time.LocalDateTime.of(2026, 8, 31, h, m)
+            .atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
 }

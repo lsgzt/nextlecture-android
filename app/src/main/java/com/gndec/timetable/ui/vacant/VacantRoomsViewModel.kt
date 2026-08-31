@@ -5,7 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.domain.VacantRoomsManager
 import com.gndec.timetable.domain.VacantRoomsState
-import com.gndec.timetable.parse.RoomTimetableData
+import com.gndec.timetable.parse.GlobalRoomData
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
@@ -24,11 +24,10 @@ class VacantRoomsViewModel(private val container: AppContainer) : ViewModel() {
 
     companion object {
         /** Default day chip when the screen opens. */
-        fun defaultDay(data: RoomTimetableData): Int =
-            VacantRoomsManager.defaultDayIndex(data.days)
+        fun defaultDay(): Int = VacantRoomsManager.defaultDayIndex()
 
         /** Default slot chip when the screen opens. */
-        fun defaultSlot(data: RoomTimetableData): Int =
-            VacantRoomsManager.defaultSlotIndex(data.slots)
+        fun defaultSlot(data: GlobalRoomData): Int =
+            VacantRoomsManager.defaultSlotIndex(data.slotStarts)
     }
 }

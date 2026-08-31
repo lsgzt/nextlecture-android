@@ -81,9 +81,11 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.domain.VacantRoomsManager
+import com.gndec.timetable.domain.RoomMerger
 import com.gndec.timetable.domain.VacantRoomsState
-import com.gndec.timetable.parse.RoomSchedule
-import com.gndec.timetable.parse.SlotOccupancy
+import com.gndec.timetable.parse.MergedRoom
+import com.gndec.timetable.parse.RoomCell
+import com.gndec.timetable.parse.RoomNameNormalizer
 import com.gndec.timetable.ui.theme.GndecGreen
 import com.gndec.timetable.ui.theme.GndecOrange
 import com.gndec.timetable.ui.premiumAquaBrush
@@ -96,7 +98,6 @@ import com.gndec.timetable.util.Formatters
 import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.ZoneId
-import java.time.LocalTime
 
 /**
  * "Find vacant rooms" — live room availability from the college's weekly
@@ -136,28 +137,33 @@ fun VacantRoomsScreen(
                 val data = current.data
 
                 // First data arrival: seed the day/slot selection with "now".
-                LaunchedEffect(data.sourceUrl) {
-                    if (dayIndex < 0) dayIndex = VacantRoomsViewModel.defaultDay(data)
+                LaunchedEffect(data.fetchedAtMillis) {
+                    if (dayIndex < 0) dayIndex = VacantRoomsViewModel.defaultDay()
                     if (slotIndex < 0) slotIndex = VacantRoomsViewModel.defaultSlot(data)
                 }
 
                 val safeDay = dayIndex.coerceIn(0, (data.days.size - 1).coerceAtLeast(0))
-                val safeSlot = slotIndex.coerceIn(0, (data.slots.size - 1).coerceAtLeast(0))
+                val safeSlot = slotIndex.coerceIn(0, (data.slotStarts.size - 1).coerceAtLeast(0))
                 val zone = ZoneId.systemDefault()
                 val now = Instant.ofEpochMilli(nowMillis).atZone(zone)
-                val todayIsTeachingDay = VacantRoomsManager.isToday(data.days, safeDay, now.toLocalDate())
+                val nowMinutes = now.hour * 60 + now.minute
+                val todayIsTeachingDay = VacantRoomsManager.isToday(safeDay, now.toLocalDate())
+                val selectedSlotStart = data.slotStarts.getOrElse(safeSlot) { 0 }
                 val selectedSlotIsNow = todayIsTeachingDay &&
-                    VacantRoomsManager.isCurrentSlot(data.slots.getOrElse(safeSlot) { "" }, now.toLocalTime())
+                    VacantRoomsManager.isCurrentSlot(selectedSlotStart, nowMinutes)
 
-                val busyAt = { room: RoomSchedule ->
-                    room.occupancy.getOrNull(safeDay)?.getOrNull(safeSlot)?.busy == true
+                // null cell = no department publishes this room for this slot —
+                // it must never be shown as vacant.
+                val cellOf = { room: MergedRoom ->
+                    room.occupancy.getOrNull(safeDay)?.getOrNull(safeSlot)
                 }
-                val freeCount = data.rooms.count { !busyAt(it) }
+                val freeCount = data.rooms.count { cellOf(it)?.isFree == true }
+                val noDataCount = data.rooms.count { cellOf(it) == null }
 
                 val trimmed = query.trim()
                 val filteredRooms = data.rooms
-                    .filter { trimmed.isEmpty() || it.name.contains(trimmed, ignoreCase = true) }
-                    .filter { !vacantOnly || !busyAt(it) }
+                    .filter { trimmed.isEmpty() || RoomNameNormalizer.matches(it.name, trimmed) }
+                    .filter { !vacantOnly || cellOf(it)?.isFree == true }
 
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
@@ -176,10 +182,11 @@ fun VacantRoomsScreen(
                         VacantHeroCard(
                             freeCount = freeCount,
                             totalRooms = data.rooms.size,
+                            noDataCount = noDataCount,
                             dayLabel = data.days.getOrElse(safeDay) { "" },
                             timeRange = Formatters.range(
-                                VacantRoomsManager.slotStartMinutes(data.slots.getOrElse(safeSlot) { "00:00" }) ?: 0,
-                                VacantRoomsManager.slotEndMinutes(data.slots.getOrElse(safeSlot) { "00:00" })
+                                selectedSlotStart,
+                                VacantRoomsManager.slotEndMinutes(selectedSlotStart)
                             ),
                             isNow = selectedSlotIsNow,
                             weekendNote = !todayIsTeachingDay,
@@ -213,15 +220,16 @@ fun VacantRoomsScreen(
                                 contentPadding = PaddingValues(horizontal = 20.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                items(data.slots.size) { i ->
-                                    val slot = data.slots[i]
+                                items(data.slotStarts.size) { i ->
+                                    val slot = data.slotStarts[i]
                                     VacantChip(
                                         label = Formatters.range(
-                                            VacantRoomsManager.slotStartMinutes(slot) ?: 0,
+                                            slot,
                                             VacantRoomsManager.slotEndMinutes(slot)
                                         ),
                                         selected = i == safeSlot,
-                                        badgeNow = todayIsTeachingDay && VacantRoomsManager.isCurrentSlot(slot, now.toLocalTime()),
+                                        badgeNow = todayIsTeachingDay &&
+                                            VacantRoomsManager.isCurrentSlot(slot, nowMinutes),
                                         onClick = {
                                             expandedRoom = null
                                             slotIndex = i
@@ -256,6 +264,23 @@ fun VacantRoomsScreen(
                             )
                         }
                     }
+                    item(key = "incomplete-warning") {
+                        AnimatedVisibility(
+                            visible = data.incompleteRoots.isNotEmpty(),
+                            enter = expandVertically(motionTween(Motion.Emphasized)) + fadeIn(motionTween(Motion.Emphasized)),
+                            exit = shrinkVertically(motionTween(Motion.Fast)) + fadeOut(motionTween(Motion.Fast))
+                        ) {
+                            VacantErrorBanner(
+                                text = "Not checked: " +
+                                    data.incompleteRoots.joinToString(
+                                        ", ",
+                                        transform = { RoomMerger.rootLabel(it) }
+                                    ) +
+                                    " — the list may be incomplete",
+                                modifier = Modifier.padding(horizontal = 20.dp)
+                            )
+                        }
+                    }
                     item(key = "rooms-label") {
                         Text(
                             "${filteredRooms.size} of ${data.rooms.size} rooms",
@@ -265,14 +290,13 @@ fun VacantRoomsScreen(
                             modifier = Modifier.itemEntrance(5).padding(horizontal = 20.dp)
                         )
                     }
-                    items(filteredRooms, key = { it.name }) { room ->
+                    items(filteredRooms, key = { it.key }) { room ->
                         RoomRow(
                             room = room,
-                            dayIndex = safeDay,
-                            slotIndex = safeSlot,
-                            expanded = expandedRoom == room.name,
+                            cell = cellOf(room),
+                            expanded = expandedRoom == room.key,
                             onToggle = {
-                                expandedRoom = if (expandedRoom == room.name) null else room.name
+                                expandedRoom = if (expandedRoom == room.key) null else room.key
                             },
                             modifier = Modifier
                                 .padding(horizontal = 20.dp)
@@ -281,7 +305,8 @@ fun VacantRoomsScreen(
                     }
                     item(key = "footer") {
                         Text(
-                            "From the official GNDEC room timetable · ${Formatters.freshnessText(data.fetchedAtMillis, nowMillis)}",
+                            "From ${data.sources.size} official GNDEC timetables · " +
+                                Formatters.freshnessText(data.fetchedAtMillis, nowMillis),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
@@ -306,7 +331,7 @@ private fun VacantHeader(refreshing: Boolean, onBack: () -> Unit, onRefresh: () 
         Spacer(Modifier.width(2.dp))
         Column(Modifier.weight(1f)) {
             Text("Vacant rooms", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text("Live from the college room timetable", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
+            Text("Live from GNDEC department room timetables", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
         }
         if (refreshing) {
             CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
@@ -323,6 +348,7 @@ private fun VacantHeader(refreshing: Boolean, onBack: () -> Unit, onRefresh: () 
 private fun VacantHeroCard(
     freeCount: Int,
     totalRooms: Int,
+    noDataCount: Int,
     dayLabel: String,
     timeRange: String,
     isNow: Boolean,
@@ -381,6 +407,7 @@ private fun VacantHeroCard(
             Text(
                 buildString {
                     append("Out of $totalRooms rooms · $dayLabel $timeRange")
+                    if (noDataCount > 0) append(" · $noDataCount without published data")
                     if (weekendNote) append(" · Weekend — showing the next teaching day")
                 },
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -527,15 +554,14 @@ private fun VacantErrorBanner(text: String, modifier: Modifier = Modifier) {
 
 @Composable
 private fun RoomRow(
-    room: RoomSchedule,
-    dayIndex: Int,
-    slotIndex: Int,
+    room: MergedRoom,
+    cell: RoomCell?,
     expanded: Boolean,
     onToggle: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val occupancy = room.occupancy.getOrNull(dayIndex)?.getOrNull(slotIndex) ?: SlotOccupancy()
-    val hasDetails = occupancy.busy && (occupancy.teacher != null || occupancy.subject != null || occupancy.studentsSet != null)
+    val hasDetails = cell?.busy == true &&
+        (cell.teacher != null || cell.subject != null || cell.studentsSet != null)
     val chevronRotation by animateFloatAsState(
         targetValue = if (expanded) 90f else 0f,
         animationSpec = motionTween(Motion.Normal),
@@ -552,7 +578,7 @@ private fun RoomRow(
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             elevation = CardDefaults.cardElevation(0.dp)
         ) {
-            RoomRowContent(room, occupancy, expanded, chevronRotation)
+            RoomRowContent(room, cell, expanded, chevronRotation)
         }
     } else {
         Card(
@@ -562,29 +588,41 @@ private fun RoomRow(
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             elevation = CardDefaults.cardElevation(0.dp)
         ) {
-            RoomRowContent(room, occupancy, expanded = false, chevronRotation = 0f)
+            RoomRowContent(room, cell, expanded = false, chevronRotation = 0f)
         }
     }
 }
 
 @Composable
-private fun RoomRowContent(room: RoomSchedule, occupancy: SlotOccupancy, expanded: Boolean, chevronRotation: Float) {
+private fun RoomRowContent(room: MergedRoom, cell: RoomCell?, expanded: Boolean, chevronRotation: Float) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             val pillIn = motionTween<Float>(Motion.Normal)
             val pillOut = motionTween<Float>(Motion.Fast)
             AnimatedContent(
-                targetState = occupancy.busy,
+                targetState = if (cell == null) -1 else if (cell.busy) 1 else 0,
                 transitionSpec = { fadeIn(pillIn) togetherWith fadeOut(pillOut) },
                 label = "roomStatusPill"
-            ) { busy ->
+            ) { stateFlag ->
                 Surface(
                     shape = CircleShape,
-                    color = if (busy) GndecOrange.copy(alpha = 0.15f) else GndecGreen.copy(alpha = 0.14f),
-                    contentColor = if (busy) GndecOrange else GndecGreen
+                    color = when (stateFlag) {
+                        1 -> GndecOrange.copy(alpha = 0.15f)
+                        0 -> GndecGreen.copy(alpha = 0.14f)
+                        else -> MaterialTheme.colorScheme.surfaceVariant
+                    },
+                    contentColor = when (stateFlag) {
+                        1 -> GndecOrange
+                        0 -> GndecGreen
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    }
                 ) {
                     Text(
-                        if (busy) "BUSY" else "FREE",
+                        when (stateFlag) {
+                            1 -> "BUSY"
+                            0 -> "FREE"
+                            else -> "NO DATA"
+                        },
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
@@ -597,9 +635,10 @@ private fun RoomRowContent(room: RoomSchedule, occupancy: SlotOccupancy, expande
                 Text(room.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     text = when {
-                        !occupancy.busy -> "No class scheduled"
-                        occupancy.subject != null -> occupancy.subject
-                        occupancy.teacher != null -> occupancy.teacher
+                        cell == null -> "Not published for this slot by any department"
+                        !cell.busy -> "No class scheduled"
+                        cell.subject != null -> cell.subject
+                        cell.teacher != null -> cell.teacher
                         else -> "Class in session"
                     },
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -608,7 +647,7 @@ private fun RoomRowContent(room: RoomSchedule, occupancy: SlotOccupancy, expande
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            if (occupancy.busy) {
+            if (cell?.busy == true) {
                 Icon(
                     Icons.Default.ChevronRight,
                     contentDescription = if (expanded) "Collapse details" else "Expand details",
@@ -618,31 +657,33 @@ private fun RoomRowContent(room: RoomSchedule, occupancy: SlotOccupancy, expande
             }
         }
         AnimatedVisibility(
-            visible = expanded,
+            visible = expanded && cell?.busy == true,
             enter = expandVertically(motionTween(Motion.Emphasized)) + fadeIn(motionTween(Motion.Emphasized)),
             exit = shrinkVertically(motionTween(Motion.Fast)) + fadeOut(motionTween(Motion.Fast))
         ) {
             Column(Modifier.padding(start = 2.dp, top = 10.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                occupancy.teacher?.let { DetailRow(Icons.Default.Person, it) }
-                occupancy.studentsSet?.let { DetailRow(Icons.Default.Groups, it) }
-                occupancy.subject?.let { DetailRow(Icons.Default.MenuBook, it) }
-                occupancy.activity?.let { tag ->
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                    ) {
-                        Text(
-                            when (tag) {
-                                "L" -> "Lecture"
-                                "P" -> "Practical"
-                                "T" -> "Tutorial"
-                                else -> tag
-                            },
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                if (cell != null) {
+                    cell.teacher?.let { DetailRow(Icons.Default.Person, it) }
+                    cell.studentsSet?.let { DetailRow(Icons.Default.Groups, it) }
+                    cell.subject?.let { DetailRow(Icons.Default.MenuBook, it) }
+                    cell.activity?.let { tag ->
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        ) {
+                            Text(
+                                when (tag) {
+                                    "L" -> "Lecture"
+                                    "P" -> "Practical"
+                                    "T" -> "Tutorial"
+                                    else -> tag
+                                },
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 }
             }
