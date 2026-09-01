@@ -125,6 +125,76 @@ class RoomTimetableClientTest {
         )
     }
 
+    @Test
+    fun filenameEvidenceWinsOverMergedLabels() {
+        val me = RoomSourceRoot.ME
+        // ME publishes ONE anchor per revision whose text covers all three
+        // exports ("… (Class) … (Teacher) … (Room)") and points at the GROUPS
+        // file. Label-based room matching must not steal the class document.
+        assertEquals(
+            RoomTimetableClient.AnchorKind.GROUPS,
+            client.classifyAnchor(
+                "Revised Time table (Class) (w.e.f. 12/08/2026) Revised Time table (Teacher) " +
+                    "(w.e.f. 12/08/2026) Revised Time table (Room) (w.e.f. 12/08/2026)",
+                "https://me.gndec.ac.in/sites/default/files/july%20to%20dec%202026_groups_days_horizontal_0.html",
+                me
+            )
+        )
+        // IT's class export is named *_years_days_horizontal.html.
+        assertEquals(
+            RoomTimetableClient.AnchorKind.GROUPS,
+            client.classifyAnchor(
+                "Class Time Table",
+                "https://it.gndec.ac.in/sites/default/files/july-dec%202026-27final26-27-8_years_days_horizontal.html",
+                RoomSourceRoot.IT
+            )
+        )
+        assertEquals(
+            RoomTimetableClient.AnchorKind.GROUPS,
+            client.classifyAnchor(
+                "Time-Table (Groups) Session Aug 2026-Dec 2026",
+                "https://ee.gndec.ac.in/sites/default/files/TT%20aug2026%20%281%29_years_days_horizontal_0.html",
+                RoomSourceRoot.EE
+            )
+        )
+        // …while a rooms filename stays ROOMS even under a class-ish label.
+        assertEquals(
+            RoomTimetableClient.AnchorKind.ROOMS,
+            client.classifyAnchor(
+                "Class Time Table",
+                "https://it.gndec.ac.in/sites/default/files/july-dec%202026-27final26-27-8_rooms_days_horizontal.html",
+                RoomSourceRoot.IT
+            )
+        )
+        // "Class room(s)" is a rooms label despite containing "class".
+        assertEquals(
+            RoomTimetableClient.AnchorKind.ROOMS,
+            client.classifyAnchor(
+                "Class Rooms",
+                "https://cse.gndec.ac.in/sites/default/files/rooms-export.html",
+                RoomSourceRoot.CSE
+            )
+        )
+        // ECE publishes class exports without any filename token.
+        assertEquals(
+            RoomTimetableClient.AnchorKind.GROUPS,
+            client.classifyAnchor(
+                "Classes individual Time Table",
+                "https://ece.gndec.ac.in/sites/default/files/classes%20individual%20tt_1.html",
+                RoomSourceRoot.ECE
+            )
+        )
+        // MBA's student export keeps the groups filename token.
+        assertEquals(
+            RoomTimetableClient.AnchorKind.GROUPS,
+            client.classifyAnchor(
+                "Student Time Table .",
+                "https://mba.gndec.ac.in/sites/default/files/T2_DAT~1.FET_groups_days_horizontal%20%281%29.html",
+                RoomSourceRoot.MBA
+            )
+        )
+    }
+
     // ---- session window ----
 
     private fun millis(y: Int, m: Int, d: Int, h: Int = 12): Long =

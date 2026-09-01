@@ -5,9 +5,11 @@ import android.os.PowerManager
 import com.gndec.timetable.data.db.TimetableMetaEntity
 import com.gndec.timetable.data.prefs.AppSettings
 import com.gndec.timetable.domain.AppContainer
+import com.gndec.timetable.domain.GroupTimetableManager
 import com.gndec.timetable.domain.NotificationHelper
 import com.gndec.timetable.domain.RefreshResult
 import com.gndec.timetable.net.GeminiClient
+import com.gndec.timetable.parse.GroupMatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -26,6 +28,22 @@ data class ReliabilityStatus(
     val timetableCached: Boolean,
     val scheduledReminders: Int,
     val batteryUnrestricted: Boolean
+)
+
+/**
+ * Live departmental section catalog for 2nd/3rd/4th-year students. Sections
+ * come from the OFFICIAL document discovered on the department's own site —
+ * never from the cached lecture database (which may still hold another
+ * source's groups, e.g. the 1st-year appsc document).
+ */
+data class SeniorCatalogState(
+    val loading: Boolean = false,
+    /** Every group name in the validated official document. */
+    val groups: List<String> = emptyList(),
+    /** URL of the official document the sections come from. */
+    val url: String = "",
+    val fromCache: Boolean = false,
+    val error: String? = null
 )
 
 class SettingsViewModel(private val c: AppContainer) {
@@ -47,6 +65,8 @@ class SettingsViewModel(private val c: AppContainer) {
     val busy = _busy.asStateFlow()
     private val _reliability = MutableStateFlow<ReliabilityStatus?>(null)
     val reliability = _reliability.asStateFlow()
+    private val _seniorCatalog = MutableStateFlow(SeniorCatalogState())
+    val seniorCatalog = _seniorCatalog.asStateFlow()
     val releaseUpdate = c.releaseUpdateManager.state.stateIn(scope, SharingStarted.Eagerly, com.gndec.timetable.domain.ReleaseUpdateState())
 
     init { scope.launch { _groups.value = c.db.lectureDao().distinctGroups() } }
@@ -54,6 +74,59 @@ class SettingsViewModel(private val c: AppContainer) {
     fun changeGroup(g: String) = scope.launch {
         _message.value = if (c.refreshManager.changeGroup(g)) "✓ Group changed to $g — alarms rescheduled"
         else "Group \"$g\" is not in the cached timetable. Fetch first."
+    }
+
+    /**
+     * Loads the official departmental sections for the settings screen's
+     * group picker. [force] re-downloads the document so a freshly published
+     * revision (the college republishes weekly under a new name) shows up.
+     */
+    fun loadSeniorCatalog(force: Boolean) {
+        val cfg = settings.value
+        if (cfg.academicYear < 2) return
+        scope.launch {
+            _seniorCatalog.value = _seniorCatalog.value.copy(loading = true, error = null)
+            _seniorCatalog.value = when (val r = c.groupTimetableManager.load(cfg.branch, cfg.academicYear, force)) {
+                is GroupTimetableManager.CatalogResult.Ready ->
+                    SeniorCatalogState(loading = false, groups = r.groups, url = r.url, fromCache = r.fromCache)
+                is GroupTimetableManager.CatalogResult.Failed ->
+                    SeniorCatalogState(loading = false, groups = r.cached, error = r.reason)
+            }
+        }
+    }
+
+    /**
+     * Senior group change: links the picked OFFICIAL section (its name also
+     * carries the academic year, "D3…"), then validates it against a freshly
+     * downloaded departmental document before committing. Never silently
+     * keeps serving the previous (possibly 1st-year) source without saying so.
+     */
+    fun changeSeniorGroup(group: String) = scope.launch {
+        _busy.value = true
+        val cfg = settings.value
+        val year = GroupMatcher.parseGroup(group).year ?: cfg.academicYear.coerceIn(2, 4)
+        c.keys.removeAttendanceSession()
+        c.settings.setAcademicYear(year)
+        c.settings.saveStudentProfile(
+            cfg.studentName, cfg.rollNumber, cfg.branch, cfg.registrationNumber,
+            cfg.fatherName, cfg.motherName, cfg.mentorName,
+            cfg.studentSection, group, "",
+            cfg.mentorMobile, cfg.mentorVenue,
+            "manual_departmental"
+        )
+        val refreshed = c.refreshManager.refresh(force = true, expectedGroup = group)
+        val linked = runCatching { c.refreshManager.changeGroup(group) }.getOrDefault(false)
+        _message.value = when {
+            linked -> "✓ Group changed to $group — alarms rescheduled"
+            refreshed is RefreshResult.Failed ->
+                "Section $group saved, but the official timetable could not be downloaded " +
+                    "(${refreshed.reason}) The previously cached timetable is still shown. " +
+                    "Tap Fetch again once you are online."
+            else ->
+                "Section \"$group\" is not present in the downloaded official document. " +
+                    "Reload the sections and pick again."
+        }
+        _busy.value = false
     }
 
     fun fetchAgain() = scope.launch {

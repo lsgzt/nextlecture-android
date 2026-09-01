@@ -144,7 +144,7 @@ class RefreshManager(
         }
         if (group != null && rawForGroup == null) {
             val hint = if (cfg.academicYear >= 2) {
-                "Open Profile → Academic year and pick your section from the current official document."
+                "Open Settings → Change group (or Profile → Academic year) and pick your section from the current official document."
             } else {
                 "Open Profile and pick your section again from the latest official timetable."
             }

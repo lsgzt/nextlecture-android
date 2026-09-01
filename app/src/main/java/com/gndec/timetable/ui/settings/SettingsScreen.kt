@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -71,6 +73,7 @@ import com.gndec.timetable.ui.theme.GndecGreen
 import com.gndec.timetable.ui.theme.GndecMuted
 import com.gndec.timetable.ui.theme.GndecOrange
 import com.gndec.timetable.ui.theme.GndecTealDark
+import com.gndec.timetable.parse.GroupMatcher
 import com.gndec.timetable.util.Formatters
 
 private val TestDelayOptions = listOf(1, 5, 10, 15)
@@ -101,15 +104,30 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onOpenAlerts: ()
     var testDelayMenu by remember { mutableStateOf(false) }
 
     if (groupDialog) {
+        val seniorCatalog by vm.seniorCatalog.collectAsStateWithLifecycle()
+        LaunchedEffect(Unit) { vm.loadSeniorCatalog(force = false) }
         AlertDialog(
             onDismissRequest = { groupDialog = false },
             confirmButton = { TextButton(onClick = { groupDialog = false }) { Text("Close") } },
             title = { Text("Change group") },
             text = {
-                LazyColumn(Modifier.heightIn(max = 360.dp)) {
-                    items(groups) { group ->
-                        TextButton(onClick = { vm.changeGroup(group); groupDialog = false }, modifier = Modifier.fillMaxWidth()) {
-                            Text(group, fontWeight = if (group == settings.group) FontWeight.Bold else FontWeight.Normal)
+                if (settings.academicYear >= 2) {
+                    SeniorSectionPicker(
+                        catalog = seniorCatalog,
+                        branch = settings.branch,
+                        currentGroup = settings.group,
+                        onPick = { group ->
+                            groupDialog = false
+                            vm.changeSeniorGroup(group)
+                        },
+                        onReload = { vm.loadSeniorCatalog(force = true) }
+                    )
+                } else {
+                    LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                        items(groups) { group ->
+                            TextButton(onClick = { vm.changeGroup(group); groupDialog = false }, modifier = Modifier.fillMaxWidth()) {
+                                Text(group, fontWeight = if (group == settings.group) FontWeight.Bold else FontWeight.Normal)
+                            }
                         }
                     }
                 }
@@ -311,3 +329,84 @@ private fun StatusRow(label: String, value: String, ok: Boolean) {
         Text(value, color = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.SemiBold)
     }
 }
+
+/**
+ * Section picker for 2nd/3rd/4th-year students. Sections are grouped by year
+ * exactly as the department publishes them on its own "class wise timetable"
+ * document — NOT the app's cached lecture list, which can still hold another
+ * source's groups (e.g. the 1st-year appsc document) for migrated profiles.
+ */
+@Composable
+private fun SeniorSectionPicker(
+    catalog: SeniorCatalogState,
+    branch: String,
+    currentGroup: String?,
+    onPick: (String) -> Unit,
+    onReload: () -> Unit
+) {
+    Column(Modifier.heightIn(max = 430.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (catalog.loading) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                Text(
+                    "Loading official sections from ${hostOf(catalog.url).ifBlank { "your department site" }}…",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+        catalog.error?.let { err ->
+            Text(err, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+        }
+        val groups = catalog.groups
+        if (groups.isEmpty() && !catalog.loading && catalog.error == null) {
+            Text("No sections available yet. Reload to fetch the official document.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (groups.isNotEmpty()) {
+            if (catalog.fromCache) {
+                Text(
+                    "Saved sections (offline copy) — reload to fetch the latest official document.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            val dept = branch.trim().uppercase()
+            val byYear = remember(groups, dept) {
+                (2..4).mapNotNull { year ->
+                    val sections = sectionsForYear(groups, dept, year)
+                    if (sections.isEmpty()) null else year to sections
+                }
+            }
+            LazyColumn(Modifier.heightIn(max = 320.dp)) {
+                byYear.forEach { (year, sections) ->
+                    item(key = "header-$year") {
+                        Text(
+                            "${ordinalLabel(year)} year · ${sections.size} section${if (sections.size == 1) "" else "s"}",
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                    }
+                    items(sections) { group ->
+                        TextButton(onClick = { onPick(group) }, modifier = Modifier.fillMaxWidth()) {
+                            Text(group, fontWeight = if (group == currentGroup) FontWeight.Bold else FontWeight.Normal)
+                        }
+                    }
+                }
+            }
+        }
+        TextButton(onClick = onReload, enabled = !catalog.loading) { Text("Reload sections") }
+    }
+}
+
+private fun sectionsForYear(groups: List<String>, dept: String, year: Int): List<String> =
+    if (dept in GroupMatcher.BRANCHES) GroupMatcher.groupsForYear(groups, dept, year).map { it.raw }
+    else groups.filter { GroupMatcher.parseGroup(it).year == year }
+
+private fun ordinalLabel(year: Int): String = when (year) {
+    1 -> "1st"
+    2 -> "2nd"
+    3 -> "3rd"
+    else -> "${year}th"
+}
+
+private fun hostOf(url: String): String = runCatching { java.net.URI(url).host }.getOrNull().orEmpty()

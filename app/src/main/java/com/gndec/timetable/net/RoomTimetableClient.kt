@@ -117,16 +117,28 @@ class RoomTimetableClient(private val client: OkHttpClient = Net.client) {
      * references rooms in its label or target ("Room Time Table", "Class
      * Rooms", "Rooms [w.e.f …]", "…/rooms_days_horizontal.html"); a GROUPS
      * candidate is the department's class/group timetable used as fallback.
+     *
+     * Filename evidence wins over label evidence: some departments (ME)
+     * publish one anchor whose text covers all three exports — "Time table
+     * (Class) … Time table (Teacher) … Time table (Room)" — pointing at the
+     * GROUPS file. Judging by label alone would file the class timetable
+     * under ROOMS and hide it from the 2nd/3rd/4th-year resolver.
      */
     internal fun classifyAnchor(label: String, href: String, root: RoomSourceRoot): AnchorKind {
         if (!isCandidateUrl(href, root)) return AnchorKind.NONE
         val path = href.toHttpUrlOrNull()?.encodedPath.orEmpty().lowercase()
-        val isRooms = label.contains("room", ignoreCase = true) ||
-            path.contains("rooms") || path.contains("room_")
-        if (isRooms) return AnchorKind.ROOMS
-        val isGroups = path.contains("groups_days_horizontal") ||
-            listOf("class", "student", "group").any { label.lowercase().contains(it) }
-        return if (isGroups) AnchorKind.GROUPS else AnchorKind.NONE
+        // 1) The filename is authoritative.
+        if (path.contains("rooms") || path.contains("room_")) return AnchorKind.ROOMS
+        if (path.contains("groups_days_horizontal") || path.contains("years_days_horizontal")) {
+            return AnchorKind.GROUPS
+        }
+        // 2) Label evidence — "Class room(s)" is a ROOMS label even though it
+        //    contains "class"; a bare class/student/group label is GROUPS.
+        val l = label.lowercase()
+        if (l.contains("class room") || l.contains("classroom")) return AnchorKind.ROOMS
+        if (listOf("class", "student", "group").any { l.contains(it) }) return AnchorKind.GROUPS
+        if (l.contains("room")) return AnchorKind.ROOMS
+        return AnchorKind.NONE
     }
 
     /**
