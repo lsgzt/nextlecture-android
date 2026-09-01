@@ -6,6 +6,7 @@ import com.gndec.timetable.parse.RoomTimetableParser
 import com.gndec.timetable.parse.TimetableParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
@@ -73,7 +74,7 @@ class DeptGroupSourceResolver(private val client: OkHttpClient = Net.client) {
     ): Resolution? = withContext(Dispatchers.IO) {
         val root = rootFor(branch) ?: return@withContext null
         val candidates = runCatching { roomClient.discoverRoot(root) }.getOrNull()
-            ?: return@withContext currentUrl?.let { Resolution(it, "cached-url") }
+            ?: return@withContext trustedCachedUrl(currentUrl, root)?.let { Resolution(it, "cached-url") }
         val newest = candidates.groupUrls.firstOrNull()
 
         if (newest != null && newest == currentUrl) {
@@ -86,8 +87,11 @@ class DeptGroupSourceResolver(private val client: OkHttpClient = Net.client) {
                 return@withContext Resolution(doc.url, "validated-new", doc.generatedAtMillis)
             }
         }
-        // Nothing newer validated — keep serving the cached document.
-        currentUrl?.let { Resolution(it, "cached-url") }
+        // Nothing newer validated — keep serving the cached document, but ONLY
+        // when it belongs to the same department. A profile migrated from the
+        // 1st-year source carries an appsc.gndec.ac.in URL here; re-serving it
+        // would refresh the WRONG timetable and claim success.
+        trustedCachedUrl(currentUrl, root)?.let { Resolution(it, "cached-url") }
     }
 
     /**
@@ -108,6 +112,12 @@ class DeptGroupSourceResolver(private val client: OkHttpClient = Net.client) {
         }
         null
     }
+
+    /** Cached URLs are only reusable for the SAME department's host (never appsc). */
+    private fun trustedCachedUrl(currentUrl: String?, root: RoomSourceRoot): String? =
+        currentUrl?.takeIf {
+            it.toHttpUrlOrNull()?.host?.equals(root.host, ignoreCase = true) == true
+        }
 
     /** Download + parse + session-window + year/branch group verification. */
     private fun downloadAndValidate(url: String, branch: String, year: Int, nowMillis: Long): DeptDoc? {

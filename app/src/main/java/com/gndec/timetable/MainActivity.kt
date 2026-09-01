@@ -128,7 +128,19 @@ class MainActivity : ComponentActivity() {
                                     restoreState = true
                                 }
                             }
-                            val setupComplete = settings!!.onboardingDone || settings!!.studentName.isNotBlank() || settings!!.registrationNumber.isNotBlank() || settings!!.rollNumber.isNotBlank()
+                            val hasIdentity = settings!!.studentName.isNotBlank() ||
+                                settings!!.registrationNumber.isNotBlank() ||
+                                settings!!.rollNumber.isNotBlank()
+                            // A profile claiming 2nd-4th year without a departmental
+                            // group pick (profileSource != manual_departmental) is a
+                            // MIGRATED 1st-year profile — its saved group still points
+                            // at the appsc document. Route through onboarding once so
+                            // the student picks their section from the official
+                            // departmental timetable instead of silently keeping the
+                            // wrong source.
+                            val seniorSetupIncomplete = settings!!.academicYear >= 2 &&
+                                settings!!.profileSource != "manual_departmental"
+                            val setupComplete = (settings!!.onboardingDone || hasIdentity) && !seniorSetupIncomplete
                             val permissionPromptNeeded = setupComplete &&
                                 !settings!!.notificationPermissionPrompted &&
                                 !NotificationHelper.notificationsEnabled(container.context)

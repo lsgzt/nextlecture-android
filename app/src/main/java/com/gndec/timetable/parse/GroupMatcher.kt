@@ -141,10 +141,25 @@ object GroupMatcher {
      * group picked from the onboarding catalog to the group names actually
      * stored in the Room cache — the two can drift by punctuation/case only.
      */
-    fun matchGroup(candidates: List<String>, wanted: String): String? {
+    fun matchGroup(candidates: Collection<String>, wanted: String): String? {
         if (wanted.isBlank()) return null
         return candidates.firstOrNull { it == wanted }
             ?: candidates.firstOrNull { normalize(it) == normalize(wanted) }
+    }
+
+    /**
+     * Self-heal for senior (2nd–4th year) profiles whose saved timetable group
+     * no longer exists in the current departmental document — e.g. profiles
+     * migrated from the 1st-year source with [studentSubsection] still holding
+     * the group recorded at section-pick time. Only a real D2/D3/D4 group may
+     * be re-linked; 1st-year-style names ("A1") can never match, so a stale
+     * 1st-year subsection can never silently select a wrong lecture set.
+     * Returns null when nothing plausible matches — the caller must fail
+     * honestly instead of guessing.
+     */
+    fun relinkCandidate(groups: Collection<String>, storedGroup: String?): String? {
+        val healed = matchGroup(groups, storedGroup.orEmpty().trim()) ?: return null
+        return if (parseGroup(healed).year in 2..4) healed else null
     }
 
     /** Friendly chip label: plain letters stay "A"/"B"; exotic suffixes show as-is. */

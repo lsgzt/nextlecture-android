@@ -123,14 +123,35 @@ class RefreshManager(
             return RefreshResult.Failed(e.message ?: "parse failed", hadCache)
         }
 
-        val rawForGroup = group?.let {
-            parsed[it] ?: run {
-                return RefreshResult.Failed(
-                    "Your group \"$it\" is not in the current official timetable. " +
-                        "Reload the sections and pick your section again from the latest document.",
-                    hadCache
-                )
+        val cfg = settings.flow.first()
+        var relinkedTo: String? = null
+        val rawForGroup: List<com.gndec.timetable.parse.RawLecture>? = group?.let { wanted ->
+            parsed[wanted] ?: if (cfg.academicYear >= 2) {
+                // Self-heal: the saved group no longer exists in the departmental
+                // document (migrated 1st-year profile, renamed revision, appsc
+                // leftover). Re-link the group recorded at section-pick time
+                // (studentSubsection) — only a real D2/D3/D4 group can match.
+                val healed = GroupMatcher.relinkCandidate(parsed.keys, cfg.studentSubsection)
+                if (healed != null) {
+                    relinkedTo = healed
+                    parsed[healed]
+                } else {
+                    null
+                }
+            } else {
+                null
             }
+        }
+        if (group != null && rawForGroup == null) {
+            val hint = if (cfg.academicYear >= 2) {
+                "Open Profile → Academic year and pick your section from the current official document."
+            } else {
+                "Open Profile and pick your section again from the latest official timetable."
+            }
+            return RefreshResult.Failed(
+                "Your group \"$group\" is not in the current official timetable. $hint",
+                hadCache
+            )
         }
         // Validation: refuse catastrophically small parses — never overwrite a good cache with junk
         val total = parsed.values.sumOf { it.size }
@@ -138,7 +159,6 @@ class RefreshManager(
             return RefreshResult.Failed("timetable validation failed (implausibly few lectures)", hadCache)
         }
 
-        val cfg = settings.flow.first()
         val route = AiNormalizer.AiRoute(
             enabled = cfg.aiEnabled,
             userApiKey = keys.getGeminiKey(),
@@ -171,8 +191,12 @@ class RefreshManager(
                 timetableHash = TimetableParser.sha256(html)
             )
         )
-        if (group != null && rawForGroup != null) {
-            scheduler.rescheduleAll(db, group, ReminderConfig.from(cfg))
+        // Persist the self-healed link so the UI immediately follows the
+        // departmental group instead of the stale 1st-year one.
+        relinkedTo?.let { settings.setGroup(it) }
+        val rescheduleGroup = relinkedTo ?: group
+        if (rescheduleGroup != null && rawForGroup != null) {
+            scheduler.rescheduleAll(db, rescheduleGroup, ReminderConfig.from(cfg))
         }
         return RefreshResult.Success(rawForGroup?.size ?: total)
     }

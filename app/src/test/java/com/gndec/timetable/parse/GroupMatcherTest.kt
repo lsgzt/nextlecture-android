@@ -195,4 +195,33 @@ class GroupMatcherTest {
         // And a department with no year-3 RAI document sections honestly reports none.
         assertFalse(GroupMatcher.hasGroupsFor(meGroups, "RAI", 3))
     }
+
+    // ---- relinkCandidate: self-heal for migrated / drifted senior profiles ----
+
+    @Test
+    fun relinkFindsTheStoredSeniorGroup() {
+        // 2.4.26 senior whose subsection holds the picked group (exact or drifted).
+        assertEquals("D2 CS A", GroupMatcher.relinkCandidate(cseGroups, "D2 CS A"))
+        assertEquals("D2 CS A", GroupMatcher.relinkCandidate(cseGroups, "D2CSA"))
+        assertEquals("D4ECA1", GroupMatcher.relinkCandidate(eceGroups, "d4 eca 1"))
+        assertEquals("D2IT_A", GroupMatcher.relinkCandidate(itGroups, "D2IT_A"))
+    }
+
+    @Test
+    fun relinkNeverGuessesFromFirstYearStyleNames() {
+        // A migrated 1st-year profile stores "A1"-style subsections; nothing in
+        // a departmental document may match them, and blank never matches.
+        assertEquals(null, GroupMatcher.relinkCandidate(cseGroups, "A1"))
+        assertEquals(null, GroupMatcher.relinkCandidate(eeGroups, "A1"))
+        assertEquals(null, GroupMatcher.relinkCandidate(cseGroups, ""))
+        assertEquals(null, GroupMatcher.relinkCandidate(cseGroups, null))
+    }
+
+    @Test
+    fun relinkRejectsGroupsWithoutSeniorYearPrefix() {
+        // "CSE A" exists in the ME document but carries no D2-D4 year — it must
+        // never be auto-selected; only real departmental year groups qualify.
+        assertEquals("CSE A", GroupMatcher.matchGroup(meGroups, "CSE A"))
+        assertEquals(null, GroupMatcher.relinkCandidate(meGroups, "CSE A"))
+    }
 }
