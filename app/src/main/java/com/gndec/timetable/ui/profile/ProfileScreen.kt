@@ -272,6 +272,7 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit, onOpenAttendance:
                         mentor = settings.mentorName,
                         mentorMobile = settings.mentorMobile,
                         mentorVenue = settings.mentorVenue,
+                        collegeEmail = collegeEmail(settings.studentName, settings.rollNumber),
                         onCopyCrn = {
                             if (settings.rollNumber.isNotBlank()) {
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -291,6 +292,14 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit, onOpenAttendance:
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                 clipboard.setPrimaryClip(ClipData.newPlainText("Mentor mobile", settings.mentorMobile))
                                 savedMessage = "Mentor mobile copied"
+                            }
+                        },
+                        onCopyEmail = {
+                            val email = collegeEmail(settings.studentName, settings.rollNumber)
+                            if (email != null) {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("College email", email))
+                                savedMessage = "College email copied"
                             }
                         }
                     )
@@ -397,8 +406,20 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit, onOpenAttendance:
 }
 }
 
+/**
+ * College email follows the official pattern firstName + CRN + @gndec.ac.in,
+ * entirely lowercase (e.g. "Aaditya Koundal" / 2621001 → aaditya2621001@gndec.ac.in).
+ * Null when the name or CRN is missing — nothing is invented.
+ */
+private fun collegeEmail(studentName: String, crn: String): String? {
+    val first = studentName.trim().split(Regex("\\s+")).firstOrNull()?.trim().orEmpty()
+    val roll = crn.trim()
+    if (first.isEmpty() || roll.isEmpty()) return null
+    return "${first.lowercase()}${roll.lowercase()}@gndec.ac.in"
+}
+
 @Composable
-private fun SavedProfileCard(academicYear: Int, name: String, branch: String, crn: String, registration: String, section: String, subsection: String, studentGroup: String, father: String, mother: String, mentor: String, mentorMobile: String, mentorVenue: String, onCopyCrn: () -> Unit, onCopyRegistration: () -> Unit, onCopyMentorMobile: () -> Unit) {
+private fun SavedProfileCard(academicYear: Int, name: String, branch: String, crn: String, registration: String, section: String, subsection: String, studentGroup: String, father: String, mother: String, mentor: String, mentorMobile: String, mentorVenue: String, collegeEmail: String?, onCopyCrn: () -> Unit, onCopyRegistration: () -> Unit, onCopyMentorMobile: () -> Unit, onCopyEmail: () -> Unit) {
     Card(Modifier.fillMaxWidth().padding(horizontal = 20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), shape = RoundedCornerShape(20.dp), elevation = CardDefaults.cardElevation(0.dp)) {
         Column(Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text("SAVED STUDENT DETAILS", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
@@ -407,6 +428,7 @@ private fun SavedProfileCard(academicYear: Int, name: String, branch: String, cr
             Detail("Branch", branch.ifBlank { "Not added" })
             CopyableDetail("CRN (Class Roll Number)", crn.ifBlank { "Not added" }, onCopyCrn)
             if (registration.isNotBlank()) CopyableDetail("Registration number", registration, onCopyRegistration)
+            if (!collegeEmail.isNullOrBlank()) CopyableDetail("Mail (college email)", collegeEmail, onCopyEmail)
             Detail("Permanent section", listOf(section, subsection).filter { it.isNotBlank() }.joinToString("  · ").ifBlank { "Not added" })
             Detail("Mentoring group", studentGroup.ifBlank { "Not added" })
             Detail("Father name", father.ifBlank { "Not added" })

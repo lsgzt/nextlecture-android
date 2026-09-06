@@ -7,7 +7,6 @@ import com.gndec.timetable.data.prefs.SecureKeyStore
 import com.gndec.timetable.net.Net
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
-import com.tom_roush.pdfbox.text.PDFTextStripper
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
@@ -233,8 +232,12 @@ class StudentDirectoryManager(
                 response.body?.bytes() ?: throw IllegalStateException("Empty directory download for $branch")
             }
             if (bytes.size < 1_000L) throw IllegalStateException("Directory download for $branch is too small to be a section PDF")
+            // Column-aware extraction: the PDF's table columns survive as
+            // pipe-delimited cells, so student/father/mother names are read
+            // straight from the official columns instead of being guessed
+            // from concatenated text.
             val text = PDDocument.load(bytes).use { document ->
-                PDFTextStripper().getText(document)
+                ColumnAwarePdfTextStripper().getText(document)
             }
             StudentDirectoryParser.parse(
                 lines = text.lines(),

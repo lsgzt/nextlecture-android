@@ -206,6 +206,27 @@ class RoomTimetableParserTest {
         assertTrue(g12.occupancy[1][2]!!.isFree) // Tuesday 10:30 untouched
     }
 
+    @Test
+    fun plainMinusXCellsAreVacantNotBusy() {
+        // CSE's 2026 exports render free slots as "<td>-x-</td>" WITHOUT the
+        // empty class — these rooms must count as vacant in the finder.
+        val html = dialectAFixture()
+            .replace("""<td class="empty"><span class="empty">---</span></td>""", "<td>-x-</td>")
+            .replace("""<td class="empty"><span class="empty">-</span></td>""", "<td>-x-</td>")
+        val doc = RoomTimetableParser.parseRoomsDoc(
+            html, "cse", "https://cse.gndec.ac.in/f.html", 0L
+        )
+        val f101 = doc.rooms.first { it.key == "F101" }
+        // Monday 08:30 was class="empty" → now "<td>-x-</td>" → vacant.
+        assertTrue(f101.occupancy[0][0]!!.isFree)
+        // Tuesday 08:30 carries a real activity → still busy.
+        assertTrue(f101.occupancy[1][0]!!.busy)
+        assertEquals("PROFESSIONAL ENGLISH", f101.occupancy[1][0]!!.subject)
+        // The rowspan continuation (ENGG DRAWING) must remain busy — "-x-" is
+        // only an empty marker, never a subject.
+        assertEquals("ENGG DRAWING", f101.occupancy[3][1]!!.subject)
+    }
+
     // ---- slot label variants ----
 
     @Test

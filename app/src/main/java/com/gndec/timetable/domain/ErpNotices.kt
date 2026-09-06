@@ -52,7 +52,7 @@ class ErpNoticeManager(
 
     suspend fun loadCached() = withContext(Dispatchers.IO) {
         val cached = settings.flow.first()
-        _notices.value = decode(cached.erpNoticeJson)
+        _notices.value = sortNewestFirst(decode(cached.erpNoticeJson))
     }
 
     suspend fun refresh(forceRefresh: Boolean = false): List<ErpNotice> = mutex.withLock {
@@ -77,9 +77,9 @@ class ErpNoticeManager(
                 )
             }
             if (notices.isEmpty()) error("No notices found in the ERP response")
-            _notices.value = notices
-            settings.setErpNoticeCache(json.encodeToString(notices), System.currentTimeMillis())
-            notices
+            _notices.value = sortNewestFirst(notices)
+            settings.setErpNoticeCache(json.encodeToString(_notices.value), System.currentTimeMillis())
+            _notices.value
         } catch (e: Exception) {
             _lastError.value = e.message ?: "Could not refresh ERP notices"
             _notices.value
@@ -94,4 +94,12 @@ class ErpNoticeManager(
     private fun decode(value: String): List<ErpNotice> = runCatching {
         if (value.isBlank()) emptyList() else json.decodeFromString<List<ErpNotice>>(value)
     }.getOrDefault(emptyList())
+
+    /**
+     * Newest first. Stable: the backend's tie order (ERP board's own
+     * newest-first sequence, ERP before homepage) is preserved. Also repairs
+     * feeds cached by older app versions with a scrambled order.
+     */
+    private fun sortNewestFirst(notices: List<ErpNotice>): List<ErpNotice> =
+        notices.sortedWith(compareByDescending { it.publishedDate })
 }

@@ -15,10 +15,11 @@ const DATE_PATTERNS = [
   /\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b/,
   /\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}\b/i,
 ];
-const ANNOUNCEMENT_SIGNALS = /\bnotice|circular|holiday|closure|class(?:es)?|examination|exam|result|deadline|office order|announcement|document(?:s)? submission|schedule\b/i;
+const ANNOUNCEMENT_SIGNALS = /\bnotice|circular|holiday|closure|class(?:es)?|examination|exam|result|deadline|office order|announcement|document(?:s)? submission|schedule|counsel(?:l|)ing|waiting\s+list\b/i;
 const EXCLUDED_HOME_ITEMS = [
-  /spot\s+counsel(?:l|)ing/i,
-  /waiting\s+list/i,
+  // Static admission-panel pages, NOT notices — permanent links that would
+  // otherwise drown the dated announcements. "Spot Counselling 2026-27" and
+  // "Waiting List 2026-27" are real dated notices and MUST stay listed.
   /enquir(?:y|ies).*registration/i,
   /programs?\s+offered/i,
   /fee\s+structure/i,
@@ -219,11 +220,17 @@ export function parseHomepageNotices(html, fetchedDate = new Date().toISOString(
 
 export function mergeNoticeFeeds(erpNotices, homepageNotices) {
   const seen = new Set();
+  const sourceRank = (notice) => (notice?.source === 'GNDEC ERP Notice Board' ? 0 : 1);
   const merged = [...(erpNotices || []), ...(homepageNotices || [])]
     .filter((notice) => notice?.title)
+    // Newest first; on equal dates ERP keeps its own published order (the ERP
+    // board already lists newest on top) and ERP precedes homepage items. The
+    // previous comparator used a contradictory tie-break ("A before B" AND
+    // "B before A" for same-source pairs), which made V8's sort REVERSE the
+    // ERP board's own ordering — the bug behind wrong notice order.
     .sort((left, right) => {
       const dateOrder = String(right.publishedDate || '').localeCompare(String(left.publishedDate || ''));
-      return dateOrder || (left.source === 'GNDEC ERP Notice Board' ? -1 : 1);
+      return dateOrder || sourceRank(left) - sourceRank(right);
     })
     .filter((notice) => {
       const key = `${normalizeTitle(notice.title)}|${notice.publishedDate || ''}`;

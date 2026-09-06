@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.AlertDialog
@@ -308,6 +309,7 @@ fun SyllabusScreen(
                 IconButton(onClick = { historyOpen = true }) {
                     Icon(Icons.Default.History, contentDescription = "Previous chats")
                 }
+                SourcePdfButton()
             }
 
             LazyColumn(
@@ -499,3 +501,16 @@ private fun ChatBubble(message: SyllabusChatMessageEntity) {
     }
 }
 
+
+/** Official syllabus source document (Applied Sciences upload). */
+private const val SYLLABUS_SOURCE_URL = "https://appsc.gndec.ac.in/sites/default/files/2026-03/ss%20and%20Syllabus%20sem1%2C2%20Dec%202025%20unsigned.pdf"
+
+@Composable
+private fun SourcePdfButton() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    IconButton(onClick = {
+        context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(SYLLABUS_SOURCE_URL)))
+    }) {
+        Icon(Icons.Default.OpenInNew, contentDescription = "Open official syllabus PDF")
+    }
+}

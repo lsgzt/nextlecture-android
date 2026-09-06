@@ -78,6 +78,7 @@ import com.gndec.timetable.util.Formatters
 
 private val TestDelayOptions = listOf(1, 5, 10, 15)
 private const val SOURCE_CODE_URL = "https://github.com/lsgzt/nextlecture-android"
+private const val MAINTAINER_URL = "https://lsgz.vercel.app"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -293,6 +294,19 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onOpenAlerts: ()
                         TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SOURCE_CODE_URL))) }) {
                             Text("View code on GitHub")
                         }
+                    }
+                }
+                item(key = "maintainer-footer") {
+                    TextButton(
+                        onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(MAINTAINER_URL))) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            "Built and maintained by LSGZ",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
                 }
             }

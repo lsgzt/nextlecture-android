@@ -15,20 +15,24 @@ test('parses dated ERP notice cards', () => {
   assert.match(notices[0].url, /noticeboard\/holiday$/);
 });
 
-test('filters mixed homepage panel and includes active announcement items', () => {
+test('includes dated admission notices and filters static panel pages', () => {
   const html = `
     <div class="block-wrapper"><h2 class="block-title">ADMISSION (2026-2027)</h2><div class="content">
       <p><a href="">There is a Notice regarding Holiday on 27.08.2026. The College remains open.</a></p>
       <p><a href="https://admission.gndec.ac.in/spot_counselling/">Spot Counselling 2026-27</a></p>
+      <p><a href="https://admission.gndec.ac.in/waiting_list/">Waiting List 2026-27</a></p>
       <p><a href="https://admission.gndec.ac.in/Fee_Structure.php">Fee Structure</a></p>
+      <p><a href="https://academics.gndec.ac.in/programs/">Programs Offered</a></p>
     </div></div>
     <div class="marquee"><p><a href="https://gndec.ac.in/sites/default/files/notice.pdf">Notice regarding original documents submission</a></p></div>`;
   const notices = parseHomepageNotices(html, '2026-08-26');
-  assert.equal(notices.length, 2);
+  // Spot Counselling + Waiting List are DATED notices and must be listed;
+  // static panel pages (fee structure, programs offered) stay out.
+  assert.ok(notices.some((notice) => /spot\s+counsel/i.test(notice.title)));
+  assert.ok(notices.some((notice) => /waiting\s+list/i.test(notice.title)));
   assert.ok(notices.some((notice) => notice.title.includes('Holiday')));
   assert.ok(notices.some((notice) => notice.title.includes('original documents')));
-  assert.ok(notices.every((notice) => notice.source === 'GNDEC homepage'));
-  assert.ok(notices.every((notice) => !/Spot Counselling|Fee Structure/i.test(notice.title)));
+  assert.ok(notices.every((notice) => !/Fee Structure|Programs Offered/i.test(notice.title)));
 });
 
 test('keeps homepage first-seen date stable and gives it a two-day window', () => {
@@ -46,4 +50,24 @@ test('merges ERP and homepage notices by normalized title and date', () => {
   const merged = mergeNoticeFeeds(erp, homepage);
   assert.equal(merged.length, 1);
   assert.equal(merged[0].id, 'erp-1');
+});
+
+test('equal-date ERP notices keep the ERP board newest-first order', () => {
+  // The ERP board lists its newest notice first; the merge must preserve that
+  // order for equal dates instead of scrambling it.
+  const erp = [
+    { id: 'erp-a', title: 'Reopening of registration', publishedDate: '2026-09-02', source: 'GNDEC ERP Notice Board' },
+    { id: 'erp-b', title: 'Exam form filling', publishedDate: '2026-09-02', source: 'GNDEC ERP Notice Board' },
+    { id: 'erp-c', title: 'Makeup exam schedule', publishedDate: '2026-09-02', source: 'GNDEC ERP Notice Board' },
+    { id: 'erp-d', title: 'Older notice', publishedDate: '2026-08-25', source: 'GNDEC ERP Notice Board' },
+  ];
+  const merged = mergeNoticeFeeds(erp, []);
+  assert.deepEqual(merged.map((n) => n.id), ['erp-a', 'erp-b', 'erp-c', 'erp-d']);
+});
+
+test('newest date wins and ERP precedes homepage on a date tie', () => {
+  const erp = [{ id: 'erp-1', title: 'ERP notice', publishedDate: '2026-08-20', source: 'GNDEC ERP Notice Board' }];
+  const homepage = [{ id: 'home-1', title: 'Homepage notice', publishedDate: '2026-08-26', source: 'GNDEC homepage' }];
+  const merged = mergeNoticeFeeds(erp, homepage);
+  assert.deepEqual(merged.map((n) => n.id), ['home-1', 'erp-1']);
 });

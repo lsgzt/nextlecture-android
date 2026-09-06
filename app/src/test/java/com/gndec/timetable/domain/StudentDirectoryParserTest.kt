@@ -118,4 +118,71 @@ class StudentDirectoryParserTest {
         assertEquals("HT LAB (ME)", records.single().venue)
         assertTrue(records.single().candidateName.isNotBlank())
     }
+
+    // ---- STRICT column-aware (pipe) rows ----
+
+    @Test
+    fun `pipe rows take names straight from the official columns`() {
+        // Column-aware extraction of a real 2026 row — no bundled split needed.
+        val lines = listOf(
+            "1| 2614001| 26012345| Test Student One| Test Father One| Test Mother One| CE| CEA| CEA1| CEAM1| Dr. Mentor A| 9815830889| Geotech Lab"
+        )
+        val records = StudentDirectoryParser.parse(lines, "CE", nameSplits = emptyMap(), registrationFallback = emptyMap())
+        assertEquals(1, records.size)
+        val r = records.single()
+        assertEquals("2614001", r.crn)
+        assertEquals("26012345", r.registrationNumber)
+        assertEquals("Test Student One", r.candidateName)
+        assertEquals("Test Father One", r.fatherName)
+        assertEquals("Test Mother One", r.motherName)
+        assertEquals("CEA", r.section)
+        assertEquals("CEAM1", r.group)
+        assertEquals("Dr. Mentor A", r.mentorName)
+        assertEquals("9815830889", r.mentorMobile)
+        assertEquals("Geotech Lab", r.venue)
+    }
+
+    @Test
+    fun `pipe rows never combine parent names into the student name`() {
+        // The case the strict path exists for: bundled split missing, legacy
+        // extraction would show "Student Father Mother" as one name.
+        val lines = listOf(
+            "7| 2614991| 26017111| Riya Kapoor| Rohita Gupta| Somraj Devi| CE| CEA| CEA2| CEAM2| Dr. Mentor C| 9000000001| Room 101"
+        )
+        val r = StudentDirectoryParser.parse(lines, "CE", nameSplits = emptyMap()).single()
+        assertEquals("Riya Kapoor", r.candidateName)
+        assertEquals("Rohita Gupta", r.fatherName)
+        assertEquals("Somraj Devi", r.motherName)
+    }
+
+    @Test
+    fun `pipe row without registration column uses fallback map`() {
+        val lines = listOf(
+            "2| 2614002| Test Student Two| Test Father Two| Test Mother Two| CE| CEB| CEB2| CEBM2| Er. Mentor B| 9876543210| TNP Seminar Hall 1"
+        )
+        val r = StudentDirectoryParser.parse(lines, "CE", nameSplits = emptyMap(), registrationFallback = regFallback).single()
+        assertEquals("26099999", r.registrationNumber)
+        assertEquals("Test Student Two", r.candidateName)
+    }
+
+    @Test
+    fun `ambiguous pipe rows fall back to legacy handling`() {
+        // A merged cell (registration and student fused by a missed gap) breaks
+        // the exact structure -> strict path rejects, legacy path decides.
+        val lines = listOf(
+            "1| 2614001 26012345 Test Student One| Test Father One| Test Mother One| CE| CEA| CEA1| CEAM1| Dr. Mentor A| 9815830889| Geotech Lab"
+        )
+        val r = StudentDirectoryParser.parse(lines, "CE", nameSplits, regFallback).single()
+        assertEquals("2614001", r.crn)
+        assertEquals("Test Student One", r.candidateName)
+        assertEquals("Test Father One", r.fatherName)
+    }
+
+    @Test
+    fun `other branch rows in pipe format are rejected`() {
+        val lines = listOf(
+            "1| 2699999| 26011111| Other Branch Student| Some Father| Some Mother| XX| XXA| XXA1| XXAM1| Dr. X| 9000000009| Lab"
+        )
+        assertTrue(StudentDirectoryParser.parse(lines, "CE").isEmpty())
+    }
 }

@@ -59,6 +59,15 @@ object RoomTimetableParser {
     private val BR = Regex("""<br\s*/?>""", RegexOption.IGNORE_CASE)
 
     /**
+     * FET empty-cell markers. Departments disagree on the marker: most files
+     * use "---" (often with class="empty"), but CSE's 2026 exports render free
+     * slots as plain "<td>-x-</td>" with NO class — treating those as busy
+     * would show genuinely vacant rooms as occupied ("-x-") in the vacant
+     * room finder. Mirrors TimetableParser.EMPTY_CELL_TEXT.
+     */
+    private val EMPTY_CELL_TEXT = setOf("---", "-x-", "-", "--", "x", "not available", "na", "n/a")
+
+    /**
      * Parses a ROOMS document (one table per room). Room captions containing a
      * comma (e.g. "S202, S203") produce one room per name sharing the grid.
      */
@@ -330,7 +339,9 @@ object RoomTimetableParser {
 
     private fun parseCell(td: Element): GridCell? {
         val text = td.text().trim()
-        if (td.hasClass("empty") || text.isEmpty() || text == "---") return GridCell.FREE
+        if (td.hasClass("empty") || text.isEmpty() || text.lowercase() in EMPTY_CELL_TEXT) {
+            return GridCell.FREE
+        }
 
         val subjects = td.select("span.subject").map { it.text().trim() }.filter { it.isNotEmpty() }
         val teachers = td.select("div.teacher").map { it.text().trim() }.filter { it.isNotEmpty() }
@@ -343,7 +354,7 @@ object RoomTimetableParser {
             // Dialect B (plain text lines): "D3 CS C / Dr. X (MKM) / DAA L"
             val lines = BR.split(td.html())
                 .map { Jsoup.parse(it).text().trim() }
-                .filter { it.isNotEmpty() && it != "---" }
+                .filter { it.isNotEmpty() && it.lowercase() !in EMPTY_CELL_TEXT }
             if (lines.isEmpty()) return null
             var subject: String? = null
             var act: String? = null
