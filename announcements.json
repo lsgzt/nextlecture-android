@@ -1,21 +1,4 @@
 {
   "version": 1,
-  "announcements": [
-    {
-      "id": "timetable-update-2026-09-06",
-      "title": "⚠️ Timetable Update",
-      "message": "NextLecture is currently displaying last week’s timetable because the latest timetable has not been uploaded to the official college website yet.\n\nThe college usually uploads the new timetable around 11 PM every Sunday.\n\nPlease check NextLecture after 11 PM — it will automatically fetch and display the latest timetable once it becomes available.",
-      "publishedAt": "2026-09-06T00:00:00Z",
-      "type": "notice",
-      "active": true
-    },
-    {
-      "id": "official-whatsapp-timetable-reminder-2026-08-18",
-      "title": "Keep checking the official GNDEC WhatsApp group",
-      "message": "Please keep checking your official GNDEC WhatsApp group regularly, because the latest timetable is sometimes shared directly through WhatsApp.",
-      "publishedAt": "2026-08-18T12:00:00Z",
-      "type": "notice",
-      "active": true
-    }
-  ]
+  "announcements": []
 }
