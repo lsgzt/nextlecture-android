@@ -1,4 +1,13 @@
 {
   "version": 1,
-  "announcements": []
+  "announcements": [
+    {
+      "id": "no-timetable-update-2026-09-06",
+      "title": "No timetable update detected",
+      "message": "No new timetable has been posted on the official college website. NextLecture will continue to display last week’s timetable until a new timetable is published. Please check the app later for updates.",
+      "publishedAt": "2026-09-06T16:55:00Z",
+      "type": "notice",
+      "active": true
+    }
+  ]
 }
