@@ -179,6 +179,99 @@ class StudentDirectoryParserTest {
     }
 
     @Test
+    fun `merged crn and registration cell still takes names from columns`() {
+        // REAL 2026 production shape: the CRN and registration columns sit so
+        // close together that the extractor merges them into ONE cell. This is
+        // the bug that made 2.4.30's strict path reject every row and kept the
+        // father/mother names glued to the student's name. No bundled split is
+        // provided here — the columns alone must decide.
+        val lines = listOf(
+            "1| 2614001 26012345| Test Student One| Test Father One| Test Mother One| CE| CEA| CEA1| CEAM1| Dr. Mentor A| 9815830889| Geotech Lab"
+        )
+        val r = StudentDirectoryParser.parse(lines, "CE", nameSplits = emptyMap()).single()
+        assertEquals("2614001", r.crn)
+        assertEquals("26012345", r.registrationNumber)
+        assertEquals("Test Student One", r.candidateName)
+        assertEquals("Test Father One", r.fatherName)
+        assertEquals("Test Mother One", r.motherName)
+    }
+
+    @Test
+    fun `merged serial crn and registration cell parses`() {
+        val lines = listOf(
+            "33| 2614009 26019999| Test Student Nine| Test Father Nine| Test Mother Nine| CE| CEA| CEA1| CEAM1| Dr. Mentor A| 9815830889| Geotech Lab",
+            "12 2614008 26019998| Test Student Eight| Test Father Eight| Test Mother Eight| CE| CEA| CEA1| CEAM1| Dr. Mentor A| 9815830889| Geotech Lab"
+        )
+        val records = StudentDirectoryParser.parse(lines, "CE", nameSplits = emptyMap())
+        assertEquals(2, records.size)
+        assertEquals("2614009", records[0].crn)
+        assertEquals("26019999", records[0].registrationNumber)
+        assertEquals("Test Student Nine", records[0].candidateName)
+        assertEquals("2614008", records[1].crn)
+        assertEquals("Test Student Eight", records[1].candidateName)
+    }
+
+    @Test
+    fun `swapped father mother columns are corrected from the bundled split`() {
+        // The official PDF occasionally swaps the Father/Mother cells of a row;
+        // the bundled directory carries the corrected order for that CRN.
+        val swappedSplits = mapOf(
+            "2621191" to StudentDirectoryParser.NameSplit("Riya Kapoor", "Somraj", "Rohita Gupta")
+        )
+        // PDF columns read: student / "Rohita Gupta" under Father / "Somraj" under Mother.
+        val lines = listOf(
+            "33| 2621191 26015016| Riya Kapoor| Rohita Gupta| Somraj| IT| ITB| ITB1| ITBM2| Er. Mentor D| 8968801937| HW LAB"
+        )
+        val r = StudentDirectoryParser.parse(lines, "IT", nameSplits = swappedSplits).single()
+        assertEquals("Riya Kapoor", r.candidateName)
+        assertEquals("Somraj", r.fatherName)
+        assertEquals("Rohita Gupta", r.motherName)
+    }
+
+    @Test
+    fun `swapped names are not applied without the bundled split`() {
+        // No bundle entry -> never guess: the columns are used as-is.
+        val lines = listOf(
+            "33| 2621191 26015016| Riya Kapoor| Rohita Gupta| Somraj| IT| ITB| ITB1| ITBM2| Er. Mentor D| 8968801937| HW LAB"
+        )
+        val r = StudentDirectoryParser.parse(lines, "IT", nameSplits = emptyMap()).single()
+        assertEquals("Riya Kapoor", r.candidateName)
+        assertEquals("Rohita Gupta", r.fatherName)
+        assertEquals("Somraj", r.motherName)
+    }
+
+    @Test
+    fun `legacy path applies a swapped bundled split`() {
+        // Legacy extraction has no pipes: parents are fused into namesPart in
+        // the PDF's (swapped) order. The swapped-token match must still verify
+        // and apply the bundle's corrected order.
+        val swappedSplits = mapOf(
+            "2621191" to StudentDirectoryParser.NameSplit("Riya Kapoor", "Somraj", "Rohita Gupta")
+        )
+        val lines = listOf(
+            "33 2621191 26015016 Riya Kapoor Rohita Gupta Somraj IT ITB ITB1 ITBM2 Er. Mentor D 8968801937 HW LAB"
+        )
+        val r = StudentDirectoryParser.parse(lines, "IT", nameSplits = swappedSplits).single()
+        assertEquals("Riya Kapoor", r.candidateName)
+        assertEquals("Somraj", r.fatherName)
+        assertEquals("Rohita Gupta", r.motherName)
+    }
+
+    @Test
+    fun `crn cell fused with name text still falls back to legacy`() {
+        // The gap between the registration number and the student name was
+        // missed AND the cell carries name text — unambiguous rejection, the
+        // legacy path decides via the bundled split.
+        val lines = listOf(
+            "1| 2614001 26012345 Test Student One| Test Father One| Test Mother One| CE| CEA| CEA1| CEAM1| Dr. Mentor A| 9815830889| Geotech Lab"
+        )
+        val r = StudentDirectoryParser.parse(lines, "CE", nameSplits, regFallback).single()
+        assertEquals("2614001", r.crn)
+        assertEquals("Test Student One", r.candidateName)
+        assertEquals("Test Father One", r.fatherName)
+    }
+
+    @Test
     fun `other branch rows in pipe format are rejected`() {
         val lines = listOf(
             "1| 2699999| 26011111| Other Branch Student| Some Father| Some Mother| XX| XXA| XXA1| XXAM1| Dr. X| 9000000009| Lab"

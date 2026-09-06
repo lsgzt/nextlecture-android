@@ -13,6 +13,15 @@ package com.gndec.timetable.domain
  *     Subsection | MentoringGroup | Mentor | Mobile | Venue…`; the names then
  *     come straight from the official document's own columns, so father and
  *     mother can never blend into the student's name. No bundled data needed.
+ *     The serial, CRN and registration columns sit close together in the PDF,
+ *     so extraction may merge them into ONE cell ("2614001 26012961"); such
+ *     cells are decomposed strictly by digit-shape (7-digit CRN, 8-digit
+ *     registration) and rejected if any non-numeric text rides along.
+ *     The official document occasionally swaps the Father/Mother cells of a
+ *     row (data-entry slip, e.g. a female name under "Father Name"); when the
+ *     bundled directory holds the SAME three names with father/mother
+ *     exchanged, the bundled (corrected) order is used — exact token match
+ *     only, never a guess.
  *  2. Legacy space-separated rows (fallback for PDFs/extractions where column
  *     gaps were not detected): the three name columns stay concatenated, so
  *     the split is taken from the bundled directory only when the bundled
@@ -38,6 +47,8 @@ object StudentDirectoryParser {
     private val CRN_TOKEN = Regex("^\\d{7}$")
     private val REGISTRATION_TOKEN = Regex("^\\d{8}$")
     private val MOBILE_TOKEN = Regex("^\\d{10}$")
+    private val SERIAL_TOKEN = Regex("^\\d{1,4}$")
+    private val WHITESPACE = Regex("\\s+")
     private val PIPE_RUN = Regex("\\s*\\|\\s*")
 
     /** Verified name split for one CRN, taken from the bundled directory. */
@@ -65,7 +76,7 @@ object StudentDirectoryParser {
             if (line.isEmpty()) continue
             // 1) STRICT path: column-aware extraction. The official document's
             //    own cell boundaries decide the name split.
-            val strictRecord = parsePipeRow(line, normalizedBranch, registrationFallback)
+            val strictRecord = parsePipeRow(line, normalizedBranch, registrationFallback, nameSplits)
             if (strictRecord != null) {
                 records += strictRecord
                 continue
@@ -115,11 +126,19 @@ object StudentDirectoryParser {
      * name cells must sit between the registration number and the branch —
      * any deviation rejects the row so the legacy path can decide. Names are
      * never guessed here; they ARE the official document's columns.
+     *
+     * The serial/CRN/registration columns are narrow and close together, so
+     * the extractor may merge them into one cell — "2614001 26012961" or even
+     * "33 2621191 26015016". The CRN is therefore located by scanning the
+     * leading cells for exactly one 7-digit token (plus at most one 8-digit
+     * registration token); a cell that also carries non-numeric text rejects
+     * the row rather than guessing where the name begins.
      */
     internal fun parsePipeRow(
         line: String,
         normalizedBranch: String,
-        registrationFallback: Map<String, String> = emptyMap()
+        registrationFallback: Map<String, String> = emptyMap(),
+        nameSplits: Map<String, NameSplit> = emptyMap()
     ): StudentDirectoryRecord? {
         if (!line.contains(COLUMN_SEPARATOR)) return null
         val tokens = line.split(COLUMN_SEPARATOR).map { it.trim() }.filter { it.isNotEmpty() }
@@ -136,21 +155,50 @@ object StudentDirectoryParser {
         if (!branchToken.equals(normalizedBranch, ignoreCase = true)) return null
         val branchIdx = mobileIdx - 5
 
-        val crnIdx = tokens.indexOfFirst { it.matches(CRN_TOKEN) }
-        if (crnIdx < 0 || crnIdx >= branchIdx - 2) return null
-        val crn = tokens[crnIdx]
-        var cursor = crnIdx + 1
+        // Locate the CRN inside the leading cells, tolerating merged
+        // serial/CRN/registration cells but nothing else.
+        var crn = ""
         var registration = ""
-        if (cursor < branchIdx - 2 && tokens[cursor].matches(REGISTRATION_TOKEN)) {
-            registration = tokens[cursor]
+        var crnFound = false
+        var cursor = 0
+        while (cursor < branchIdx - 2) {
+            val cellTokens = tokens[cursor].split(WHITESPACE).filter { it.isNotBlank() }
+            val crnToken = cellTokens.firstOrNull { it.matches(CRN_TOKEN) }
+            if (crnToken == null) {
+                // Cells before the CRN cell must be plain serial numbers.
+                if (cellTokens.any { !it.matches(SERIAL_TOKEN) }) return null
+                cursor++
+                continue
+            }
+            val regToken = cellTokens.firstOrNull { it.matches(REGISTRATION_TOKEN) }
+            // A merged serial token (1-4 digits) is unambiguous next to the
+            // 7-digit CRN; anything else riding in the cell rejects the row.
+            val leftovers = cellTokens.filter { it != crnToken && it != regToken && !it.matches(SERIAL_TOKEN) }
+            if (leftovers.isNotEmpty()) return null
+            crn = crnToken
+            registration = regToken.orEmpty()
             cursor++
+            if (regToken == null && cursor < branchIdx - 2 && tokens[cursor].matches(REGISTRATION_TOKEN)) {
+                registration = tokens[cursor]
+                cursor++
+            }
+            crnFound = true
+            break
         }
+        if (!crnFound) return null
         // Exactly three name cells (student, father, mother) must remain.
         if (cursor != branchIdx - 3) return null
         val student = tokens[cursor]
-        val father = tokens[cursor + 1]
-        val mother = tokens[cursor + 2]
+        var father = tokens[cursor + 1]
+        var mother = tokens[cursor + 2]
         if (student.isBlank() || father.isBlank() || mother.isBlank()) return null
+        // The document occasionally swaps the Father/Mother cells of a row;
+        // the bundled directory carries the corrected order for that CRN.
+        val split = nameSplits[crn]
+        if (split != null && isParentSwap(student, father, mother, split)) {
+            father = normalizeWhitespace(split.fatherName)
+            mother = normalizeWhitespace(split.motherName)
+        }
         return StudentDirectoryRecord(
             crn = crn,
             registrationNumber = registration.ifBlank { registrationFallback[crn].orEmpty() },
@@ -167,9 +215,20 @@ object StudentDirectoryParser {
         )
     }
 
+    /** True when the bundled split holds the SAME three names with father/mother exchanged. */
+    private fun isParentSwap(student: String, father: String, mother: String, split: NameSplit): Boolean {
+        fun same(a: String, b: String) =
+            normalizeWhitespace(a).equals(normalizeWhitespace(b), ignoreCase = true)
+        return same(student, split.candidateName) &&
+            same(father, split.motherName) &&
+            same(mother, split.fatherName)
+    }
+
     /**
-     * Uses the bundled split only when its tokens exactly match the PDF tokens for this
-     * same CRN; otherwise keeps the full concatenated PDF text as the candidate name.
+     * Uses the bundled split when its tokens exactly match the PDF tokens for this
+     * same CRN — including the father/mother-swapped variant (the document's own
+     * column slip, corrected in the bundle). Otherwise keeps the full concatenated
+     * PDF text as the candidate name.
      */
     private fun applyVerifiedNameSplit(
         record: StudentDirectoryRecord,
@@ -177,8 +236,15 @@ object StudentDirectoryParser {
         namesPart: String
     ): StudentDirectoryRecord {
         if (split == null || namesPart.isBlank()) return record
-        val pdfTokens = namesPart.split(Regex("\\s+")).filter { it.isNotBlank() }
-        if (pdfTokens.isEmpty() || split.tokens != pdfTokens) return record
+        val pdfTokens = namesPart.split(WHITESPACE).filter { it.isNotBlank() }
+        if (pdfTokens.isEmpty()) return record
+        val matchesDirect = split.tokens == pdfTokens
+        val swappedTokens = sequenceOf(split.candidateName, split.motherName, split.fatherName)
+            .flatMap { WHITESPACE.split(it.trim()) }
+            .filter { it.isNotBlank() }
+            .toList()
+        val matchesSwapped = swappedTokens == pdfTokens
+        if (!matchesDirect && !matchesSwapped) return record
         return record.copy(
             candidateName = normalizeWhitespace(split.candidateName),
             fatherName = normalizeWhitespace(split.fatherName),

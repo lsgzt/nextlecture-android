@@ -180,7 +180,14 @@ class StudentDirectoryManager(
             if (savedName.isBlank()) return@run null
             val nameCandidates = directory.filter { candidate ->
                 val fullName = normalizeStudentName(candidate.candidateName)
-                fullName == savedName || fullName.startsWith("$savedName ")
+                // fullName == savedName: exact. fullName.startsWith("$savedName "):
+                // saved profile held a shorter name. savedName.startsWith("$fullName "):
+                // saved profile held a COMBINED name (historic parser bug glued
+                // father/mother onto the student's name) — re-link it to the
+                // clean official record so the profile heals itself.
+                fullName == savedName ||
+                    fullName.startsWith("$savedName ") ||
+                    savedName.startsWith("$fullName ")
             }
             val groupCandidates = nameCandidates.filter { it.group.equals(current.studentGroup, ignoreCase = true) }
             val subsectionCandidates = nameCandidates.filter { it.subsection.equals(current.studentSubsection, ignoreCase = true) }
