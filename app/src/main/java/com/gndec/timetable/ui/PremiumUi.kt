@@ -98,6 +98,7 @@ fun PremiumScreenBackground(content: @Composable () -> Unit) {
 fun PremiumBrandHeader(
     group: String,
     greeting: String,
+    studentName: String = "",
     title: String = "Home",
     onSettings: () -> Unit,
     onProfile: () -> Unit,
@@ -118,6 +119,14 @@ fun PremiumBrandHeader(
         }
         Spacer(Modifier.height(2.dp))
         Text(greeting, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
+        if (studentName.isNotBlank()) {
+            Text(
+                studentName,
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
     }
 }
 

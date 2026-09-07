@@ -43,6 +43,19 @@ interface TimetableSnapshotDao {
 
     @Query("DELETE FROM timetable_snapshots WHERE attendanceDate < :beforeDate")
     suspend fun deleteBefore(beforeDate: String)
+
+    /**
+     * Purges the whole week [from, to] (inclusive, ISO dates) for ALL groups so a
+     * freshly parsed timetable can never mix with rows saved from an older
+     * document: upsert-by-key alone would keep every old lecture whose slot,
+     * subject or venue no longer matches the new document.
+     */
+    @Query("DELETE FROM timetable_snapshots WHERE attendanceDate BETWEEN :from AND :to")
+    suspend fun deleteForDateRange(from: String, to: String)
+
+    /** Current-week snapshots of groups other than [keep] — dead weight after a group change. */
+    @Query("DELETE FROM timetable_snapshots WHERE groupName != :keep AND attendanceDate BETWEEN :from AND :to")
+    suspend fun deleteCurrentWeekForOtherGroups(keep: String, from: String, to: String)
 }
 
 @Dao

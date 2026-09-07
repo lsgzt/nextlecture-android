@@ -216,6 +216,13 @@ class RefreshManager(
 
     private suspend fun saveCurrentWeekSnapshots(entities: List<LectureEntity>, fetchId: Long) {
         val monday = LocalDate.now().minusDays((LocalDate.now().dayOfWeek.value - 1).toLong())
+        val sunday = monday.plusDays(6)
+        // Purge the ENTIRE current week first: snapshots are upserted by lecture
+        // key, so a re-published document would otherwise leave every old
+        // lecture whose slot/subject/venue changed (or vanished) still in the
+        // week — the attendance screen then showed old and new lectures mixed.
+        // Past weeks are kept untouched (attendance history).
+        db.timetableSnapshotDao().deleteForDateRange(monday.toString(), sunday.toString())
         val snapshots = entities.map { lecture ->
             val date = monday.plusDays((lecture.dayOfWeek - 1).toLong())
             TimetableSnapshotEntity(
@@ -249,6 +256,13 @@ class RefreshManager(
         val target = if (db.lectureDao().countForGroup(newGroup) > 0) newGroup
         else GroupMatcher.matchGroup(db.lectureDao().distinctGroups(), newGroup) ?: return false
         settings.setGroup(target)
+        // The previous group's CURRENT-WEEK snapshot rows are a cache of the
+        // timetable the student moved away from — drop them so nothing from the
+        // old selection can resurface (past weeks stay as attendance history).
+        val monday = LocalDate.now().minusDays((LocalDate.now().dayOfWeek.value - 1).toLong())
+        db.timetableSnapshotDao().deleteCurrentWeekForOtherGroups(
+            target, monday.toString(), monday.plusDays(6).toString()
+        )
         val cfg = settings.flow.first()
         scheduler.rescheduleAll(db, target, ReminderConfig.from(cfg))
         return true

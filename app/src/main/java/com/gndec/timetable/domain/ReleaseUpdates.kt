@@ -40,7 +40,7 @@ class ReleaseUpdateManager(
 ) {
     companion object {
         const val RELEASES_API_URL = "https://api.github.com/repos/lsgzt/nextlecture-android/releases/latest"
-        const val DOWNLOAD_URL = "https://github.com/lsgzt/nextlecture-android/releases/latest/download/gndec-timetable.apk"
+        const val DOWNLOAD_URL = "https://nextlecture.vercel.app/download"
         private const val CHECK_INTERVAL_MS = 6L * 60L * 60L * 1000L
 
         fun installedMarker(): String = if (compareMarkers(BuildConfig.RELEASE_MARKER, BuildConfig.VERSION_NAME) >= 0) {

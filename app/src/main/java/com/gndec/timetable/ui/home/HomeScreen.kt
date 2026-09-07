@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.map
 import com.gndec.timetable.data.db.LectureEntity
 import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.domain.ErpNoticeManager
@@ -112,6 +113,10 @@ fun HomeScreen(
         hour < 17 -> "Good afternoon."
         else -> "Good evening."
     }
+    val studentName by remember {
+        container.settings.flow
+            .map { settings -> settings.studentName.trim() }
+    }.collectAsStateWithLifecycle(initialValue = "")
     val dateLabel = Instant.ofEpochMilli(state.nowMillis).atZone(ZoneId.systemDefault()).let {
         "${it.dayOfWeek.name.lowercase().replaceFirstChar(Char::uppercase)} ${it.dayOfMonth} ${it.month.name.lowercase().replaceFirstChar(Char::uppercase)}"
     }
@@ -137,6 +142,7 @@ fun HomeScreen(
                     PremiumBrandHeader(
                         group = state.group ?: "ITB2",
                         greeting = greeting,
+                        studentName = studentName,
                         onSettings = onOpenSettings,
                         onProfile = onOpenProfile,
                         modifier = androidx.compose.ui.Modifier.itemEntrance(0)
@@ -333,7 +339,7 @@ private fun ReleaseUpdateCard(
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Text("UPDATE AVAILABLE · RELEASE ${releaseUpdate.latestMarker}", color = GndecOrange, style = MaterialTheme.typography.labelMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, letterSpacing = 1.1.sp)
             Text(releaseUpdate.releaseName.ifBlank { "A newer NextLecture build is ready" }, style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-            Text("Download the latest APK from GitHub to get the newest fixes and features.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            Text("Download the latest APK from nextlecture.vercel.app to get the newest fixes and features.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             androidx.compose.material3.TextButton(onClick = onDownload) { Text("Download update") }
         }
     }
