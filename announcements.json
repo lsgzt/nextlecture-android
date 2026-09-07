@@ -1,4 +1,13 @@
 {
   "version": 1,
-  "announcements": []
+  "announcements": [
+    {
+      "id": "doc-submit-2026-09-09",
+      "title": "Document Submission Deadline",
+      "message": "Submit your original documents before 9 September",
+      "publishedAt": "2026-09-07T05:00:00Z",
+      "type": "info",
+      "active": true
+    }
+  ]
 }
