@@ -56,6 +56,9 @@ interface TimetableSnapshotDao {
     /** Current-week snapshots of groups other than [keep] — dead weight after a group change. */
     @Query("DELETE FROM timetable_snapshots WHERE groupName != :keep AND attendanceDate BETWEEN :from AND :to")
     suspend fun deleteCurrentWeekForOtherGroups(keep: String, from: String, to: String)
+
+    @Query("DELETE FROM timetable_snapshots")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -68,6 +71,9 @@ interface MetaDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun put(meta: TimetableMetaEntity)
+
+    @Query("DELETE FROM timetable_meta")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -77,6 +83,9 @@ interface AiCacheDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun put(e: AiCacheEntity)
+
+    @Query("DELETE FROM ai_cache")
+    suspend fun deleteAll()
 }
 
 @Dao

@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore by preferencesDataStore(name = "settings")
@@ -67,7 +68,7 @@ data class AppSettings(
         const val DEFAULT_PYQ_RAG_BACKEND_URL = "https://gndec-pyq-rag-api.vercel.app"
         const val DEFAULT_HOLIDAY_BACKEND_URL = "https://gndec-pyq-rag-api-lsgzts-projects.vercel.app"
         const val DEFAULT_SOURCE_URL =
-            "https://appsc.gndec.ac.in/sites/default/files/2026-08/23_08_2026%20FINAL_FILE%20R4_subgroups_days_horizontal.html"
+            "https://appsc.gndec.ac.in/sites/default/files/2026-09/06_09_2026%20ON%20WEBSITE_subgroups_days_horizontal.html"
     }
 }
 
@@ -120,6 +121,7 @@ class SettingsManager(private val context: Context) {
         val LAST_RELEASE_CHECKED_AT = longPreferencesKey("last_release_checked_at")
         val LAST_RELEASE_NOTIFIED_MARKER = stringPreferencesKey("last_release_notified_marker")
         val ATTENDANCE_TARGET = floatPreferencesKey("attendance_target")
+        val LAST_INSTALLED_VERSION_CODE = intPreferencesKey("last_installed_version_code")
     }
 
     val flow: Flow<AppSettings> = context.dataStore.data.map { p ->
@@ -255,6 +257,16 @@ class SettingsManager(private val context: Context) {
     }
     suspend fun setReleaseNotifiedMarker(marker: String) = context.dataStore.edit { it[K.LAST_RELEASE_NOTIFIED_MARKER] = marker.trim() }
     suspend fun setAttendanceTarget(value: Float) = context.dataStore.edit { it[K.ATTENDANCE_TARGET] = value.coerceIn(50f, 100f) }
+
+    /** Android versionCode of the last build that finished startup migration. 0 = never recorded. */
+    suspend fun getLastInstalledVersionCode(): Int {
+        val prefs = context.dataStore.data
+        return kotlinx.coroutines.flow.first(prefs)[K.LAST_INSTALLED_VERSION_CODE] ?: 0
+    }
+
+    suspend fun setLastInstalledVersionCode(code: Int) =
+        context.dataStore.edit { it[K.LAST_INSTALLED_VERSION_CODE] = code }
+
 
     private fun normalizeGeminiModel(value: String?): String {
         val model = value?.trim().orEmpty()
