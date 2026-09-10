@@ -2,18 +2,10 @@
   "version": 1,
   "announcements": [
     {
-      "id": "website-format-change-2026-09-07",
-      "title": "⚠️ Official website format change — timetable temporarily unavailable",
-      "message": "The college's official website has recently changed its timetable format, which has caused NextLecture's timetable fetching functionality to fail unexpectedly. We are working on a prompt fix and will restore automatic timetable updates as soon as possible. In the meantime, please refer to the official college website for the latest timetable.",
-      "publishedAt": "2026-09-07T11:00:00Z",
-      "type": "warn",
-      "active": true
-    },
-    {
-      "id": "doc-submit-2026-09-09",
-      "title": "⚠️ Submit original documents by 9 September",
-      "message": "All students must submit their original documents to the college administrative office by 9 September for verification. Please bring the required documents during office hours to complete your registration. Failure to submit documents on time may affect your enrollment status.",
-      "publishedAt": "2026-09-07T10:00:00Z",
+      "id": "update-app-and-clear-data-2026-09-10",
+      "title": "⚠️ NextLecture app users: update and clear app data if needed",
+      "message": "Please install the latest NextLecture update from Google Play or the APK release. If the timetable still does not display correctly after updating, clear the app's data (Settings → Apps → NextLecture → Storage → Clear data) and reopen the app; the timetable fetching issue should be resolved.",
+      "publishedAt": "2026-09-10T12:00:00Z",
       "type": "warn",
       "active": true
     }
