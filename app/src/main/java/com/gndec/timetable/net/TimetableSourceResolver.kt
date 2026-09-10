@@ -51,7 +51,8 @@ class TimetableSourceResolver(
 
     companion object {
         const val OFFICIAL_TIMETABLE_INDEX_URL = "https://appsc.gndec.ac.in/time_tables"
-        const val CURRENT_FALLBACK_URL = "https://appsc.gndec.ac.in/sites/default/files/2026-08/23_08_2026%20FINAL_FILE%20R4_subgroups_days_horizontal.html"
+        // Updated 2026-09-06: college republished plain-text FET export (no span.subject dialect).
+        const val CURRENT_FALLBACK_URL = "https://appsc.gndec.ac.in/sites/default/files/2026-09/06_09_2026%20ON%20WEBSITE_subgroups_days_horizontal.html"
 
         fun isAllowedTimetableUrl(raw: String): Boolean {
             val parsed = raw.trim().toHttpUrlOrNull() ?: return false

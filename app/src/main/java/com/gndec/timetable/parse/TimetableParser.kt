@@ -30,14 +30,15 @@ data class RawLecture(
 /**
  * Multi-group FET timetable parser covering every dialect GNDEC publishes:
  *
- *  Dialect A (appsc 1st-year, CE, ME): structured cells with `span.subject`,
- *  `div.teacher`, `div.room`, `div.studentsset`, `span.activitytag`; cells may
- *  embed a nested "detailed" table with parallel activities.
+ *  Dialect A (older appsc 1st-year, CE, ME structured exports): cells with
+ *  `span.subject`, `div.teacher`, `div.room`, `div.studentsset`,
+ *  `span.activitytag`; cells may embed a nested "detailed" table with
+ *  parallel activities.
  *
- *  Dialect B (CSE, IT, EE, ECE dept exports): plain-text cells whose lines
- *  ("D2 CS A1 / CA T / Pf. Harmanpreet Kaur (HPK) / G16") are separated by
- *  `<br/>` or nested table rows; CSE adds a colspan group-name header row and
- *  range labels ("08:30-09:30").
+ *  Dialect B (CSE/IT/EE/ECE dept exports + **2026-09+ appsc plain-text**):
+ *  plain-text cells whose lines ("MEA, RAI / MANUFACTURING PRACTICES P /
+ *  WORKSHOPS") are separated by `<br/>` or nested table rows. CSE may add a
+ *  colspan group-name header row and range labels ("08:30-09:30").
  *
  * Robustness rules baked in (validated against the live 2026 documents):
  *  - only DIRECT child <td>s of a row are grid cells — nested tables must not
@@ -46,10 +47,13 @@ data class RawLecture(
  *    to the afternoon slot; CE's "8.30 AM (1ST)" style is understood;
  *  - "-x-", "---" and blank cells are free slots, never lectures;
  *  - day headers may be full names or positional single letters (M/T/W/TH/F).
+ *  - 2026-09 appsc dropped all structured spans; dialect B must classify
+ *    first-year section codes (MEA/CEA/…), free-form rooms (WORKSHOPS,
+ *    "CGL LAB ME DEPT", "A6 (AUTOMOBILE BLOCK)") and teacher prefixes.
  */
 object TimetableParser {
 
-    const val PARSER_VERSION = 2
+    const val PARSER_VERSION = 3
     const val SLOT_MINUTES = 60
 
     private val TIME_IN_LABEL = Regex("""(\d{1,2})[.:](\d{2})(?:\s*([AaPp][Mm]))?""")
@@ -57,20 +61,31 @@ object TimetableParser {
         "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"
     )
     private val KNOWN_TAGS = setOf("L", "P", "T")
-    private val WS = Regex("\\s+")
+    private val WS = Regex("""\s+""")
     private val BR = Regex("""<br\s*/?>""", RegexOption.IGNORE_CASE)
 
     // Dialect-B classification helpers.
     private val EMPTY_CELL_TEXT = setOf("-x-", "---", "-", "x", "--", "not available", "na", "n/a")
-    private val TEACHER_PREFIX = Regex("""^(Pf|Dr|Mr|Mrs|Ms|Er|Prof|Ern)\.?\s+""")
+    private val TEACHER_PREFIX = Regex("""^(Pf|Dr|Mr|Mrs|Ms|Er|Prof|Ern)\.?\s+""", RegexOption.IGNORE_CASE)
     private val TEACHER_INITIALS = Regex("""^[A-Z]{2,6}((\s*,\s*|\s+)[A-Z]{2,6})*$""")
     private val TEACHER_PAREN = Regex("""\([A-Za-z]{2,8}\)\s*$""")
     private val ROOM_SHORT = Regex("""^[A-Z]{1,3}\s?-?\d{1,3}[A-Z]?$""")
     private val ROOM_LAB = Regex("""^[A-Z&]{2,5}/L(\([A-Z]{1,6}\))?$""")
     private val ROOM_TOKEN = Regex("""^[A-Z]{1,3}\s?-?\d{1,3}[A-Z]?(?:/L)?$""")
-    private val TYPE_SUFFIX = Regex("""[\s.]+([LPT])\.?\s*$""")
+    // Free-form venues from 2026-09 appsc plain-text exports.
+    private val ROOM_FREEFORM = Regex(
+        """(?i)^(WORKSHOPS?|PHY\s*LAB|CHEM\s*LAB|COMP\s*LAB(\s+[A-Z]{1,4})?|CGL\s*LAB(\s+[A-Z\s]+)?|[A-Z]\d+\s*\([^)]+\)|[A-Z]{1,3}\d{1,3}\s*\([^)]+\)|.+\s+LAB(\s+[A-Z\s]+)?)$"""
+    )
+    // Senior dialect tokens + first-year section codes (MEA1, CEA2, ITB2, RAI1…).
     private val GROUP_TOKEN = Regex("""^(D[1-4]|M[123]|PHD)[A-Z0-9]*$""")
+    private val FY_SECTION_TOKEN = Regex(
+        """^(ME[AB]|CE[AB]|EE[AB]|EC[AB]|IT[AB]?|CS[AB]?|RAI|ECBM)[0-9A-Z]*$""",
+        RegexOption.IGNORE_CASE
+    )
     private val RANGE_TIME = Regex("""^\s*\d{1,2}[.:]\d{2}\s*-\s*\d{1,2}[.:]\d{2}\s*$""")
+    private val TYPE_SUFFIX = Regex("""[\s.]+([LPT])\.?\s*$""")
+    // Subject lines often end with " L" / " P" / " T" (appsc plain text).
+    private val SUBJECT_WITH_TYPE = Regex("""^(.+?)\s+([LPT])\.?\s*$""")
 
     /**
      * Parse the full multi-group document.
@@ -265,10 +280,10 @@ object TimetableParser {
     }
 
     /**
-     * Dialect-B extraction (CSE/IT/EE/ECE): lines are nested-table rows or
-     * <br/> segments — [students set?, subject+type, teacher?, room?]. Each line
-     * is classified by shape; the first line that is neither teacher, room nor
-     * students-set becomes the subject.
+     * Dialect-B extraction (CSE/IT/EE/ECE + 2026-09 appsc plain text): lines are
+     * nested-table rows or <br/> segments — [students set?, subject+type,
+     * teacher?, room?]. Each line is classified by shape; the first line that is
+     * neither teacher, room nor students-set becomes the subject.
      */
     private fun extractDialectBCell(
         td: Element, group: String, day: Int, start: Int, end: Int, rawText: String
@@ -297,21 +312,30 @@ object TimetableParser {
             val low = line.lowercase()
             when {
                 low in EMPTY_CELL_TEXT -> Unit
+                // Students-set first so first-year codes (MEA, CEA, …) never become teachers.
+                isStudentsSetLine(line, group) -> Unit
                 teacher == null && isTeacherLine(line) -> teacher = line
                 venue == null && isRoomLine(line) -> venue = line
-                isStudentsSetLine(line, group) -> Unit
                 else -> subjects.add(line)
             }
         }
 
         var subject: String? = null
         var tag: String? = null
-        val subjectLine = subjects.firstOrNull()
+        // Prefer a line that ends with L/P/T as the real subject (appsc plain-text style).
+        val typed = subjects.firstOrNull { SUBJECT_WITH_TYPE.matches(it.trim()) }
+        val subjectLine = typed ?: subjects.firstOrNull()
         if (subjectLine != null) {
-            val typeMatch = TYPE_SUFFIX.find(subjectLine)
-            if (typeMatch != null) {
-                tag = typeMatch.groupValues[1].takeIf { it in KNOWN_TAGS }
-                subject = subjectLine.substringBefore(typeMatch.value).trim().ifEmpty { null }
+            val withType = SUBJECT_WITH_TYPE.find(subjectLine.trim())
+            if (withType != null) {
+                subject = withType.groupValues[1].trim().ifEmpty { null }
+                tag = withType.groupValues[2].uppercase().takeIf { it in KNOWN_TAGS }
+            } else {
+                val typeMatch = TYPE_SUFFIX.find(subjectLine)
+                if (typeMatch != null) {
+                    tag = typeMatch.groupValues[1].takeIf { it in KNOWN_TAGS }
+                    subject = subjectLine.substringBefore(typeMatch.value).trim().ifEmpty { null }
+                }
             }
             if (subject == null) subject = subjectLine
         }
@@ -333,11 +357,17 @@ object TimetableParser {
 
     private fun isTeacherLine(line: String): Boolean {
         val t = line.trim()
-        if (t.length < 2 || t.length > 80) return false
+        if (t.length < 2 || t.length > 100) return false
+        // First-year section codes must never match as initials-style teachers.
+        val parts = t.split("·", ",").map { it.trim() }.filter { it.isNotEmpty() }
+        if (parts.isNotEmpty() && parts.all {
+            val u = it.uppercase()
+            GROUP_TOKEN.matches(u) || FY_SECTION_TOKEN.matches(u)
+        }) return false
         if (TEACHER_PREFIX.containsMatchIn(t)) return true
         if (TEACHER_PAREN.containsMatchIn(t) && !t.contains('/')) return true
         // "KSK", "KSK, GS", "NSG, HKA" — initials, optionally several teachers.
-        return t.split("·").map { it.trim() }.filter { it.isNotEmpty() }.all { TEACHER_INITIALS.matches(it) }
+        return parts.all { TEACHER_INITIALS.matches(it) }
     }
 
     private fun isRoomLine(line: String): Boolean {
@@ -345,17 +375,29 @@ object TimetableParser {
         val segments = line.trim().split("·").map { it.trim() }.filter { it.isNotEmpty() }
         if (segments.isEmpty() || segments.size > 4) return false
         return segments.all { t ->
-            t.length in 2..20 && (ROOM_SHORT.matches(t) || ROOM_LAB.matches(t) || ROOM_TOKEN.matches(t))
+            t.length in 2..40 && (
+                ROOM_SHORT.matches(t) ||
+                ROOM_LAB.matches(t) ||
+                ROOM_TOKEN.matches(t) ||
+                ROOM_FREEFORM.matches(t)
+            )
         }
     }
 
     private fun isStudentsSetLine(line: String, group: String): Boolean {
-        val n = line.replace(Regex("[\\s·,]+"), "").uppercase()
+        val n = line.replace(Regex("""[\s·,]+"""), "").uppercase()
         if (n.isEmpty()) return false
-        val g = group.replace(Regex("[\\s_\\-]"), "").uppercase()
-        // Every token must look like a group code (D2…, M1…, PHD…).
-        val tokens = line.split(Regex("[\\s·,]+")).filter { it.isNotBlank() }
-        if (tokens.isNotEmpty() && tokens.all { GROUP_TOKEN.matches(it.uppercase()) }) return true
+        val g = group.replace(Regex("""[\s_\-]"""), "").uppercase()
+        // Every token must look like a group / section code.
+        val tokens = line.split(Regex("""[\s·,]+""")).filter { it.isNotBlank() }
+        if (tokens.isNotEmpty() && tokens.all {
+            val u = it.uppercase()
+            GROUP_TOKEN.matches(u) || FY_SECTION_TOKEN.matches(u)
+        }) return true
+        // "MEA, RAI" style joint sets — tokens that are short section codes.
+        if (tokens.size in 1..4 && tokens.all { it.length in 2..8 && FY_SECTION_TOKEN.matches(it.uppercase()) }) {
+            return true
+        }
         return g.length >= 3 && n.startsWith(g.substring(0, g.length.coerceAtMost(4))) && n != g
     }
 
