@@ -261,7 +261,7 @@ class SettingsManager(private val context: Context) {
     /** Android versionCode of the last build that finished startup migration. 0 = never recorded. */
     suspend fun getLastInstalledVersionCode(): Int {
         val prefs = context.dataStore.data
-        return kotlinx.coroutines.flow.first(prefs)[K.LAST_INSTALLED_VERSION_CODE] ?: 0
+        return prefs.first()[K.LAST_INSTALLED_VERSION_CODE] ?: 0
     }
 
     suspend fun setLastInstalledVersionCode(code: Int) =
