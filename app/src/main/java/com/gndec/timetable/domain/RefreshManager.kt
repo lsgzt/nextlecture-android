@@ -125,39 +125,25 @@ class RefreshManager(
 
         val cfg = settings.flow.first()
         var relinkedTo: String? = null
-        val rawForGroup: List<com.gndec.timetable.parse.RawLecture>? = group?.let { wanted ->
-            parsed[wanted] ?: if (cfg.academicYear >= 2) {
-                // Self-heal: the saved group no longer exists in the departmental
-                // document (migrated 1st-year profile, renamed revision, appsc
-                // leftover). Re-link the group recorded at section-pick time
-                // (studentSubsection) — only a real D2/D3/D4 group can match.
-                val healed = GroupMatcher.relinkCandidate(parsed.keys, cfg.studentSubsection)
-                if (healed != null) {
-                    relinkedTo = healed
-                    parsed[healed]
-                } else {
-                    null
-                }
-            } else {
-                null
-            }
+        // Resolve the caller's group against the document with tolerant matching
+        // (exact name, then normalized). Year-1 profiles previously required an
+        // exact map key and discarded a whole successful parse when the saved
+        // label drifted — which left an empty cache after upgrade wipe.
+        val matchedName: String? = group?.let { wanted ->
+            GroupMatcher.matchGroup(parsed.keys, wanted)
+                ?: if (cfg.academicYear >= 2) {
+                    GroupMatcher.relinkCandidate(parsed.keys, cfg.studentSubsection)?.also { relinkedTo = it }
+                } else null
         }
-        if (group != null && rawForGroup == null) {
-            val hint = if (cfg.academicYear >= 2) {
-                "Open Settings → Change group (or Profile → Academic year) and pick your section from the current official document."
-            } else {
-                "Open Profile and pick your section again from the latest official timetable."
-            }
-            return RefreshResult.Failed(
-                "Your group \"$group\" is not in the current official timetable. $hint",
-                hadCache
-            )
-        }
+        val rawForGroup: List<com.gndec.timetable.parse.RawLecture>? =
+            matchedName?.let { parsed[it] }
+
         // Validation: refuse catastrophically small parses — never overwrite a good cache with junk
         val total = parsed.values.sumOf { it.size }
-        if (total < 10 || (rawForGroup != null && rawForGroup.size < 3)) {
+        if (total < 10) {
             return RefreshResult.Failed("timetable validation failed (implausibly few lectures)", hadCache)
         }
+        val groupTooSmall = rawForGroup != null && rawForGroup.size < 3
 
         val route = AiNormalizer.AiRoute(
             enabled = cfg.aiEnabled,
@@ -197,6 +183,25 @@ class RefreshManager(
         val rescheduleGroup = relinkedTo ?: group
         if (rescheduleGroup != null && rawForGroup != null) {
             scheduler.rescheduleAll(db, rescheduleGroup, ReminderConfig.from(cfg))
+        }
+
+        // Document is already persisted above so Change-group / other sections work.
+        if (group != null && rawForGroup == null) {
+            val hint = if (cfg.academicYear >= 2) {
+                "Open Settings → Change group (or Profile → Academic year) and pick your section from the current official document."
+            } else {
+                "Open Profile / Settings → Change group and pick your section from the downloaded timetable."
+            }
+            return RefreshResult.Failed(
+                "Your group \"$group\" is not in the current official timetable. $hint",
+                hadCachedTimetable = true
+            )
+        }
+        if (groupTooSmall) {
+            return RefreshResult.Failed(
+                "Group \"$matchedName\" only has ${rawForGroup!!.size} lectures in the official file — check the published timetable.",
+                hadCachedTimetable = true
+            )
         }
         return RefreshResult.Success(rawForGroup?.size ?: total)
     }
