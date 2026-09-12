@@ -101,3 +101,4 @@ The app checks the latest stable GitHub release from `https://api.github.com/rep
 Android `versionName` is currently `1.6.0`, while `BuildConfig.RELEASE_MARKER` is the separate GitHub release marker `1.6`. The two values are compared numerically, so a GitHub release tagged `1.6` is treated as the same version and a future marker such as `1.7` will be treated as newer. Update both version values in `app/build.gradle.kts` whenever publishing a new release.
 
 When a newer stable release is found, Home and Settings show an update card and the app may send one update notification per release marker. **Download update** opens `https://github.com/lsgzt/nextlecture-android/releases/latest/download/gndec-timetable.apk`. Android still requires the user to confirm the APK installation.
+.
