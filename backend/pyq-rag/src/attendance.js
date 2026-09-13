@@ -9,6 +9,8 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
 
 const text = (max) => z.string().trim().max(max).default('');
 
+const attendanceLectureType = z.enum(['lecture', 'practical', 'tutorial', 'unspecified']);
+
 export const attendanceSessionSchema = z.object({
   installationId: z.string().trim().min(16).max(200),
   profileFingerprint: z.string().trim().min(16).max(128),
@@ -28,6 +30,9 @@ export const attendanceRecordSchema = z.object({
   venue: text(240),
   startMinutes: z.number().int().min(0).max(1439),
   endMinutes: z.number().int().min(1).max(1440),
+  // Older Android clients do not send this field. Preserve their marks as
+  // unspecified rather than guessing a category.
+  lectureType: attendanceLectureType.default('unspecified'),
 }).strict().refine((value) => value.endMinutes > value.startMinutes, {
   path: ['endMinutes'],
   message: 'endMinutes must be after startMinutes',
@@ -175,7 +180,7 @@ export async function listAttendance(studentId, query) {
   if (from > to) throw new Error('attendance date range is invalid');
   const { data, error } = await getDb()
     .from('attendance_records')
-    .select('attendance_date,lecture_key,status,subject,teacher,venue,start_minutes,end_minutes,created_at,updated_at')
+    .select('attendance_date,lecture_key,status,subject,teacher,venue,start_minutes,end_minutes,lecture_type,created_at,updated_at')
     .eq('student_id', studentId)
     .gte('attendance_date', from)
     .lte('attendance_date', to)
@@ -209,11 +214,12 @@ export async function upsertAttendance(studentId, input) {
     venue: parsed.venue,
     start_minutes: parsed.startMinutes,
     end_minutes: parsed.endMinutes,
+    lecture_type: parsed.lectureType,
   };
   const { data, error } = await db
     .from('attendance_records')
     .upsert(payload, { onConflict: 'student_id,attendance_date,lecture_key' })
-    .select('attendance_date,lecture_key,status,subject,teacher,venue,start_minutes,end_minutes,created_at,updated_at')
+    .select('attendance_date,lecture_key,status,subject,teacher,venue,start_minutes,end_minutes,lecture_type,created_at,updated_at')
     .single();
   if (error) throw new Error(`attendance record write failed: ${error.message}`);
   if (!existing.data || existing.data.status !== parsed.status) {
