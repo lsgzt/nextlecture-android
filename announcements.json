@@ -2,11 +2,11 @@
   "version": 1,
   "announcements": [
     {
-      "id": "update-app-and-clear-data-2026-09-10",
-      "title": "⚠️ NextLecture app users: update and clear app data if needed",
-      "message": "Please install the latest NextLecture update from the repository's GitHub Releases page (download the APK from the repository). If the timetable still does not display correctly after updating, clear the app's data (Settings → Apps → NextLecture → Storage → Clear data) and reopen the app; the timetable fetching issue should then be resolved.",
-      "publishedAt": "2026-09-10T12:00:00Z",
-      "type": "warn",
+      "id": "mse1-proposed-dates-2026-09",
+      "title": "Proposed MSE-1 dates",
+      "message": "Dear Students\n\nProposed dates for MSE-1 are as follows:\n1) 25/09/2026 - Chemistry (Physics)\n2) 28/09/2026 - Mathematics-II\n3) 29/09/2026 - PPS\n4) 30/09/2026 - BEEE (EDG)\n5) 01/10/2026 - English (Economics)\n\nTimings and venue of the exams will be shared by 24/09/2026.",
+      "publishedAt": "2026-09-10T16:00:00Z",
+      "type": "notice",
       "active": true
     }
   ]
