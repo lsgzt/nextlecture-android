@@ -47,7 +47,8 @@ class AttendanceManager(
                     teacher = lecture.teacher.orEmpty(),
                     venue = lecture.venue.orEmpty(),
                     startMinutes = lecture.startMinutes,
-                    endMinutes = lecture.endMinutes
+                    endMinutes = lecture.endMinutes,
+                    lectureType = normalizeLectureType(lecture.lectureType)
                 )
             )
         }
@@ -122,6 +123,13 @@ class AttendanceManager(
     }
 
     companion object {
+        fun normalizeLectureType(value: String?): String = when (value?.trim()?.lowercase()) {
+            "l", "lecture", "theory" -> "lecture"
+            "p", "practical", "lab", "laboratory" -> "practical"
+            "t", "tutorial" -> "tutorial"
+            else -> "unspecified"
+        }
+
         fun lectureKey(date: LocalDate, lecture: LectureEntity): String {
             val stable = listOf(
                 date.toString(),

@@ -39,6 +39,7 @@ data class AttendanceRecord(
     val venue: String = "",
     @SerialName("start_minutes") val startMinutes: Int,
     @SerialName("end_minutes") val endMinutes: Int,
+    @SerialName("lecture_type") val lectureType: String = "unspecified",
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null
 )
@@ -52,7 +53,8 @@ data class AttendanceRecordRequest(
     val teacher: String = "",
     val venue: String = "",
     @SerialName("startMinutes") val startMinutes: Int,
-    @SerialName("endMinutes") val endMinutes: Int
+    @SerialName("endMinutes") val endMinutes: Int,
+    val lectureType: String = "unspecified"
 )
 
 @Serializable

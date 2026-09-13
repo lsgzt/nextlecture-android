@@ -9,10 +9,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -21,6 +24,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -155,12 +162,41 @@ internal fun SubjectSummaryCard(records: List<AttendanceRecord>, target: Float) 
             } else {
                 subjectGroups.forEach { (subject, subjectRecords) ->
                     val summary = calculateSummary(subjectRecords, target.toDouble())
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(subject, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("${summary.present} present · ${summary.absent} absent", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                    var expanded by remember(subject) { mutableStateOf(false) }
+                    Card(
+                        onClick = { expanded = !expanded },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f)),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(subject, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text("${summary.present} present · ${summary.absent} absent", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                                }
+                                Text(summary.percentage?.let { "${"%.1f".format(it)}%" } ?: "—", color = if ((summary.percentage ?: 100.0) < target) MaterialTheme.colorScheme.error else GndecTeal, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = if (expanded) "Hide attendance types" else "Show attendance types", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (expanded) {
+                                val typeOrder = listOf("lecture", "practical", "tutorial", "unspecified")
+                                val typeLabels = mapOf("lecture" to "Lecture", "practical" to "Practical", "tutorial" to "Tutorial", "unspecified" to "Legacy / unclassified")
+                                val groupedTypes = subjectRecords.groupBy { normalizeAttendanceType(it.lectureType) }
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    typeOrder.mapNotNull { type ->
+                                        val typeRecords = groupedTypes[type].orEmpty()
+                                        if (typeRecords.isEmpty()) null else type to calculateSummary(typeRecords, target.toDouble())
+                                    }.forEach { (type, typeSummary) ->
+                                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                            Text(typeLabels[type].orEmpty(), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                                            Text("${typeSummary.present}P · ${typeSummary.absent}A", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                                            Spacer(Modifier.width(10.dp))
+                                            Text(typeSummary.percentage?.let { "${"%.1f".format(it)}%" } ?: "—", color = if ((typeSummary.percentage ?: 100.0) < target) MaterialTheme.colorScheme.error else GndecTeal, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
                         }
-                        Text(summary.percentage?.let { "${"%.1f".format(it)}%" } ?: "—", color = if ((summary.percentage ?: 100.0) < target) MaterialTheme.colorScheme.error else GndecTeal, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -217,4 +253,11 @@ internal fun calculateSummary(records: List<AttendanceRecord>, target: Double): 
         affordableMisses = affordable,
         lecturesToAttend = toAttend
     )
+}
+
+private fun normalizeAttendanceType(value: String?): String = when (value?.trim()?.lowercase()) {
+    "l", "lecture", "theory" -> "lecture"
+    "p", "practical", "lab", "laboratory" -> "practical"
+    "t", "tutorial" -> "tutorial"
+    else -> "unspecified"
 }
