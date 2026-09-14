@@ -55,7 +55,9 @@ import com.gndec.timetable.ui.motion.itemEntrance
 import com.gndec.timetable.ui.motion.motionTween
 import com.gndec.timetable.ui.PremiumAnnouncementCard
 import com.gndec.timetable.ui.PremiumBottomBarContentClearance
-import com.gndec.timetable.ui.PremiumErpNoticeBannerCarousel
+import com.gndec.timetable.ui.PremiumHomeBannerCarousel
+import com.gndec.timetable.ui.holidayHomeBannerItems
+import com.gndec.timetable.ui.toHomeBannerItem
 import com.gndec.timetable.ui.PremiumBrandHeader
 import com.gndec.timetable.ui.PremiumNextLectureCard
 import com.gndec.timetable.ui.PremiumOfflineCard
@@ -89,6 +91,7 @@ fun HomeScreen(
     val fetchState by vm.fetchState.collectAsStateWithLifecycle()
     val announcement by container.announcementManager.latest.collectAsStateWithLifecycle()
     val erpNotices by container.erpNoticeManager.notices.collectAsStateWithLifecycle()
+    val holidays by container.holidayManager.holidays.collectAsStateWithLifecycle()
     val releaseUpdate by container.releaseUpdateManager.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
@@ -122,9 +125,11 @@ fun HomeScreen(
     }
     val updatedText = state.lastFetch?.let { Formatters.freshnessText(it, state.nowMillis).removePrefix("Updated ") } ?: "No sync yet"
     val todayIso = Instant.ofEpochMilli(state.nowMillis).atZone(ZoneId.systemDefault()).toLocalDate().toString()
-    // All homepage notices currently in their banner window (typically ~2 days).
-    // Newest first so the carousel starts on the latest notice.
-    val todayNotices = erpNotices
+    // Holiday banners (today / tomorrow) plus ERP notices in the active window.
+    // Holidays first, then newest ERP notices — all share the same swipeable carousel.
+    val tomorrowIso = Instant.ofEpochMilli(state.nowMillis).atZone(ZoneId.systemDefault()).toLocalDate().plusDays(1).toString()
+    val holidayBanners = holidayHomeBannerItems(holidays, todayIso, tomorrowIso)
+    val erpBannerNotices = erpNotices
         .filter { notice ->
             notice.source != "GNDEC ERP Notice Board" &&
                 notice.bannerStartDate.isNotBlank() &&
@@ -136,6 +141,7 @@ fun HomeScreen(
                 .thenByDescending { it.publishedDate }
                 .thenByDescending { it.id }
         )
+    val homeBanners = holidayBanners + erpBannerNotices.map { it.toHomeBannerItem() }
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         PremiumScreenBackground {
@@ -149,17 +155,23 @@ fun HomeScreen(
                         group = state.group ?: "ITB2",
                         greeting = greeting,
                         studentName = studentName,
+                        title = "NextLecture",
                         onSettings = onOpenSettings,
                         onProfile = onOpenProfile,
                         modifier = androidx.compose.ui.Modifier.itemEntrance(0)
                     )
                 }
-                if (todayNotices.isNotEmpty()) {
+                if (homeBanners.isNotEmpty()) {
                     item(key = "homepage-notices") {
-                        PremiumErpNoticeBannerCarousel(
-                            notices = todayNotices,
-                            onOpen = { notice ->
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(notice.url)))
+                        PremiumHomeBannerCarousel(
+                            items = homeBanners,
+                            onOpen = { item ->
+                                val url = item.url
+                                if (!url.isNullOrBlank()) {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                } else if (item.isHoliday) {
+                                    onOpenNotice()
+                                }
                             },
                             modifier = androidx.compose.ui.Modifier.itemEntrance(1).padding(horizontal = 20.dp).animateItem()
                         )
