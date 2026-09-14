@@ -55,7 +55,7 @@ import com.gndec.timetable.ui.motion.itemEntrance
 import com.gndec.timetable.ui.motion.motionTween
 import com.gndec.timetable.ui.PremiumAnnouncementCard
 import com.gndec.timetable.ui.PremiumBottomBarContentClearance
-import com.gndec.timetable.ui.PremiumErpNoticeBanner
+import com.gndec.timetable.ui.PremiumErpNoticeBannerCarousel
 import com.gndec.timetable.ui.PremiumBrandHeader
 import com.gndec.timetable.ui.PremiumNextLectureCard
 import com.gndec.timetable.ui.PremiumOfflineCard
@@ -122,14 +122,20 @@ fun HomeScreen(
     }
     val updatedText = state.lastFetch?.let { Formatters.freshnessText(it, state.nowMillis).removePrefix("Updated ") } ?: "No sync yet"
     val todayIso = Instant.ofEpochMilli(state.nowMillis).atZone(ZoneId.systemDefault()).toLocalDate().toString()
-    val todayNotice = erpNotices
+    // All homepage notices currently in their banner window (typically ~2 days).
+    // Newest first so the carousel starts on the latest notice.
+    val todayNotices = erpNotices
         .filter { notice ->
             notice.source != "GNDEC ERP Notice Board" &&
                 notice.bannerStartDate.isNotBlank() &&
                 notice.bannerUntilDate.isNotBlank() &&
                 todayIso >= notice.bannerStartDate && todayIso <= notice.bannerUntilDate
         }
-        .maxByOrNull { it.firstSeenAt.ifBlank { it.bannerStartDate } }
+        .sortedWith(
+            compareByDescending<com.gndec.timetable.domain.ErpNotice> { it.firstSeenAt.ifBlank { it.bannerStartDate } }
+                .thenByDescending { it.publishedDate }
+                .thenByDescending { it.id }
+        )
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         PremiumScreenBackground {
@@ -148,11 +154,13 @@ fun HomeScreen(
                         modifier = androidx.compose.ui.Modifier.itemEntrance(0)
                     )
                 }
-                todayNotice?.let { notice ->
-                    item(key = "homepage-notice") {
-                        PremiumErpNoticeBanner(
-                            notice = notice,
-                            onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(notice.url))) },
+                if (todayNotices.isNotEmpty()) {
+                    item(key = "homepage-notices") {
+                        PremiumErpNoticeBannerCarousel(
+                            notices = todayNotices,
+                            onOpen = { notice ->
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(notice.url)))
+                            },
                             modifier = androidx.compose.ui.Modifier.itemEntrance(1).padding(horizontal = 20.dp).animateItem()
                         )
                     }
