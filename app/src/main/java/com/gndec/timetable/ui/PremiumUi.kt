@@ -77,6 +77,12 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private val LightAqua = Color(0xFFE8F6F4)
 private val LightAquaStrong = Color(0xFFD8F0ED)
@@ -321,6 +327,73 @@ fun PremiumErpNoticeBanner(notice: ErpNotice, onClick: () -> Unit, modifier: Mod
                 Text("Tap to open official notice", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
             Icon(Icons.Default.ChevronRight, contentDescription = "Open today’s notice", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/**
+ * Homepage banner for one or more active ERP notices.
+ * Single notice: same card as before. Multiple: horizontal pager with
+ * auto-advance every 4s and manual swipe left/right.
+ */
+@Composable
+fun PremiumErpNoticeBannerCarousel(
+    notices: List<ErpNotice>,
+    onOpen: (ErpNotice) -> Unit,
+    modifier: Modifier = Modifier,
+    autoAdvanceMillis: Long = 4_000L
+) {
+    if (notices.isEmpty()) return
+    if (notices.size == 1) {
+        PremiumErpNoticeBanner(notice = notices.first(), onClick = { onOpen(notices.first()) }, modifier = modifier)
+        return
+    }
+
+    val pagerState = rememberPagerState(pageCount = { notices.size })
+    val scope = rememberCoroutineScope()
+
+    // Auto-advance; restarts whenever the settled page changes (including after a manual swipe).
+    LaunchedEffect(pagerState.settledPage, notices.size) {
+        delay(autoAdvanceMillis)
+        val next = (pagerState.settledPage + 1) % notices.size
+        pagerState.animateScrollToPage(next)
+    }
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxWidth(),
+            beyondViewportPageCount = 1
+        ) { page ->
+            val notice = notices[page]
+            PremiumErpNoticeBanner(
+                notice = notice,
+                onClick = { onOpen(notice) },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            notices.indices.forEach { index ->
+                val selected = pagerState.currentPage == index
+                Box(
+                    Modifier
+                        .padding(horizontal = 3.dp)
+                        .size(if (selected) 8.dp else 6.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (selected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+                        )
+                        .clickable {
+                            scope.launch { pagerState.animateScrollToPage(index) }
+                        }
+                )
+            }
         }
     }
 }
