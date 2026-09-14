@@ -105,7 +105,7 @@ fun PremiumBrandHeader(
     group: String,
     greeting: String,
     studentName: String = "",
-    title: String = "Home",
+    title: String = "NextLecture",
     onSettings: () -> Unit,
     onProfile: () -> Unit,
     modifier: Modifier = Modifier
@@ -303,8 +303,81 @@ fun PremiumAnnouncementCard(announcement: Announcement, modifier: Modifier = Mod
     }
 }
 
+data class HomeBannerItem(
+    val id: String,
+    val eyebrow: String,
+    val title: String,
+    val subtitle: String,
+    val url: String? = null,
+    val isHoliday: Boolean = false,
+)
+
+fun ErpNotice.toHomeBannerItem(): HomeBannerItem = HomeBannerItem(
+    id = "erp:$id",
+    eyebrow = "NEW · GNDEC NOTICE",
+    title = title,
+    subtitle = "Tap to open official notice",
+    url = url.takeIf { it.isNotBlank() },
+    isHoliday = false
+)
+
+/** Today / tomorrow holiday and half-day cards for the homepage banner carousel. */
+fun holidayHomeBannerItems(holidays: List<com.gndec.timetable.domain.Holiday>, todayIso: String, tomorrowIso: String): List<HomeBannerItem> {
+    fun isHalfDay(category: String) = category.equals("Half-day holiday", ignoreCase = true) ||
+        category.contains("half", ignoreCase = true)
+    fun isFullHoliday(category: String) = !isHalfDay(category) && (
+        category.equals("Public holiday", ignoreCase = true) ||
+            category.equals("Restricted holiday", ignoreCase = true) ||
+            category.contains("holiday", ignoreCase = true)
+    )
+
+    val out = mutableListOf<HomeBannerItem>()
+    val today = holidays.firstOrNull { it.date == todayIso }
+    val tomorrow = holidays.firstOrNull { it.date == tomorrowIso }
+
+    if (today != null) {
+        if (isHalfDay(today.category)) {
+            out += HomeBannerItem(
+                id = "holiday-today-${today.id}",
+                eyebrow = "HALF DAY · TODAY",
+                title = "🌤️ Today is a half day",
+                subtitle = today.name.ifBlank { "Official half-day holiday" },
+                isHoliday = true
+            )
+        } else if (isFullHoliday(today.category)) {
+            out += HomeBannerItem(
+                id = "holiday-today-${today.id}",
+                eyebrow = "HOLIDAY · TODAY",
+                title = "🎉 Today is a holiday",
+                subtitle = today.name.ifBlank { "Official college holiday" },
+                isHoliday = true
+            )
+        }
+    }
+    if (tomorrow != null) {
+        if (isHalfDay(tomorrow.category)) {
+            out += HomeBannerItem(
+                id = "holiday-tomorrow-${tomorrow.id}",
+                eyebrow = "HALF DAY · TOMORROW",
+                title = "🌤️ Tomorrow is a half day",
+                subtitle = tomorrow.name.ifBlank { "Official half-day holiday" },
+                isHoliday = true
+            )
+        } else if (isFullHoliday(tomorrow.category)) {
+            out += HomeBannerItem(
+                id = "holiday-tomorrow-${tomorrow.id}",
+                eyebrow = "HOLIDAY · TOMORROW",
+                title = "🎉 Tomorrow is a holiday",
+                subtitle = tomorrow.name.ifBlank { "Official college holiday" },
+                isHoliday = true
+            )
+        }
+    }
+    return out
+}
+
 @Composable
-fun PremiumErpNoticeBanner(notice: ErpNotice, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun PremiumHomeBannerCard(item: HomeBannerItem, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val pressInteraction = remember { MutableInteractionSource() }
     Card(
         onClick = onClick,
@@ -317,24 +390,34 @@ fun PremiumErpNoticeBanner(notice: ErpNotice, onClick: () -> Unit, modifier: Mod
     ) {
         Row(Modifier.padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(38.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f), CircleShape), contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.Campaign, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                Icon(
+                    if (item.isHoliday) Icons.Default.CalendarMonth else Icons.Default.Campaign,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
             }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text("NEW · GNDEC NOTICE", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                Text(item.eyebrow, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                 Spacer(Modifier.height(3.dp))
-                Text(notice.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text("Tap to open official notice", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                Text(item.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(item.subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
-            Icon(Icons.Default.ChevronRight, contentDescription = "Open today’s notice", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(Icons.Default.ChevronRight, contentDescription = "Open banner", tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
+/** Backward-compatible ERP-only banner card. */
+@Composable
+fun PremiumErpNoticeBanner(notice: ErpNotice, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    PremiumHomeBannerCard(item = notice.toHomeBannerItem(), onClick = onClick, modifier = modifier)
+}
+
 /**
- * Homepage banner for one or more active ERP notices.
- * Single notice: same card as before. Multiple: horizontal pager with
- * auto-advance every 4s and manual swipe left/right.
+ * Homepage banner carousel for ERP notices and/or holiday messages.
+ * Single item: one card. Multiple: horizontal pager with auto-advance and swipe.
  */
 @Composable
 fun PremiumErpNoticeBannerCarousel(
@@ -343,19 +426,37 @@ fun PremiumErpNoticeBannerCarousel(
     modifier: Modifier = Modifier,
     autoAdvanceMillis: Long = 4_000L
 ) {
-    if (notices.isEmpty()) return
-    if (notices.size == 1) {
-        PremiumErpNoticeBanner(notice = notices.first(), onClick = { onOpen(notices.first()) }, modifier = modifier)
+    PremiumHomeBannerCarousel(
+        items = notices.map { it.toHomeBannerItem() },
+        onOpen = { item ->
+            val notice = notices.firstOrNull { "erp:${it.id}" == item.id }
+            if (notice != null) onOpen(notice)
+        },
+        modifier = modifier,
+        autoAdvanceMillis = autoAdvanceMillis
+    )
+}
+
+@Composable
+fun PremiumHomeBannerCarousel(
+    items: List<HomeBannerItem>,
+    onOpen: (HomeBannerItem) -> Unit,
+    modifier: Modifier = Modifier,
+    autoAdvanceMillis: Long = 4_000L
+) {
+    if (items.isEmpty()) return
+    if (items.size == 1) {
+        PremiumHomeBannerCard(item = items.first(), onClick = { onOpen(items.first()) }, modifier = modifier)
         return
     }
 
-    val pagerState = rememberPagerState(pageCount = { notices.size })
+    val pagerState = rememberPagerState(pageCount = { items.size })
     val scope = rememberCoroutineScope()
 
     // Auto-advance; restarts whenever the settled page changes (including after a manual swipe).
-    LaunchedEffect(pagerState.settledPage, notices.size) {
+    LaunchedEffect(pagerState.settledPage, items.size) {
         delay(autoAdvanceMillis)
-        val next = (pagerState.settledPage + 1) % notices.size
+        val next = (pagerState.settledPage + 1) % items.size
         pagerState.animateScrollToPage(next)
     }
 
@@ -365,10 +466,10 @@ fun PremiumErpNoticeBannerCarousel(
             modifier = Modifier.fillMaxWidth(),
             beyondViewportPageCount = 1
         ) { page ->
-            val notice = notices[page]
-            PremiumErpNoticeBanner(
-                notice = notice,
-                onClick = { onOpen(notice) },
+            val item = items[page]
+            PremiumHomeBannerCard(
+                item = item,
+                onClick = { onOpen(item) },
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -378,7 +479,7 @@ fun PremiumErpNoticeBannerCarousel(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            notices.indices.forEach { index ->
+            items.indices.forEach { index ->
                 val selected = pagerState.currentPage == index
                 Box(
                     Modifier
