@@ -23,11 +23,11 @@ android {
         applicationId = "com.gndec.timetable"
         minSdk = 26
         targetSdk = 34
-        versionCode = 71
-        versionName = "2.4.35"
+        versionCode = 72
+        versionName = "2.4.36"
         // GitHub release marker is intentionally independent from Android versionName.
         // Update this marker whenever a new APK is published under GitHub Releases.
-        buildConfigField("String", "RELEASE_MARKER", "\"2.4.35\"")
+        buildConfigField("String", "RELEASE_MARKER", "\"2.4.36\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
