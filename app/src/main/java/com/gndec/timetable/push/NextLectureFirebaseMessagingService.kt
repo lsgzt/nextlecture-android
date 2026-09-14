@@ -35,7 +35,7 @@ object FcmRegistration {
     }
 
     private fun registerToken(context: android.content.Context, token: String) {
-        val body = org.json.JSONObject().apply {
+        val body: okhttp3.RequestBody = org.json.JSONObject().apply {
             put("token", token)
             put("appVersion", com.gndec.timetable.BuildConfig.VERSION_NAME)
             put("platform", "android")
@@ -51,5 +51,5 @@ object FcmRegistration {
     }
 }
 
-private fun String.toRequestBody(mediaType: okhttp3.MediaType) =
-    okhttp3.RequestBody.Companion.toRequestBody(mediaType)
+private fun String.toRequestBody(mediaType: okhttp3.MediaType): okhttp3.RequestBody =
+    okhttp3.RequestBody.create(mediaType, this)
