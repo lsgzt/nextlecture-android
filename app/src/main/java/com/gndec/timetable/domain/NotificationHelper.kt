@@ -121,6 +121,35 @@ object NotificationHelper {
         }
     }
 
+    fun showRemoteUpdate(context: Context, type: String, title: String, message: String, eventId: String) {
+        if (!notificationsEnabled(context)) return
+        ensureChannels(context)
+        val notificationId = ("fcm:$type:$eventId").hashCode()
+        val openIntent = PendingIntent.getActivity(
+            context,
+            notificationId,
+            Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = NotificationCompat.Builder(context, CHANNEL_UPDATES)
+            .setSmallIcon(R.drawable.ic_launcher)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setContentIntent(openIntent)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .build()
+        try {
+            NotificationManagerCompat.from(context).notify(notificationId, notification)
+        } catch (_: SecurityException) {
+            // POST_NOTIFICATIONS is disabled at runtime.
+        }
+    }
+
     fun notificationsEnabled(context: Context): Boolean {
         val appNotificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
         val runtimePermissionGranted = Build.VERSION.SDK_INT < 33 ||

@@ -14,6 +14,7 @@ import androidx.work.WorkManager
 import com.gndec.timetable.data.db.TimetableMetaEntity
 import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.domain.NotificationHelper
+import com.gndec.timetable.push.FcmRegistration
 import com.gndec.timetable.work.RefreshWorker
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -35,6 +36,7 @@ class TimetableApp : Application() {
 
         container = AppContainer(this)
         NotificationHelper.ensureChannels(this)
+        FcmRegistration.registerCurrent(this)
 
         // On APK upgrade: invalidate HTTP validators + AI cell cache and force a
         // full re-download/re-parse. Lectures are NOT deleted first — RefreshManager
