@@ -1,11 +1,11 @@
 {
-  "version": 1,
+  "version": 2,
   "announcements": [
     {
-      "id": "mse1-proposed-dates-2026-09",
-      "title": "Proposed MSE-1 dates",
-      "message": "Dear Students\n\nProposed dates for MSE-1 are as follows:\n1) 25/09/2026 - Chemistry (Physics)\n2) 28/09/2026 - Mathematics-II\n3) 29/09/2026 - PPS\n4) 30/09/2026 - BEEE (EDG)\n5) 01/10/2026 - English (Economics)\n\nTimings and venue of the exams will be shared by 24/09/2026.",
-      "publishedAt": "2026-09-10T16:00:00Z",
+      "id": "mse1-date-sheet-2026-09",
+      "title": "MSE-1 Date Sheet",
+      "message": "Chemistry Group:\n25 Sep — Chemistry — 9:15–10:45 AM\n28 Sep — Mathematics-I — 9:15–10:45 AM\n29 Sep — PPS — 9:15–10:45 AM\n30 Sep — BEEE — 9:15–10:45 AM\n01 Oct — English — 9:15–10:45 AM\n\nPhysics Group:\n25 Sep — Physics — 12:45–2:15 PM\n28 Sep — Mathematics-I — 9:15–10:45 AM\n29 Sep — PPS — 9:15–10:45 AM\n30 Sep — EDG — 9:15–10:45 AM\n30 Sep — EDG — 11:00 AM–12:30 PM\n01 Oct — Economics — 12:45–2:15 PM",
+      "publishedAt": "2026-09-13T12:00:00Z",
       "type": "notice",
       "active": true
     }
