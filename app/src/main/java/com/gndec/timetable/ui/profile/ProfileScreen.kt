@@ -22,6 +22,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -361,12 +365,28 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit, onOpenAttendance:
                 }
                 if (branch.isNotBlank()) {
                     item {
+                        val configuration = LocalConfiguration.current
+                        val density = LocalDensity.current
+                        val imeVisible = WindowInsets.ime.getBottom(density) > 0
+                        // Short screens / open keyboard: keep matches above the field so they
+                        // are not covered by the soft keyboard.
+                        val resultsAboveInput = configuration.screenHeightDp < 720 || imeVisible
                         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-                            OutlinedTextField(query, { query = it; manualMode = false }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Search your name") }, leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) }, enabled = !loading)
-                            Spacer(Modifier.height(8.dp))
-                            if (matches.isNotEmpty() && !manualMode && query.trim().length >= 2) {
+                            val showMatches = matches.isNotEmpty() && !manualMode && query.trim().length >= 2
+                            if (resultsAboveInput && showMatches) {
                                 matches.take(12).forEach { record -> CandidateRow(record, matches, onClick = { choose(record) }) }
-                            } else if (directory.isEmpty() && !loading) {
+                                Spacer(Modifier.height(8.dp))
+                            }
+                            OutlinedTextField(query, { query = it; manualMode = false }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Search your name") }, leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) }, enabled = !loading)
+                            if (!resultsAboveInput) {
+                                Spacer(Modifier.height(8.dp))
+                                if (showMatches) {
+                                    matches.take(12).forEach { record -> CandidateRow(record, matches, onClick = { choose(record) }) }
+                                } else if (directory.isEmpty() && !loading) {
+                                    Text("Tap refresh to read the bundled permanent student list for $branch.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                                }
+                            } else if (!showMatches && directory.isEmpty() && !loading) {
+                                Spacer(Modifier.height(8.dp))
                                 Text("Tap refresh to read the bundled permanent student list for $branch.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                             }
                         }
