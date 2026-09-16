@@ -530,12 +530,10 @@ private fun YearStep(selectedYear: Int, onYear: (Int) -> Unit, onContinue: () ->
                 Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.School, contentDescription = null, tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
                     Spacer(Modifier.size(12.dp))
-                    Column {
+                    Column(Modifier.weight(1f)) {
                         Text("${year}${yearSuffix(year)} Year", style = MaterialTheme.typography.titleMedium, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium)
                         Text(descriptions.getValue(year), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                     }
-                    Spacer(Modifier.weight(1f))
-                    if (isSelected) Text("Selected", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
                 }
             }
         }
@@ -606,9 +604,12 @@ private fun BranchStep(
                 Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Badge, contentDescription = null, tint = iconTint, modifier = Modifier.size(22.dp))
                     Spacer(Modifier.size(12.dp))
-                    Text(branchName, style = MaterialTheme.typography.titleMedium, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium)
-                    Spacer(Modifier.weight(1f))
-                    if (isSelected) Text("Selected", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        branchName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
         }
