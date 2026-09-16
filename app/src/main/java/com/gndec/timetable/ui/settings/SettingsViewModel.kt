@@ -112,7 +112,8 @@ class SettingsViewModel(private val c: AppContainer) {
             cfg.fatherName, cfg.motherName, cfg.mentorName,
             cfg.studentSection, group, "",
             cfg.mentorMobile, cfg.mentorVenue,
-            "manual_departmental"
+            "manual_departmental",
+            cfg.classCoordinator
         )
         val refreshed = c.refreshManager.refresh(force = true, expectedGroup = group)
         val linked = runCatching { c.refreshManager.changeGroup(group) }.getOrDefault(false)
