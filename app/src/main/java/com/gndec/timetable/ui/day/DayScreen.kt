@@ -684,27 +684,85 @@ private fun TimelineLectureCard(lecture: LectureEntity, state: LectureState, now
             elevation = CardDefaults.cardElevation(defaultElevation = cardElevation)
         ) {
             Column(Modifier.heightIn(min = RailMinCardHeight).graphicsLayer { alpha = contentAlpha.value }.padding(horizontal = 18.dp, vertical = 17.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    AnimatedContent(
-                        targetState = state,
-                        transitionSpec = { fadeIn(stateSwapIn) togetherWith fadeOut(stateSwapOut) },
-                        label = "timelineStatusLabel"
-                    ) { current ->
+                // Narrow phones: "LIVE NOW" + "1H 38M REMAINING" (and sometimes
+                // UPCOMING + time) used to collide in a single Row. Live remaining
+                // is stacked under the status; completed/upcoming keep a single
+                // row with weight + maxLines so the time never overlaps the label.
+                if (live) {
+                    Column(Modifier.fillMaxWidth()) {
+                        AnimatedContent(
+                            targetState = state,
+                            transitionSpec = { fadeIn(stateSwapIn) togetherWith fadeOut(stateSwapOut) },
+                            label = "timelineStatusLabel"
+                        ) { current ->
+                            Text(
+                                when (current) {
+                                    LectureState.COMPLETED -> "COMPLETED"
+                                    LectureState.HAPPENING -> "LIVE NOW"
+                                    LectureState.UPCOMING -> "UPCOMING"
+                                },
+                                color = statusColor,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.7.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Spacer(Modifier.height(4.dp))
                         Text(
-                            when (current) { LectureState.COMPLETED -> "COMPLETED"; LectureState.HAPPENING -> "LIVE NOW"; LectureState.UPCOMING -> "UPCOMING" },
-                            color = statusColor,
-                            style = MaterialTheme.typography.labelLarge,
+                            "${formatDurationUpper(remaining)} REMAINING",
+                            color = accent,
+                            style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.7.sp
+                            letterSpacing = 1.2.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
-                    Spacer(Modifier.weight(1f))
-                    if (live) {
-                        Text("${formatDurationUpper(remaining)} REMAINING", color = accent, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
-                    } else {
-                        if (state == LectureState.UPCOMING) Icon(Icons.Default.Notifications, contentDescription = "Reminder", tint = muted, modifier = Modifier.size(17.dp))
-                        Spacer(Modifier.width(5.dp))
-                        Text(formatTime(lecture.startMinutes), color = primaryText, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+                } else {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        AnimatedContent(
+                            targetState = state,
+                            transitionSpec = { fadeIn(stateSwapIn) togetherWith fadeOut(stateSwapOut) },
+                            label = "timelineStatusLabel",
+                            modifier = Modifier.weight(1f, fill = false)
+                        ) { current ->
+                            Text(
+                                when (current) {
+                                    LectureState.COMPLETED -> "COMPLETED"
+                                    LectureState.HAPPENING -> "LIVE NOW"
+                                    LectureState.UPCOMING -> "UPCOMING"
+                                },
+                                color = statusColor,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.7.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Spacer(Modifier.weight(1f))
+                        if (state == LectureState.UPCOMING) {
+                            Icon(
+                                Icons.Default.Notifications,
+                                contentDescription = "Reminder",
+                                tint = muted,
+                                modifier = Modifier.size(17.dp)
+                            )
+                            Spacer(Modifier.width(5.dp))
+                        }
+                        Text(
+                            formatTime(lecture.startMinutes),
+                            color = primaryText,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
                 }
                 Spacer(Modifier.height(15.dp))
