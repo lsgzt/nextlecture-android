@@ -29,6 +29,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -646,13 +650,15 @@ private fun BranchStep(
 @Composable
 private fun NameLookupStep(branch: String, query: String, onQuery: (String) -> Unit, records: List<StudentDirectoryRecord>, onSelect: (StudentDirectoryRecord) -> Unit, onManual: () -> Unit, onBack: () -> Unit) {
     val matches = matchingStudents(records, query)
-    Column(Modifier.fillMaxWidth()) {
-        Text("Find your name", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(5.dp))
-        Text("${records.size} students loaded for $branch. Start typing; duplicate names show their registration number.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(13.dp))
-        OutlinedTextField(query, onQuery, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Your full name") }, leadingIcon = { Icon(Icons.Default.PersonSearch, contentDescription = null) })
-        Spacer(Modifier.height(9.dp))
+    // On short screens (or when the IME covers the lower half), show matches
+    // ABOVE the text field so results stay visible while typing.
+    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
+    val imeVisible = WindowInsets.ime.getBottom(density) > 0
+    val resultsAboveInput = configuration.screenHeightDp < 720 || imeVisible
+
+    @Composable
+    fun MatchResults() {
         if (query.trim().length < 2) {
             HintCard("Type at least two letters to search the official list.")
         } else if (matches.isEmpty()) {
@@ -674,6 +680,22 @@ private fun NameLookupStep(branch: String, query: String, onQuery: (String) -> U
                     }
                 }
             }
+        }
+    }
+
+    Column(Modifier.fillMaxWidth()) {
+        Text("Find your name", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(5.dp))
+        Text("${records.size} students loaded for $branch. Start typing; duplicate names show their registration number.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(13.dp))
+        if (resultsAboveInput) {
+            MatchResults()
+            Spacer(Modifier.height(9.dp))
+            OutlinedTextField(query, onQuery, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Your full name") }, leadingIcon = { Icon(Icons.Default.PersonSearch, contentDescription = null) })
+        } else {
+            OutlinedTextField(query, onQuery, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Your full name") }, leadingIcon = { Icon(Icons.Default.PersonSearch, contentDescription = null) })
+            Spacer(Modifier.height(9.dp))
+            MatchResults()
         }
         Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
