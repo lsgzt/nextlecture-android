@@ -75,7 +75,7 @@ class StudentDirectoryManager(
             "RAI" to "https://appsc.gndec.ac.in/sites/default/files/2026-09/RAI%20Permanent%20Section%2015_09_2026.pdf"
         )
 
-        private const val CACHE_DIR = "student_directory"
+        private const val CACHE_DIR = "student_directory_v2"  // v2: Sept 2026 layout + classCoordinator
         private const val CACHE_TTL_MILLIS = 6L * 60L * 60L * 1000L  // 6 hours
         private const val FETCH_TIMEOUT_MILLIS = 30_000L
     }
