@@ -258,30 +258,44 @@ object StudentDirectoryParser {
         }
 
         val nameCells = tokens.subList(nameStart.coerceAtMost(leadingEnd), leadingEnd)
-        if (nameCells.size < 3) return null
+        if (nameCells.size < 2) return null
 
         // Detect Aug layout: fourth name-area cell is the branch token
         val isAugLayout = nameCells.size >= 4 &&
             nameCells[3].equals(normalizedBranch, ignoreCase = true)
 
         val filteredNames = nameCells.filter { !it.equals(normalizedBranch, ignoreCase = true) }
-        if (filteredNames.size < 3) return null
+        if (filteredNames.isEmpty()) return null
 
         val student = filteredNames[0]
         var father: String
         var mother: String
-        if (isAugLayout) {
-            // Student | Father | Mother | Branch
-            father = filteredNames[1]
-            mother = filteredNames[2]
-        } else {
-            // Sept 2026 (default): Student | Mother | Father
-            // Also used when branch was fused into the id cell
-            mother = filteredNames[1]
-            father = filteredNames[2]
+        when {
+            isAugLayout && filteredNames.size >= 3 -> {
+                // Student | Father | Mother | Branch
+                father = filteredNames[1]
+                mother = filteredNames[2]
+            }
+            filteredNames.size >= 3 -> {
+                // Sept 2026 (default): Student | Mother | Father
+                mother = filteredNames[1]
+                father = filteredNames[2]
+            }
+            filteredNames.size == 2 -> {
+                // Mother+Father columns fused (long multi-word names, gap missed).
+                // Keep student identity; store the fused parent text under mother and
+                // leave father blank — never invent a split.
+                mother = filteredNames[1]
+                father = ""
+            }
+            else -> {
+                // Only student name recovered; parents unknown.
+                mother = ""
+                father = ""
+            }
         }
 
-        if (student.isBlank() || father.isBlank() || mother.isBlank()) return null
+        if (student.isBlank()) return null
 
         val split = nameSplits[crn]
         var outFather = father
