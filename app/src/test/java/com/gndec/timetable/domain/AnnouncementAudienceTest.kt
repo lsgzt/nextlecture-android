@@ -65,4 +65,32 @@ class AnnouncementAudienceTest {
         assertFalse(targeted.matchesAudience(AppSettings()))
         assertTrue(broadcast.matchesAudience(AppSettings()))
     }
+
+    @Test
+    fun multiValueBranchMatchesAnyListed() {
+        val a = Announcement(id = "1", title = "t", message = "m", branch = "CS, IT")
+        assertTrue(a.matchesAudience(profile(branch = "IT")))
+        assertTrue(a.matchesAudience(profile(branch = "CS")))
+        assertFalse(a.matchesAudience(profile(branch = "ME")))
+    }
+
+    @Test
+    fun multiValueSectionAndSubsection() {
+        val a = Announcement(
+            id = "1", title = "t", message = "m",
+            branch = "IT",
+            section = "ITA, ITB",
+            subsection = "ITB1; ITB2"
+        )
+        assertTrue(a.matchesAudience(profile(section = "ITB", subsection = "ITB2", group = "ITB2")))
+        assertTrue(a.matchesAudience(profile(section = "ITA", subsection = "ITB1", group = "ITB1")))
+        assertFalse(a.matchesAudience(profile(section = "ITC", subsection = "ITC1", group = "ITC1")))
+        assertFalse(a.matchesAudience(profile(section = "ITB", subsection = "ITB3", group = "ITB3")))
+    }
+
+    @Test
+    fun multiValueWithAllInListStillMeansEveryoneAtThatLevel() {
+        val a = Announcement(id = "1", title = "t", message = "m", branch = "all, *")
+        assertTrue(a.matchesAudience(profile(branch = "ECE")))
+    }
 }

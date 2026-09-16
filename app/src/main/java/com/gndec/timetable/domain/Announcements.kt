@@ -25,10 +25,11 @@ data class Announcement(
     /** Optional deep link / URL. When set, the whole home card is tappable. */
     val link: String = "",
     /**
-     * Audience targeting (all optional, empty / "all" = everyone at that level):
-     * - branch only → all students in that branch (e.g. "IT")
-     * - branch + section → that section (e.g. IT + ITB)
-     * - branch + section + subsection → one subgroup (e.g. ITB2)
+     * Audience targeting (all optional, empty / "all" = everyone at that level).
+     * Each field accepts a single value or a comma/semicolon list (OR within the field):
+     * - branch "IT" → all IT; "CS, IT" → CS or IT
+     * - branch + section → section(s) within matching branch(es)
+     * - + subsection → subgroup(s) (e.g. "ITB1, ITB2")
      */
     val branch: String = "",
     val section: String = "",
@@ -128,37 +129,52 @@ class AnnouncementManager(
 /**
  * Audience filter:
  * - blank / "all" at a level = any value at that level
+ * - comma/semicolon-separated lists match if the student hits **any** value
+ *   (e.g. branch "CS, IT" → CS or IT students)
  * - more specific fields only apply when coarser ones match
  * - subsection is matched against group / studentGroup / studentSubsection
  */
 internal fun Announcement.matchesAudience(profile: AppSettings): Boolean {
-    val targetBranch = normalizeAudienceToken(branch)
-    val targetSection = normalizeAudienceToken(section)
-    val targetSubsection = normalizeAudienceToken(subsection)
+    val targetBranches = parseAudienceTokens(branch)
+    val targetSections = parseAudienceTokens(section)
+    val targetSubsections = parseAudienceTokens(subsection)
 
-    if (targetBranch != null) {
+    if (targetBranches != null) {
         val userBranch = normalizeAudienceToken(profile.branch) ?: return false
-        if (targetBranch != userBranch) return false
+        if (userBranch !in targetBranches) return false
     }
 
-    if (targetSection != null) {
+    if (targetSections != null) {
         val userSection = normalizeAudienceToken(profile.studentSection) ?: return false
-        if (targetSection != userSection) return false
+        if (userSection !in targetSections) return false
     }
 
-    if (targetSubsection != null) {
+    if (targetSubsections != null) {
         val candidates = listOfNotNull(
             normalizeAudienceToken(profile.studentSubsection),
             normalizeAudienceToken(profile.studentGroup),
             normalizeAudienceToken(profile.group)
         )
-        if (candidates.none { it == targetSubsection }) return false
+        if (candidates.none { it in targetSubsections }) return false
     }
 
     return true
 }
 
-/** null means "match everyone at this level" (empty or the word all). */
+/**
+ * Parse an audience field into a set of normalized tokens.
+ * Returns null when the field means “everyone” (blank, only "all"/"*", or empty list).
+ * Supports multiple values: `"CS, IT"`, `"ITB1; ITB2"`, `"CS,IT,ECE"`.
+ */
+internal fun parseAudienceTokens(raw: String?): Set<String>? {
+    if (raw.isNullOrBlank()) return null
+    val tokens = raw.split(',', ';', '|')
+        .mapNotNull { normalizeAudienceToken(it) }
+        .toSet()
+    return tokens.takeIf { it.isNotEmpty() }
+}
+
+/** null means "match everyone" for a single token (empty or the word all). */
 private fun normalizeAudienceToken(raw: String?): String? {
     val value = raw?.trim()?.lowercase()?.replace(" ", "")?.replace("-", "") ?: return null
     if (value.isEmpty() || value == "all" || value == "*") return null

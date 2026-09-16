@@ -86,9 +86,9 @@ To publish an announcement from a phone, open the repository on GitHub, open `an
 | `publishedAt` | recommended | ISO-8601 timestamp (e.g. `2026-09-16T10:00:00Z`). Among announcements that **match the student**, the app shows the one with the greatest `publishedAt`. |
 | `type` | no | Visual style of the Home card. Default: `info`. |
 | `link` | no | Optional URL. When set, **tapping anywhere on the card** opens it. When omitted or `""`, the card is not clickable. |
-| `branch` | no | Audience filter. Empty / `"all"` → every branch. e.g. `"IT"` → only IT students. |
-| `section` | no | Audience filter within the branch. Empty / `"all"` → every section. e.g. `"ITB"`. |
-| `subsection` | no | Audience filter within the section. Empty / `"all"` → every subgroup. e.g. `"ITB2"`. Matched against the student's saved group / subsection. |
+| `branch` | no | Audience filter. Empty / `"all"` → every branch. Single value (`"IT"`) or list (`"CS, IT"`) — student matches if their branch is **any** listed value. |
+| `section` | no | Audience filter within the branch. Empty / `"all"` → every section. Single or list (`"ITA, ITB"`). |
+| `subsection` | no | Audience filter within the section. Empty / `"all"` → every subgroup. Single or list (`"ITB1, ITB2"`). Matched against the student's saved group / subsection. |
 | `active` | no | Set `false` to hide without deleting. Default: `true`. |
 
 Only **active** announcements with non-blank `id`, `title`, and `message` that **match the student's profile** are considered. Among those, the one with the greatest `publishedAt` is shown on Home (and may notify once).
@@ -101,8 +101,13 @@ Targeting is hierarchical. Leave a field empty (or set `"all"`) to mean “every
 |----------|-----------|--------------|-------------|
 | *(empty)* / `all` | *(empty)* | *(empty)* | All students |
 | `IT` | *(empty)* | *(empty)* | All IT students |
+| `CS, IT` | *(empty)* | *(empty)* | All CS **or** IT students |
 | `IT` | `ITB` | *(empty)* | All ITB section students |
+| `IT` | `ITA, ITB` | *(empty)* | ITA or ITB students in IT |
 | `IT` | `ITB` | `ITB2` | Only ITB2 subgroup |
+| `IT` | `ITB` | `ITB1, ITB2` | ITB1 or ITB2 |
+
+Lists use commas (or `;` / `|`). Within a field, values are **OR**’d; across fields, conditions are **AND**’d (branch must match **and** section must match, etc.).
 
 Matching is case-insensitive and ignores spaces/hyphens (`itb2` = `ITB2` = `ITB-2`).  
 `subsection` is compared to the student’s timetable group / directory subsection (whichever is saved on the device).  
