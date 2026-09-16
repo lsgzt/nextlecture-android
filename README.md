@@ -72,27 +72,84 @@ detects and surfaces these conditions in Settings → Notification Reliability.
 
 ## Announcements for all users
 
-The app reads `announcements.json` from the public `main` branch through GitHub’s raw-content endpoint. This is a lightweight broadcast feed rather than a real-time push service: devices check it when the app opens and during the existing network-constrained background refresh, then show each new announcement once as a local notification and in the Home screen.
+The app reads [`announcements.json`](announcements.json) from the public `main` branch through GitHub’s raw-content endpoint. This is a lightweight broadcast feed rather than a real-time push service: devices check it when the app opens and during the existing network-constrained background refresh, then show each new announcement once as a local notification and on the **Home** screen card.
 
-To publish an announcement from a phone, open the repository on GitHub, open `announcements.json`, choose **Edit**, and add an object inside the `announcements` array. Use a unique `id`, a short `title`, the full `message`, an ISO-style `publishedAt` value, and `active: true`. Commit the change to `main`; installed apps will discover it on their next feed check.
+To publish an announcement from a phone, open the repository on GitHub, open `announcements.json`, choose **Edit**, and add an object inside the `announcements` array. Commit the change to `main`; installed apps will discover it on their next feed check. The in-app **Settings → App updates → Manage on GitHub** shortcut opens the mobile edit page for this file.
+
+### Field reference
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `id` | yes | Stable unique string. Changing `id` is treated as a **new** announcement (notification can fire again). |
+| `title` | yes | Short headline shown on the Home card and in the notification. |
+| `message` | yes | Body text. Supports lightweight **markdown** (see below). |
+| `publishedAt` | recommended | ISO-8601 timestamp (e.g. `2026-09-16T10:00:00Z`). The app shows the **latest** active item by this value. |
+| `type` | no | Visual style of the Home card. Default: `info`. |
+| `link` | no | Optional URL. When set, **tapping anywhere on the card** opens it. When omitted or `""`, the card is not clickable. |
+| `active` | no | Set `false` to hide without deleting. Default: `true`. |
+
+Only **active** announcements with non-blank `id`, `title`, and `message` are considered. Among those, the one with the greatest `publishedAt` is shown.
+
+### Types (Home card style)
+
+| `type` | Emoji / icon | Use for |
+|--------|--------------|---------|
+| `info` (default) | Campaign icon | Neutral updates |
+| `notice` | 📌 | Official notices, date sheets, formal info |
+| `warn` / `warning` | ⚠️ | Amber card — closures, schedule changes, caution |
+| `happy` / `celebrate` | 🎉 | Green festive card — good news, results, events |
+| `urgent` / `critical` / `alert` | 🚨 | Red card — time-sensitive or critical alerts |
+| `update` / `feature` | ✨ | Sky/cyan card — app or feature updates |
+
+### Markdown in `message`
+
+The Home card renders a small markdown subset in the body:
+
+- `**bold**`
+- `*italic*` or `_italic_`
+- `[label](https://example.com)` — tappable link
+- Bare `https://…` URLs — also tappable
+
+Inline links stay independently tappable even when the card has a top-level `link`. Newlines in the JSON string become line breaks on the card.
+
+### Whole-card link
+
+- **With** `"link": "https://…"` → the entire announcement block is clickable and opens that URL; a small “Tap card to open” hint is shown.
+- **Without** `link` (or empty string) → the block is not clickable as a whole; only markdown links inside `message` work.
+
+### Example
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "announcements": [
     {
-      "id": "2026-08-17-maintenance",
-      "title": "Timetable update",
-      "message": "The timetable parser has been improved. Please refresh your timetable.",
-      "publishedAt": "2026-08-17T12:00:00Z",
-      "type": "update",
+      "id": "os1-lab-closed-2026-09-16",
+      "title": "OS1 Lab closed today",
+      "message": "The **OS1 Lab** is closed for maintenance.\nDetails on the [notice board](https://example.com/notice).",
+      "publishedAt": "2026-09-16T10:00:00Z",
+      "type": "warn",
+      "link": "https://example.com/full-notice",
+      "active": true
+    },
+    {
+      "id": "mse1-date-sheet-2026-09",
+      "title": "MSE-1 Date Sheet",
+      "message": "**Chemistry Group:**\n25 Sep — Chemistry — 9:15–10:45 AM\n\n**Physics Group:**\n25 Sep — Physics — 12:45–2:15 PM",
+      "publishedAt": "2026-09-13T12:00:00Z",
+      "type": "notice",
+      "link": "",
       "active": true
     }
   ]
 }
 ```
 
-This feed is intentionally separate from lecture reminders. Lecture reminders remain local and offline-capable; announcement delivery depends on Android allowing the periodic check and on the device having connectivity at check time. The in-app **Settings → App updates → Manage on GitHub** shortcut opens the mobile edit page for this file.
+In the first example, tapping the card opens `link`; tapping “notice board” in the body opens that URL only.
+
+### Delivery notes
+
+This feed is intentionally separate from lecture reminders. Lecture reminders remain local and offline-capable; announcement delivery depends on Android allowing the periodic check and on the device having connectivity at check time. The latest announcement is also cached on-device (including `type` and `link`) so the Home card can still render offline after the first successful fetch.
 
 ## GitHub release updates
 
