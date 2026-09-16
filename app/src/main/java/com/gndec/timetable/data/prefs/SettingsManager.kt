@@ -41,6 +41,7 @@ data class AppSettings(
     val studentGroup: String = "",
     val mentorMobile: String = "",
     val mentorVenue: String = "",
+    val classCoordinator: String = "",
     val profileSource: String = "manual",
     /** 0 = unset (legacy profiles), 1..4 = academic year of B.Tech. */
     val academicYear: Int = 0,
@@ -106,6 +107,7 @@ class SettingsManager(private val context: Context) {
         val STUDENT_GROUP = stringPreferencesKey("student_group")
         val MENTOR_MOBILE = stringPreferencesKey("mentor_mobile")
         val MENTOR_VENUE = stringPreferencesKey("mentor_venue")
+        val CLASS_COORDINATOR = stringPreferencesKey("class_coordinator")
         val PROFILE_SOURCE = stringPreferencesKey("profile_source")
         val ACADEMIC_YEAR = intPreferencesKey("academic_year")
         val STUDENT_DIRECTORY_BRANCH = stringPreferencesKey("student_directory_branch")
@@ -161,6 +163,7 @@ class SettingsManager(private val context: Context) {
             studentGroup = p[K.STUDENT_GROUP] ?: p[K.STUDENT_SUBSECTION] ?: "",
             mentorMobile = p[K.MENTOR_MOBILE] ?: "",
             mentorVenue = p[K.MENTOR_VENUE] ?: "",
+            classCoordinator = p[K.CLASS_COORDINATOR] ?: "",
             profileSource = p[K.PROFILE_SOURCE] ?: "manual",
             academicYear = (p[K.ACADEMIC_YEAR] ?: 0).coerceIn(0, 4),
             studentDirectoryBranch = p[K.STUDENT_DIRECTORY_BRANCH] ?: "",
@@ -232,7 +235,8 @@ class SettingsManager(private val context: Context) {
         studentGroup: String,
         mentorMobile: String,
         mentorVenue: String,
-        source: String
+        source: String,
+        classCoordinator: String = ""
     ) = context.dataStore.edit {
         it[K.STUDENT_NAME] = name.trim()
         it[K.ROLL_NUMBER] = rollNumber.trim()
@@ -247,6 +251,7 @@ class SettingsManager(private val context: Context) {
         it[K.MENTOR_MOBILE] = mentorMobile.trim()
         it[K.MENTOR_VENUE] = mentorVenue.trim()
         it[K.PROFILE_SOURCE] = source.trim()
+        it[K.CLASS_COORDINATOR] = classCoordinator.trim()
     }
     suspend fun setAnnouncementNotifications(enabled: Boolean) = context.dataStore.edit { it[K.ANNOUNCEMENT_NOTIFICATIONS] = enabled }
     suspend fun setLastAnnouncementId(id: String) = context.dataStore.edit { it[K.LAST_ANNOUNCEMENT_ID] = id }
