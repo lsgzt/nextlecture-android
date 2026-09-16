@@ -162,7 +162,8 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit, onOpenAttendance:
                 settings.fatherName, settings.motherName, settings.mentorName,
                 pickedSection?.trim().orEmpty(), group, "",
                 settings.mentorMobile, settings.mentorVenue,
-                "manual_departmental"
+                "manual_departmental",
+                settings.classCoordinator
             )
             // Validate the newly picked group against the official document —
             // the SAVED group may still be the old 1st-year one, and validating
@@ -276,6 +277,7 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit, onOpenAttendance:
                         mentor = settings.mentorName,
                         mentorMobile = settings.mentorMobile,
                         mentorVenue = settings.mentorVenue,
+                        classCoordinator = settings.classCoordinator,
                         collegeEmail = collegeEmail(settings.studentName, settings.rollNumber),
                         onCopyCrn = {
                             if (settings.rollNumber.isNotBlank()) {
@@ -440,7 +442,7 @@ private fun collegeEmail(studentName: String, crn: String): String? {
 }
 
 @Composable
-private fun SavedProfileCard(academicYear: Int, name: String, branch: String, crn: String, registration: String, section: String, subsection: String, studentGroup: String, father: String, mother: String, mentor: String, mentorMobile: String, mentorVenue: String, collegeEmail: String?, onCopyCrn: () -> Unit, onCopyRegistration: () -> Unit, onCopyMentorMobile: () -> Unit, onCopyEmail: () -> Unit) {
+private fun SavedProfileCard(academicYear: Int, name: String, branch: String, crn: String, registration: String, section: String, subsection: String, studentGroup: String, father: String, mother: String, mentor: String, mentorMobile: String, mentorVenue: String, classCoordinator: String, collegeEmail: String?, onCopyCrn: () -> Unit, onCopyRegistration: () -> Unit, onCopyMentorMobile: () -> Unit, onCopyEmail: () -> Unit) {
     Card(Modifier.fillMaxWidth().padding(horizontal = 20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), shape = RoundedCornerShape(20.dp), elevation = CardDefaults.cardElevation(0.dp)) {
         Column(Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text("SAVED STUDENT DETAILS", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
@@ -461,6 +463,7 @@ private fun SavedProfileCard(academicYear: Int, name: String, branch: String, cr
             Detail("Mentor", mentor.ifBlank { "Not added" })
             if (mentorMobile.isNotBlank()) CopyableDetail("Mentor mobile", mentorMobile, onCopyMentorMobile)
             if (mentorVenue.isNotBlank()) Detail("Mentor venue", mentorVenue)
+            if (classCoordinator.isNotBlank()) Detail("Class coordinator", classCoordinator)
         }
     }
 }
@@ -626,6 +629,7 @@ private fun OfficialRecordCard(record: StudentDirectoryRecord) {
             Detail("Mentor", record.mentorName)
             if (record.mentorMobile.isNotBlank()) Detail("Mentor mobile", record.mentorMobile)
             if (record.venue.isNotBlank()) Detail("Mentor venue", record.venue)
+            if (record.classCoordinator.isNotBlank()) Detail("Class coordinator", record.classCoordinator)
         }
     }
 }
