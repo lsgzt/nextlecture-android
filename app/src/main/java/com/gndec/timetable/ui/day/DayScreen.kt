@@ -684,10 +684,11 @@ private fun TimelineLectureCard(lecture: LectureEntity, state: LectureState, now
             elevation = CardDefaults.cardElevation(defaultElevation = cardElevation)
         ) {
             Column(Modifier.heightIn(min = RailMinCardHeight).graphicsLayer { alpha = contentAlpha.value }.padding(horizontal = 18.dp, vertical = 17.dp)) {
-                // Narrow phones: "LIVE NOW" + "1H 38M REMAINING" (and sometimes
-                // UPCOMING + time) used to collide in a single Row. Live remaining
-                // is stacked under the status; completed/upcoming keep a single
-                // row with weight + maxLines so the time never overlaps the label.
+                // Status labels must always read in full ("COMPLETED", "UPCOMING").
+                // AnimatedContent + weight(1f) + Ellipsis was measuring too narrowly and
+                // ellipsized to "COMPL…" even on normal-width phones. Status takes its
+                // natural width; a Spacer fills the middle; time stays on the right.
+                // Live remaining stays on a second line so it never collides with LIVE NOW.
                 if (live) {
                     Column(Modifier.fillMaxWidth()) {
                         AnimatedContent(
@@ -704,9 +705,9 @@ private fun TimelineLectureCard(lecture: LectureEntity, state: LectureState, now
                                 color = statusColor,
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.7.sp,
+                                letterSpacing = 1.2.sp,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                softWrap = false
                             )
                         }
                         Spacer(Modifier.height(4.dp))
@@ -715,9 +716,9 @@ private fun TimelineLectureCard(lecture: LectureEntity, state: LectureState, now
                             color = accent,
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.2.sp,
+                            letterSpacing = 1.0.sp,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            softWrap = false
                         )
                     }
                 } else {
@@ -728,8 +729,7 @@ private fun TimelineLectureCard(lecture: LectureEntity, state: LectureState, now
                         AnimatedContent(
                             targetState = state,
                             transitionSpec = { fadeIn(stateSwapIn) togetherWith fadeOut(stateSwapOut) },
-                            label = "timelineStatusLabel",
-                            modifier = Modifier.weight(1f, fill = false)
+                            label = "timelineStatusLabel"
                         ) { current ->
                             Text(
                                 when (current) {
@@ -740,9 +740,9 @@ private fun TimelineLectureCard(lecture: LectureEntity, state: LectureState, now
                                 color = statusColor,
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.7.sp,
+                                letterSpacing = 1.2.sp,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                softWrap = false
                             )
                         }
                         Spacer(Modifier.weight(1f))
