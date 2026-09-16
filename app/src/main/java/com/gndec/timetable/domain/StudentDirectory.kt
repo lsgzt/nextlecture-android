@@ -31,7 +31,8 @@ data class StudentDirectoryRecord(
     val group: String = "",
     val mentorName: String = "",
     val mentorMobile: String = "",
-    val venue: String = ""
+    val venue: String = "",
+    val classCoordinator: String = ""
 )
 
 sealed class StudentDirectoryResult {
@@ -62,15 +63,16 @@ class StudentDirectoryManager(
         )
         private val DIRECTORY_RESOURCE = R.raw.student_directory_permanent_2026
 
-        // Official permanent-section documents per branch (appsc.gndec.ac.in, Aug 2026 upload).
+        // Official permanent-section documents per branch (appsc.gndec.ac.in, 15 Sep 2026 upload).
+        // New column "Class Coordinator"; Mother Name appears before Father Name; Branch sits before names.
         private val OFFICIAL_PDF_URLS = mapOf(
-            "CE" to "https://appsc.gndec.ac.in/sites/default/files/2026-08/CE%20Permanent%20Sections%202026_0.pdf",
-            "CS" to "https://appsc.gndec.ac.in/sites/default/files/2026-08/CS%20Permanent%20Sections%202026_0.pdf",
-            "EC" to "https://appsc.gndec.ac.in/sites/default/files/2026-08/EC%20Permanent%20Sections%202026_1.pdf",
-            "EE" to "https://appsc.gndec.ac.in/sites/default/files/2026-08/EE%20Permanent%20Sections%202026_0.pdf",
-            "IT" to "https://appsc.gndec.ac.in/sites/default/files/2026-08/IT%20Permanent%20Sections%202026_0.pdf",
-            "ME" to "https://appsc.gndec.ac.in/sites/default/files/2026-08/ME%20Permanent%20Sections%202026_0.pdf",
-            "RAI" to "https://appsc.gndec.ac.in/sites/default/files/2026-08/RAI%20Permanent%20Sections%202026_1.pdf"
+            "CE" to "https://appsc.gndec.ac.in/sites/default/files/2026-09/CE%20Permanent%20Section%2015_09_2026.pdf",
+            "CS" to "https://appsc.gndec.ac.in/sites/default/files/2026-09/CS%20Permanent%20Section%2015_09_2026.pdf",
+            "EC" to "https://appsc.gndec.ac.in/sites/default/files/2026-09/EC%20Permanent%20Section%2015_09_2026.pdf",
+            "EE" to "https://appsc.gndec.ac.in/sites/default/files/2026-09/EE%20Permanent%20Section%2015_09_2026.pdf",
+            "IT" to "https://appsc.gndec.ac.in/sites/default/files/2026-09/IT%20Permanent%20Section%2015_09_2026.pdf",
+            "ME" to "https://appsc.gndec.ac.in/sites/default/files/2026-09/ME%20Permanent%20Section%2015_09_2026_0.pdf",
+            "RAI" to "https://appsc.gndec.ac.in/sites/default/files/2026-09/RAI%20Permanent%20Section%2015_09_2026.pdf"
         )
 
         private const val CACHE_DIR = "student_directory"
