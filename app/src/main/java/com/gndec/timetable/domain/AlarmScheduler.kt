@@ -44,6 +44,10 @@ private data class FreePeriodGap(
 /**
  * Schedules local, offline-capable lecture and free-period reminders via AlarmManager.
  * Deterministic PendingIntent request codes prevent duplicate alarms across reschedules.
+ *
+ * Always prefers [AlarmManager.setAlarmClock] for user-visible reminders. That API is
+ * exempt from Doze/app-standby deferral, so lecture alerts stay on time even when the
+ * device is idle. setExactAndAllowWhileIdle is only used as a last-resort fallback.
  */
 class AlarmScheduler(private val context: Context) {
 
@@ -183,26 +187,39 @@ class AlarmScheduler(private val context: Context) {
         return scheduleWithBestAvailableAlarm(trigger, pi, TEST_NOTIFICATION_REQUEST_CODE)
     }
 
+    /**
+     * Lecture reminders must fire on time. Prefer [AlarmManager.setAlarmClock]
+     * unconditionally — it is the only AlarmManager API that is fully exempt from
+     * Doze, app standby, and battery optimizations on modern Android (including
+     * after FCM keeps a background connection alive).
+     *
+     * Fallbacks (exact-while-idle → window) only run if setAlarmClock is blocked.
+     */
     private fun scheduleWithBestAvailableAlarm(trigger: Long, pi: PendingIntent, requestCode: Int): Boolean {
+        val showIntent = PendingIntent.getActivity(
+            context,
+            requestCode xor Int.MIN_VALUE,
+            Intent(context, com.gndec.timetable.MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
         return try {
-            if (canScheduleExact()) {
-                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, trigger, pi)
-            } else {
-                val showIntent = PendingIntent.getActivity(
-                    context,
-                    requestCode xor Int.MIN_VALUE,
-                    Intent(context, com.gndec.timetable.MainActivity::class.java),
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
-                alarmManager.setAlarmClock(AlarmManager.AlarmClockInfo(trigger, showIntent), pi)
-            }
+            alarmManager.setAlarmClock(AlarmManager.AlarmClockInfo(trigger, showIntent), pi)
             true
         } catch (_: SecurityException) {
             try {
-                alarmManager.setWindow(AlarmManager.RTC_WAKEUP, trigger, 5 * 60_000L, pi)
+                if (canScheduleExact()) {
+                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, trigger, pi)
+                } else {
+                    alarmManager.setWindow(AlarmManager.RTC_WAKEUP, trigger, 5 * 60_000L, pi)
+                }
                 true
             } catch (_: SecurityException) {
-                false
+                try {
+                    alarmManager.setWindow(AlarmManager.RTC_WAKEUP, trigger, 5 * 60_000L, pi)
+                    true
+                } catch (_: SecurityException) {
+                    false
+                }
             }
         }
     }

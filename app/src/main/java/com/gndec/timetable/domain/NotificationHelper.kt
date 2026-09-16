@@ -21,7 +21,7 @@ object NotificationHelper {
 
     // v2 forces Android to create a fresh channel so existing muted/old channels cannot suppress the bundled sound.
     const val CHANNEL_REMINDERS = "lecture_reminders_v3"
-    const val CHANNEL_UPDATES = "timetable_updates_v2"
+    const val CHANNEL_UPDATES = "timetable_updates_v3"
     private const val TEST_NOTIFICATION_ID = 190816
     private const val APP_UPDATE_NOTIFICATION_ID = 190817
     const val GROUP_LECTURE_REMINDERS = "gndec_lecture_reminders"
@@ -53,9 +53,11 @@ object NotificationHelper {
             context.getString(R.string.channel_updates_name),
             NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
-            description = "Announcements and app updates"
+            description = context.getString(R.string.channel_updates_desc)
             setSound(sound, attrs)
             enableVibration(true)
+            vibrationPattern = longArrayOf(0, 250, 120, 250)
+            setShowBadge(true)
         }
         nm.createNotificationChannels(listOf(reminders, updates))
     }
@@ -77,6 +79,7 @@ object NotificationHelper {
         )
         val notification = NotificationCompat.Builder(context, CHANNEL_UPDATES)
             .setSmallIcon(R.drawable.ic_launcher)
+            .setSound(lectureSound(context))
             .setContentTitle(title)
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
@@ -106,6 +109,7 @@ object NotificationHelper {
         val message = "A newer app release is available. Tap to download release $latestMarker."
         val notification = NotificationCompat.Builder(context, CHANNEL_UPDATES)
             .setSmallIcon(R.drawable.ic_launcher)
+            .setSound(lectureSound(context))
             .setContentTitle(releaseName.ifBlank { "NextLecture update $latestMarker" })
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
@@ -135,6 +139,7 @@ object NotificationHelper {
         )
         val notification = NotificationCompat.Builder(context, CHANNEL_UPDATES)
             .setSmallIcon(R.drawable.ic_launcher)
+            .setSound(lectureSound(context))
             .setContentTitle(title)
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))

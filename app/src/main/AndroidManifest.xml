@@ -16,6 +16,15 @@
         android:theme="@style/Theme.GNDEC"
         android:supportsRtl="true">
 
+        <!-- FCM system-displayed notifications (background + notification payload)
+             must use our updates channel so the bundled lecture_reminder tone plays. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="timetable_updates_v3" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_launcher" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

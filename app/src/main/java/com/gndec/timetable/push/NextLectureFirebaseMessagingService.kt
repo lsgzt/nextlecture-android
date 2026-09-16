@@ -10,13 +10,28 @@ class NextLectureFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
-        // Background notification messages are displayed by FCM itself. Data-only
-        // messages are rendered here, including when the app is foregrounded.
-        val type = message.data["type"] ?: return
-        val title = message.data["title"] ?: message.notification?.title ?: "NextLecture update"
-        val body = message.data["body"] ?: message.notification?.body ?: ""
+        // Always ensure channels exist so the bundled tone is attached even if the
+        // process was cold-started by FCM.
+        NotificationHelper.ensureChannels(this)
+
+        // Prefer data payload. When the app is in the foreground, notification
+        // payloads are also delivered here — render them ourselves with the
+        // bundled sound. Background + notification-payload messages are shown
+        // by the system using the default channel declared in the manifest
+        // (timetable_updates_v3 → same bundled tone).
+        val type = message.data["type"]
+            ?: if (message.notification != null) "push" else return
+        val title = message.data["title"]
+            ?: message.notification?.title
+            ?: "NextLecture update"
+        val body = message.data["body"]
+            ?: message.notification?.body
+            ?: return
         if (body.isBlank()) return
-        NotificationHelper.showRemoteUpdate(this, type, title, body, message.data["id"].orEmpty())
+        val eventId = message.data["id"].orEmpty().ifBlank {
+            message.messageId.orEmpty()
+        }
+        NotificationHelper.showRemoteUpdate(this, type, title, body, eventId)
     }
 }
 
