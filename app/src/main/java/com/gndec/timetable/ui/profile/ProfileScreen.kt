@@ -283,8 +283,9 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit, onOpenAttendance:
                         onCopyRegistration = {
                             if (settings.registrationNumber.isNotBlank()) {
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                clipboard.setPrimaryClip(ClipData.newPlainText("Registration number", settings.registrationNumber))
-                                savedMessage = "Registration number copied"
+                                val label = if (settings.academicYear >= 2) "URN (University Roll Number)" else "Registration number"
+                                clipboard.setPrimaryClip(ClipData.newPlainText(label, settings.registrationNumber))
+                                savedMessage = if (settings.academicYear >= 2) "URN copied" else "Registration number copied"
                             }
                         },
                         onCopyMentorMobile = {
@@ -427,7 +428,11 @@ private fun SavedProfileCard(academicYear: Int, name: String, branch: String, cr
             Detail("Academic year", if (academicYear in 1..4) "${ordinalLabel(academicYear)} Year" else "Not set")
             Detail("Branch", branch.ifBlank { "Not added" })
             CopyableDetail("CRN (Class Roll Number)", crn.ifBlank { "Not added" }, onCopyCrn)
-            if (registration.isNotBlank()) CopyableDetail("Registration number", registration, onCopyRegistration)
+            if (registration.isNotBlank()) CopyableDetail(
+                if (academicYear >= 2) "URN (University Roll Number)" else "Registration number",
+                registration,
+                onCopyRegistration
+            )
             if (!collegeEmail.isNullOrBlank()) CopyableDetail("Mail (college email)", collegeEmail, onCopyEmail)
             Detail("Permanent section", listOf(section, subsection).filter { it.isNotBlank() }.joinToString("  · ").ifBlank { "Not added" })
             Detail("Mentoring group", studentGroup.ifBlank { "Not added" })

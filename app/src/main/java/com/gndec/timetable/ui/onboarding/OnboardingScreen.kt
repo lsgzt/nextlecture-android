@@ -704,7 +704,7 @@ private fun SeniorManualStep(
         Spacer(Modifier.height(12.dp))
         ProfileInput("Full name", name, onName)
         ProfileInput("CRN / roll number", crn, onCrn)
-        ProfileInput("Registration number", registration, onRegistration)
+        ProfileInput("URN (University Roll Number)", registration, onRegistration)
         Spacer(Modifier.height(7.dp))
         PrimaryAction("Continue to section picker", Icons.Default.ArrowForward, enabled = name.isNotBlank(), onClick = onContinue, modifier = Modifier.fillMaxWidth())
         TextButton(onClick = onBack) { Text("Back") }
