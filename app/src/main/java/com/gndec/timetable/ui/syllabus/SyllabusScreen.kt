@@ -292,24 +292,36 @@ fun SyllabusScreen(
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            Row(
-                Modifier.fillMaxWidth().height(54.dp).padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
+            // Title is centered on the full screen width; actions overlay start/end so
+            // the asymmetric back vs history+pdf buttons cannot pull "Syllabus" left.
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(54.dp)
+                    .padding(horizontal = 8.dp)
             ) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Exit syllabus AI")
-                }
                 Text(
                     "Syllabus",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.align(Alignment.Center)
                 )
-                IconButton(onClick = { historyOpen = true }) {
-                    Icon(Icons.Default.History, contentDescription = "Previous chats")
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier.align(Alignment.CenterStart)
+                ) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Exit syllabus AI")
                 }
-                SourcePdfButton()
+                Row(
+                    Modifier.align(Alignment.CenterEnd),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = { historyOpen = true }) {
+                        Icon(Icons.Default.History, contentDescription = "Previous chats")
+                    }
+                    SourcePdfButton()
+                }
             }
 
             LazyColumn(
