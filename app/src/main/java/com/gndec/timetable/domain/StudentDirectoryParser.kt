@@ -6,45 +6,34 @@ package com.gndec.timetable.domain
  *
  * THREE extraction paths, tried per row in order:
  *
- *  1. STRICT pipe format (primary) — produced by [ColumnAwarePdfTextStripper],
- *     which re-inserts the PDF's column boundaries: every token IS a table
- *     cell. Supports both layouts published by the college:
+ *  1. STRICT pipe format (primary) — produced by [ColumnAwarePdfTextStripper].
+ *     The Sept 2026 official PDFs pack several narrow columns so tightly that
+ *     the stripper often merges:
+ *       - Registration + CRN + Branch → one cell ("260136532621001IT")
+ *       - Mobile + Venue → one cell ("9814828414S213")
+ *     The strict path therefore decomposes cells by digit shape and known
+ *     branch tokens, not only by exact cell counts.
  *
- *     **Sept 2026+ layout** (current official):
- *       `…| CRN | Registration | Branch | Student | Mother | Father | Section |
- *        Subsection | MentoringGroup | Mentor | Mobile | Venue | ClassCoordinator…`
+ *     Supported layouts:
+ *       **Sept 2026+**: Branch before names; Mother before Father; optional
+ *         Class Coordinator after Venue.
+ *       **Aug 2026**: Student | Father | Mother | Branch | … (no coordinator).
  *
- *     **Aug 2026 layout** (previous):
- *       `…| CRN | Registration | Student | Father | Mother | Branch | Section |
- *        Subsection | MentoringGroup | Mentor | Mobile | Venue…`
+ *  2. Legacy space-separated rows (fallback when pipes are missing or the
+ *     strict path rejects a row). Name splits come from the bundled directory
+ *     only when tokens match exactly for that CRN.
  *
- *     The names come straight from the official document's own columns, so
- *     father and mother can never blend into the student's name. No bundled
- *     data needed. The serial, CRN and registration columns sit close together
- *     in the PDF, so extraction may merge them into ONE cell ("2614001 26012961");
- *     such cells are decomposed strictly by digit-shape (7-digit CRN, 8-digit
- *     registration) and rejected if any non-numeric text rides along.
- *     The official document occasionally swaps the Father/Mother cells of a
- *     row (data-entry slip); when the bundled directory holds the SAME three
- *     names with father/mother exchanged, the bundled (corrected) order is
- *     used — exact token match only, never a guess.
- *  2. Legacy space-separated rows (fallback for PDFs/extractions where column
- *     gaps were not detected): the three name columns stay concatenated, so
- *     the split is taken from the bundled directory only when the bundled
- *     tokens for that CRN exactly match the PDF tokens. Rows without a
- *     verified split keep the full PDF text as [StudentDirectoryRecord.candidateName]
- *     with blank father/mother fields — search still works, identity is never guessed.
- *  3. Rows that fit neither path are skipped (headers, page numbers, other
- *     branches' tables).
+ *  3. Rows that fit neither path are skipped.
  *
- * Data-safety rules (real student data):
- *  - Every field of a record is derived from that record's own PDF row, keyed by CRN.
- *    No information is ever copied across students.
+ * Data-safety: every field is derived from that row's own cells, keyed by CRN.
  */
 object StudentDirectoryParser {
 
     /** Row start: serial number, 7-digit college roll number (CRN), remainder. */
     private val ROW_START = Regex("^(\\d+)\\s+(\\d{7})\\s+(.+)$")
+
+    /** Alternate start for Sept 2026 layout: serial, 8-digit registration, 7-digit CRN, rest. */
+    private val ROW_START_REG_FIRST = Regex("^(\\d+)\\s+(\\d{8})\\s+(\\d{7})\\s+(.+)$")
 
     /** Current layout: an 8-digit registration number right after the CRN. */
     private val REGISTRATION_PREFIX = Regex("^(\\d{8})\\s+(\\S.*)$")
@@ -53,7 +42,10 @@ object StudentDirectoryParser {
     private val CRN_TOKEN = Regex("^\\d{7}$")
     private val REGISTRATION_TOKEN = Regex("^\\d{8}$")
     private val MOBILE_TOKEN = Regex("^\\d{10}$")
+    private val MOBILE_EMBEDDED = Regex("(\\d{10})")
     private val SERIAL_TOKEN = Regex("^\\d{1,4}$")
+    private val CRN_EMBEDDED = Regex("(\\d{7})")
+    private val REG_EMBEDDED = Regex("(\\d{8})")
     private val WHITESPACE = Regex("\\s+")
     private val PIPE_RUN = Regex("\\s*\\|\\s*")
 
@@ -72,8 +64,6 @@ object StudentDirectoryParser {
     ): List<StudentDirectoryRecord> {
         val normalizedBranch = branch.trim().uppercase()
         val branchToken = Regex.escape(normalizedBranch)
-        // Branch, Section, Subsection, Mentoring Group, Mentor Name, 10-digit mobile, Venue
-        // (+ optional Class Coordinator). Used by the legacy space-separated path.
         val tail = Regex(
             "\\s$branchToken\\s+([A-Z]{2,4})\\s+([A-Z]{2,4}\\d?)\\s+([A-Z]{2,4}\\d?M?\\d?)\\s+(.+?)\\s+(\\d{10})\\s+(.+)$"
         )
@@ -81,29 +71,40 @@ object StudentDirectoryParser {
         for (raw in lines) {
             val line = raw.trim()
             if (line.isEmpty()) continue
-            // 1) STRICT path: column-aware extraction. The official document's
-            //    own cell boundaries decide the name split.
             val strictRecord = parsePipeRow(line, normalizedBranch, registrationFallback, nameSplits)
             if (strictRecord != null) {
                 records += strictRecord
                 continue
             }
-            // 2) LEGACY path: collapse any stray pipe to whitespace first, then
-            //    the historical space-separated logic applies.
             val legacyLine = line.replace(PIPE_RUN, " ")
-            val start = ROW_START.matchEntire(legacyLine) ?: continue
-            val crn = start.groupValues[2]
-            var rest = start.groupValues[3]
-            var registration = ""
-            val regMatch = REGISTRATION_PREFIX.matchEntire(rest)
-            if (regMatch != null) {
-                registration = regMatch.groupValues[1]
-                rest = regMatch.groupValues[2]
-            }
-            val tailMatch = tail.find(rest) ?: continue
-            val namesPart = normalizeWhitespace(rest.substring(0, tailMatch.range.first))
-            // Venue may contain "Venue ClassCoordinator" — leave as-is for legacy;
-            // the strict path is authoritative for the new column.
+            val record = parseLegacyRow(legacyLine, normalizedBranch, tail, nameSplits, registrationFallback)
+            if (record != null) records += record
+        }
+        return records
+    }
+
+    private fun parseLegacyRow(
+        legacyLine: String,
+        normalizedBranch: String,
+        tail: Regex,
+        nameSplits: Map<String, NameSplit>,
+        registrationFallback: Map<String, String>
+    ): StudentDirectoryRecord? {
+        // Sept 2026 space-separated: serial, registration, CRN, [branch], names..., section...
+        val regFirst = ROW_START_REG_FIRST.matchEntire(legacyLine)
+        if (regFirst != null) {
+            val registration = regFirst.groupValues[2]
+            val crn = regFirst.groupValues[3]
+            var rest = regFirst.groupValues[4]
+            val branchPrefix = Regex("^${Regex.escape(normalizedBranch)}\\s+(.+)$", RegexOption.IGNORE_CASE)
+            val bp = branchPrefix.matchEntire(rest)
+            if (bp != null) rest = bp.groupValues[1]
+            val sectionMatch = Regex(
+                "\\s+([A-Z]{2,4})\\s+([A-Z]{2,4}\\d?)\\s+([A-Z]{2,4}\\d?M?\\d?)\\s+(.+?)\\s+(\\d{10})\\s+(.+)$",
+                RegexOption.IGNORE_CASE
+            ).find(rest) ?: return null
+            val namesPart = normalizeWhitespace(rest.substring(0, sectionMatch.range.first))
+            val (venue, coordinator) = splitVenueAndCoordinator(sectionMatch.groupValues[6])
             val record = StudentDirectoryRecord(
                 crn = crn,
                 registrationNumber = registration.ifBlank { registrationFallback[crn].orEmpty() },
@@ -111,29 +112,50 @@ object StudentDirectoryParser {
                 fatherName = "",
                 motherName = "",
                 branch = normalizedBranch,
-                section = tailMatch.groupValues[1],
-                subsection = tailMatch.groupValues[2],
-                group = tailMatch.groupValues[3],
-                mentorName = normalizeWhitespace(tailMatch.groupValues[4]),
-                mentorMobile = tailMatch.groupValues[5],
-                venue = normalizeWhitespace(tailMatch.groupValues[6]),
-                classCoordinator = ""
+                section = sectionMatch.groupValues[1],
+                subsection = sectionMatch.groupValues[2],
+                group = sectionMatch.groupValues[3],
+                mentorName = normalizeWhitespace(sectionMatch.groupValues[4]),
+                mentorMobile = sectionMatch.groupValues[5],
+                venue = venue,
+                classCoordinator = coordinator
             )
-            records += applyVerifiedNameSplit(record, nameSplits[crn], namesPart)
+            return applyVerifiedNameSplit(record, nameSplits[crn], namesPart)
         }
-        return records
+
+        val start = ROW_START.matchEntire(legacyLine) ?: return null
+        val crn = start.groupValues[2]
+        var rest = start.groupValues[3]
+        var registration = ""
+        val regMatch = REGISTRATION_PREFIX.matchEntire(rest)
+        if (regMatch != null) {
+            registration = regMatch.groupValues[1]
+            rest = regMatch.groupValues[2]
+        }
+        val tailMatch = tail.find(rest) ?: return null
+        val namesPart = normalizeWhitespace(rest.substring(0, tailMatch.range.first))
+        val (venue, coordinator) = splitVenueAndCoordinator(tailMatch.groupValues[6])
+        val record = StudentDirectoryRecord(
+            crn = crn,
+            registrationNumber = registration.ifBlank { registrationFallback[crn].orEmpty() },
+            candidateName = namesPart,
+            fatherName = "",
+            motherName = "",
+            branch = normalizedBranch,
+            section = tailMatch.groupValues[1],
+            subsection = tailMatch.groupValues[2],
+            group = tailMatch.groupValues[3],
+            mentorName = normalizeWhitespace(tailMatch.groupValues[4]),
+            mentorMobile = tailMatch.groupValues[5],
+            venue = venue,
+            classCoordinator = coordinator
+        )
+        return applyVerifiedNameSplit(record, nameSplits[crn], namesPart)
     }
 
     /**
-     * STRICT row parser for the column-aware extraction. Supports both the
-     * Sept-2026 layout (Branch before names; Mother before Father; optional
-     * Class Coordinator after Venue) and the prior Aug-2026 layout
-     * (Student/Father/Mother then Branch).
-     *
-     * A row is accepted when it decomposes into table cells whose tail is
-     * anchored on the 10-digit mobile and whose branch token matches the
-     * document being parsed. Exactly three name cells must sit next to the
-     * branch. Names are never guessed; they ARE the official document's columns.
+     * STRICT row parser. Handles fused cells from Sept 2026 PDFs where narrow
+     * columns sit closer than COLUMN_GAP_UNITS (reg+CRN+branch, mobile+venue).
      */
     internal fun parsePipeRow(
         line: String,
@@ -143,133 +165,224 @@ object StudentDirectoryParser {
     ): StudentDirectoryRecord? {
         if (!line.contains(COLUMN_SEPARATOR)) return null
         val tokens = line.split(COLUMN_SEPARATOR).map { it.trim() }.filter { it.isNotEmpty() }
-        val mobileIdx = tokens.indexOfLast { it.matches(MOBILE_TOKEN) }
-        // Tail needs at least: section, subsection, group, mentor before the mobile.
-        if (mobileIdx < 0 || mobileIdx < 4) return null
+        if (tokens.size < 6) return null
 
-        // After mobile: Venue [Class Coordinator]. When two or more remaining
-        // cells exist, the last is treated as Class Coordinator and the rest
-        // joined as Venue (venues can be multi-token when gaps were missed).
-        val afterMobile = tokens.drop(mobileIdx + 1)
+        // Locate mobile: exact 10-digit cell OR embedded in fused mobile+venue cell
+        var mobileIdx = tokens.indexOfLast { it.matches(MOBILE_TOKEN) }
+        var mobile = ""
+        var fusedVenueFromMobile = ""
+        if (mobileIdx < 0) {
+            for (i in tokens.indices.reversed()) {
+                val m = MOBILE_EMBEDDED.find(tokens[i]) ?: continue
+                mobile = m.groupValues[1]
+                mobileIdx = i
+                val before = tokens[i].substring(0, m.range.first).trim()
+                val after = tokens[i].substring(m.range.last + 1).trim()
+                fusedVenueFromMobile = listOf(before, after).filter { it.isNotBlank() }.joinToString(" ")
+                break
+            }
+        } else {
+            mobile = tokens[mobileIdx]
+        }
+        if (mobileIdx < 0 || mobile.isEmpty()) return null
+        if (mobileIdx < 4) return null
+
+        val afterMobile = tokens.drop(mobileIdx + 1).toMutableList()
+        if (fusedVenueFromMobile.isNotBlank()) afterMobile.add(0, fusedVenueFromMobile)
+
         val classCoordinator: String
         val venue: String
         when {
             afterMobile.isEmpty() -> return null
             afterMobile.size == 1 -> {
-                venue = afterMobile[0]
-                classCoordinator = ""
+                val (v, c) = splitVenueAndCoordinator(afterMobile[0])
+                venue = v
+                classCoordinator = c
             }
             else -> {
                 classCoordinator = afterMobile.last()
                 venue = afterMobile.dropLast(1).joinToString(" ").trim()
             }
         }
-        if (venue.isEmpty()) return null
+        // Require some venue or coordinator so we don't accept truncated rows
+        if (venue.isEmpty() && classCoordinator.isEmpty()) return null
 
         val mentorName = tokens[mobileIdx - 1]
         val group = tokens[mobileIdx - 2]
         val subsection = tokens[mobileIdx - 3]
         val section = tokens[mobileIdx - 4]
-        // Everything before the fixed tail (section…mentor) is the leading block
-        // that holds serial/CRN/registration, optional branch, and the three names.
-        val leadingEnd = mobileIdx - 4  // exclusive; tokens[0 until leadingEnd]
-        if (leadingEnd < 4) return null  // need room for CRN + 3 names at minimum
+        val leadingEnd = mobileIdx - 4
 
-        // Locate the CRN inside the leading cells, tolerating merged
-        // serial/CRN/registration cells but nothing else.
         var crn = ""
         var registration = ""
-        var crnFound = false
-        var cursor = 0
-        while (cursor < leadingEnd - 2) {
-            val cellTokens = tokens[cursor].split(WHITESPACE).filter { it.isNotBlank() }
-            val crnToken = cellTokens.firstOrNull { it.matches(CRN_TOKEN) }
-            if (crnToken == null) {
-                // Cells before the CRN may be a serial number and/or a standalone
-                // 8-digit registration (Sept 2026 layout places Registration before CRN).
-                if (cellTokens.isEmpty() ||
-                    cellTokens.any { !it.matches(SERIAL_TOKEN) && !it.matches(REGISTRATION_TOKEN) }
-                ) return null
-                for (t in cellTokens) {
-                    if (t.matches(REGISTRATION_TOKEN)) registration = t
-                }
-                cursor++
+        var branchFoundInIds = false
+        var nameStart = 0
+
+        var i = 0
+        while (i < leadingEnd) {
+            val cell = tokens[i]
+            val extracted = extractIdsFromCell(cell, normalizedBranch)
+            if (extracted.crn.isNotEmpty() || extracted.registration.isNotEmpty() || extracted.branchFound) {
+                if (extracted.crn.isNotEmpty() && crn.isEmpty()) crn = extracted.crn
+                if (extracted.registration.isNotEmpty() && registration.isEmpty()) registration = extracted.registration
+                if (extracted.branchFound) branchFoundInIds = true
+                nameStart = i + 1
+                i++
                 continue
             }
-            val regToken = cellTokens.firstOrNull { it.matches(REGISTRATION_TOKEN) }
-            val leftovers = cellTokens.filter { it != crnToken && it != regToken && !it.matches(SERIAL_TOKEN) }
-            if (leftovers.isNotEmpty()) return null
-            crn = crnToken
-            if (regToken != null) registration = regToken
-            cursor++
-            if (registration.isEmpty() && cursor < leadingEnd - 2 && tokens[cursor].matches(REGISTRATION_TOKEN)) {
-                registration = tokens[cursor]
-                cursor++
+            val cellTokens = cell.split(WHITESPACE).filter { it.isNotBlank() }
+            if (cellTokens.isNotEmpty() && cellTokens.all { it.matches(SERIAL_TOKEN) }) {
+                i++
+                continue
             }
-            crnFound = true
-            break
+            if (cell.equals(normalizedBranch, ignoreCase = true)) {
+                branchFoundInIds = true
+                nameStart = i + 1
+                i++
+                continue
+            }
+            if (crn.isNotEmpty()) {
+                nameStart = i
+                break
+            }
+            i++
         }
-        if (!crnFound) return null
 
-        // Remaining cells between CRN-block and the fixed tail: either
-        //   NEW layout:  Branch Student Mother Father
-        //   OLD layout:  Student Father Mother Branch
-        val mid = tokens.subList(cursor, leadingEnd)
-        if (mid.size != 4) return null
+        if (crn.isEmpty()) {
+            val leadingText = tokens.subList(0, leadingEnd.coerceAtMost(tokens.size)).joinToString(" ")
+            val candidates = CRN_EMBEDDED.findAll(leadingText).map { it.groupValues[1] }.toList()
+            crn = candidates.lastOrNull() ?: return null
+            if (registration.isEmpty()) {
+                REG_EMBEDDED.find(leadingText)?.let { registration = it.groupValues[1] }
+            }
+        }
 
-        val student: String
+        val nameCells = tokens.subList(nameStart.coerceAtMost(leadingEnd), leadingEnd)
+        if (nameCells.size < 3) return null
+
+        // Detect Aug layout: fourth name-area cell is the branch token
+        val isAugLayout = nameCells.size >= 4 &&
+            nameCells[3].equals(normalizedBranch, ignoreCase = true)
+
+        val filteredNames = nameCells.filter { !it.equals(normalizedBranch, ignoreCase = true) }
+        if (filteredNames.size < 3) return null
+
+        val student = filteredNames[0]
         var father: String
         var mother: String
-        val branchToken: String
-
-        val mid0 = mid[0]
-        val mid1 = mid[1]
-        val mid2 = mid[2]
-        val mid3 = mid[3]
-
-        if (mid0.equals(normalizedBranch, ignoreCase = true)) {
-            // Sept 2026+ layout: Branch | Student | Mother | Father
-            branchToken = mid0
-            student = mid1
-            mother = mid2
-            father = mid3
-        } else if (mid3.equals(normalizedBranch, ignoreCase = true)) {
-            // Aug 2026 layout: Student | Father | Mother | Branch
-            student = mid0
-            father = mid1
-            mother = mid2
-            branchToken = mid3
+        if (isAugLayout) {
+            // Student | Father | Mother | Branch
+            father = filteredNames[1]
+            mother = filteredNames[2]
         } else {
-            return null
+            // Sept 2026 (default): Student | Mother | Father
+            // Also used when branch was fused into the id cell
+            mother = filteredNames[1]
+            father = filteredNames[2]
         }
-        if (!branchToken.equals(normalizedBranch, ignoreCase = true)) return null
+
         if (student.isBlank() || father.isBlank() || mother.isBlank()) return null
 
-        // The document occasionally swaps the Father/Mother cells of a row;
-        // the bundled directory carries the corrected order for that CRN.
         val split = nameSplits[crn]
+        var outFather = father
+        var outMother = mother
         if (split != null && isParentSwap(student, father, mother, split)) {
-            father = normalizeWhitespace(split.fatherName)
-            mother = normalizeWhitespace(split.motherName)
+            outFather = normalizeWhitespace(split.fatherName)
+            outMother = normalizeWhitespace(split.motherName)
         }
+
         return StudentDirectoryRecord(
             crn = crn,
             registrationNumber = registration.ifBlank { registrationFallback[crn].orEmpty() },
-            candidateName = student,
-            fatherName = father,
-            motherName = mother,
+            candidateName = normalizeWhitespace(student),
+            fatherName = normalizeWhitespace(outFather),
+            motherName = normalizeWhitespace(outMother),
             branch = normalizedBranch,
             section = section,
             subsection = subsection,
             group = group,
             mentorName = normalizeWhitespace(mentorName),
-            mentorMobile = tokens[mobileIdx],
+            mentorMobile = mobile,
             venue = normalizeWhitespace(venue),
             classCoordinator = normalizeWhitespace(classCoordinator)
         )
     }
 
-    /** True when the bundled split holds the SAME three names with father/mother exchanged. */
+    private data class ExtractedIds(val crn: String, val registration: String, val branchFound: Boolean)
+
+    /**
+     * Pull 8-digit registration, 7-digit CRN, and optional branch token out of a
+     * single (possibly fused) cell such as "260136532621001IT" or "2614001 26012961".
+     */
+    private fun extractIdsFromCell(cell: String, normalizedBranch: String): ExtractedIds {
+        val trimmed = cell.trim()
+        if (trimmed.isEmpty()) return ExtractedIds("", "", false)
+
+        if (trimmed.matches(CRN_TOKEN)) return ExtractedIds(trimmed, "", false)
+        if (trimmed.matches(REGISTRATION_TOKEN)) return ExtractedIds("", trimmed, false)
+        if (trimmed.equals(normalizedBranch, ignoreCase = true)) return ExtractedIds("", "", true)
+
+        // "260136532621001IT" or "260136532621001"
+        val fused = Regex(
+            "^(?:(\\d{1,4})\\s+)?(\\d{8})(\\d{7})([A-Za-z]{2,4})?$",
+            RegexOption.IGNORE_CASE
+        ).matchEntire(trimmed)
+        if (fused != null) {
+            val reg = fused.groupValues[2]
+            val crn = fused.groupValues[3]
+            val br = fused.groupValues[4]
+            val branchFound = br.equals(normalizedBranch, ignoreCase = true)
+            return ExtractedIds(crn, reg, branchFound)
+        }
+
+        // "2621001IT"
+        val crnBranch = Regex("^(\\d{7})([A-Za-z]{2,4})$", RegexOption.IGNORE_CASE).matchEntire(trimmed)
+        if (crnBranch != null) {
+            val branchFound2 = crnBranch.groupValues[2].equals(normalizedBranch, ignoreCase = true)
+            return ExtractedIds(crnBranch.groupValues[1], "", branchFound2)
+        }
+
+        // Spaced: "2614001 26012345" or "33 2621191 26015016"
+        val parts = trimmed.split(WHITESPACE).filter { it.isNotBlank() }
+        if (parts.size <= 1) return ExtractedIds("", "", false)
+        var crn = ""
+        var registration = ""
+        var branchFound = false
+        for (p in parts) {
+            when {
+                p.matches(CRN_TOKEN) && crn.isEmpty() -> crn = p
+                p.matches(REGISTRATION_TOKEN) && registration.isEmpty() -> registration = p
+                p.equals(normalizedBranch, ignoreCase = true) -> branchFound = true
+                else -> {
+                    // Nested fuse e.g. part "260136532621001IT" (different from whole cell)
+                    if (p != trimmed) {
+                        val sub = extractIdsFromCell(p, normalizedBranch)
+                        if (sub.crn.isNotEmpty() && crn.isEmpty()) crn = sub.crn
+                        if (sub.registration.isNotEmpty() && registration.isEmpty()) registration = sub.registration
+                        if (sub.branchFound) branchFound = true
+                    }
+                }
+            }
+        }
+        return ExtractedIds(crn, registration, branchFound)
+    }
+
+    /**
+     * Split trailing "Venue Class Coordinator" when no pipe separates them.
+     * Coordinator titles often start with Dr./Er./Mr./Ms./Mrs./Prof.
+     */
+    private fun splitVenueAndCoordinator(blob: String): Pair<String, String> {
+        val text = normalizeWhitespace(blob)
+        if (text.isEmpty()) return "" to ""
+        val title = Regex("\\b((?:Dr|Er|Mr|Ms|Mrs|Prof)\\.?\\s+.+)$", RegexOption.IGNORE_CASE)
+        val m = title.find(text)
+        return if (m != null && m.range.first > 0) {
+            normalizeWhitespace(text.substring(0, m.range.first)) to normalizeWhitespace(m.groupValues[1])
+        } else {
+            text to ""
+        }
+    }
+
     private fun isParentSwap(student: String, father: String, mother: String, split: NameSplit): Boolean {
         fun same(a: String, b: String) =
             normalizeWhitespace(a).equals(normalizeWhitespace(b), ignoreCase = true)
@@ -278,12 +391,6 @@ object StudentDirectoryParser {
             same(mother, split.fatherName)
     }
 
-    /**
-     * Uses the bundled split when its tokens exactly match the PDF tokens for this
-     * same CRN — including the father/mother-swapped variant (the document's own
-     * column slip, corrected in the bundle). Otherwise keeps the full concatenated
-     * PDF text as the candidate name.
-     */
     private fun applyVerifiedNameSplit(
         record: StudentDirectoryRecord,
         split: NameSplit?,
