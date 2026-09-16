@@ -209,7 +209,8 @@ class StudentDirectoryManager(
             current.registrationNumber != match.registrationNumber ||
             current.fatherName.isBlank() ||
             current.motherName.isBlank() ||
-            current.group != match.subsection
+            current.group != match.subsection ||
+            (match.classCoordinator.isNotBlank() && current.classCoordinator.isBlank())
         if (!needsUpgrade) return@withContext false
 
         keys.removeAttendanceSession()
@@ -226,7 +227,8 @@ class StudentDirectoryManager(
             studentGroup = match.group,
             mentorMobile = match.mentorMobile,
             mentorVenue = match.venue,
-            source = "gndec_permanent_pdf"
+            source = "gndec_permanent_pdf",
+            classCoordinator = match.classCoordinator
         )
         settings.setGroup(match.subsection)
         true
