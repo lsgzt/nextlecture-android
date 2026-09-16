@@ -278,4 +278,65 @@ class StudentDirectoryParserTest {
         )
         assertTrue(StudentDirectoryParser.parse(lines, "CE").isEmpty())
     }
+
+    // ---- Sept 2026 layout (Branch before names; Mother before Father; Class Coordinator) ----
+
+    @Test
+    fun `sept 2026 pipe rows parse branch mother father and class coordinator`() {
+        val lines = listOf(
+            "1| 26013653| 2621001| IT| Aaditya Koundal| Monika| Kapil Dev| ITA| ITA1| ITAM1| Dr. Palwinder Kaur| 9814828414| S213| Mr. Sunil Kumar"
+        )
+        val r = StudentDirectoryParser.parse(lines, "IT", nameSplits = emptyMap()).single()
+        assertEquals("2621001", r.crn)
+        assertEquals("26013653", r.registrationNumber)
+        assertEquals("Aaditya Koundal", r.candidateName)
+        assertEquals("Kapil Dev", r.fatherName)
+        assertEquals("Monika", r.motherName)
+        assertEquals("ITA", r.section)
+        assertEquals("ITA1", r.subsection)
+        assertEquals("ITAM1", r.group)
+        assertEquals("Dr. Palwinder Kaur", r.mentorName)
+        assertEquals("9814828414", r.mentorMobile)
+        assertEquals("S213", r.venue)
+        assertEquals("Mr. Sunil Kumar", r.classCoordinator)
+    }
+
+    @Test
+    fun `sept 2026 merged registration and crn still parses`() {
+        val lines = listOf(
+            "1| 26012961 2614001| CE| Abhiraj Sharma| Parveen Lata| Raj Kumar| CEA| CEA1| CEAM1| Dr. Yuvraj Singh| 9815830889| Geotech Lab| Dr. Gagandeep Kaur"
+        )
+        val r = StudentDirectoryParser.parse(lines, "CE", nameSplits = emptyMap()).single()
+        assertEquals("2614001", r.crn)
+        assertEquals("26012961", r.registrationNumber)
+        assertEquals("Abhiraj Sharma", r.candidateName)
+        assertEquals("Raj Kumar", r.fatherName)
+        assertEquals("Parveen Lata", r.motherName)
+        assertEquals("Dr. Gagandeep Kaur", r.classCoordinator)
+    }
+
+    @Test
+    fun `sept 2026 multi token venue is preserved with coordinator`() {
+        val lines = listOf(
+            "1| 26010447| 2630001| ME| Abhijeet Kumar Vashisht| Vandana Vashisht| Anil Kumar Vashisht| MEA| MEA1| MEAM1| Dr. Harpuneet Singh| 9914255011| HT LAB (ME)| Dr. Jasmeet Kaur"
+        )
+        val r = StudentDirectoryParser.parse(lines, "ME", nameSplits = emptyMap()).single()
+        assertEquals("HT LAB (ME)", r.venue)
+        assertEquals("Dr. Jasmeet Kaur", r.classCoordinator)
+        assertEquals("Abhijeet Kumar Vashisht", r.candidateName)
+    }
+
+    @Test
+    fun `aug 2026 layout without class coordinator still parses`() {
+        // Prior layout must remain working so cached / older extractions do not break.
+        val lines = listOf(
+            "1| 2614001| 26012345| Test Student One| Test Father One| Test Mother One| CE| CEA| CEA1| CEAM1| Dr. Mentor A| 9815830889| Geotech Lab"
+        )
+        val r = StudentDirectoryParser.parse(lines, "CE", nameSplits = emptyMap()).single()
+        assertEquals("2614001", r.crn)
+        assertEquals("Test Student One", r.candidateName)
+        assertEquals("Test Father One", r.fatherName)
+        assertEquals("Test Mother One", r.motherName)
+        assertEquals("", r.classCoordinator)
+    }
 }
