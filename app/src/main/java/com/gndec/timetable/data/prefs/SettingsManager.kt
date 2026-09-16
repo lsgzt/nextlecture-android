@@ -52,6 +52,8 @@ data class AppSettings(
     val lastAnnouncementTitle: String = "",
     val lastAnnouncementMessage: String = "",
     val lastAnnouncementPublishedAt: String = "",
+    val lastAnnouncementType: String = "info",
+    val lastAnnouncementLink: String = "",
     val erpNoticeJson: String = "",
     val erpNoticeUpdatedAt: Long = 0L,
     val holidayJson: String = "",
@@ -111,6 +113,8 @@ class SettingsManager(private val context: Context) {
         val LAST_ANNOUNCEMENT_TITLE = stringPreferencesKey("last_announcement_title")
         val LAST_ANNOUNCEMENT_MESSAGE = stringPreferencesKey("last_announcement_message")
         val LAST_ANNOUNCEMENT_PUBLISHED_AT = stringPreferencesKey("last_announcement_published_at")
+        val LAST_ANNOUNCEMENT_TYPE = stringPreferencesKey("last_announcement_type")
+        val LAST_ANNOUNCEMENT_LINK = stringPreferencesKey("last_announcement_link")
         val ERP_NOTICE_JSON = stringPreferencesKey("erp_notice_json")
         val ERP_NOTICE_UPDATED_AT = longPreferencesKey("erp_notice_updated_at")
         val HOLIDAY_JSON = stringPreferencesKey("holiday_json")
@@ -161,6 +165,8 @@ class SettingsManager(private val context: Context) {
             lastAnnouncementTitle = p[K.LAST_ANNOUNCEMENT_TITLE] ?: "",
             lastAnnouncementMessage = p[K.LAST_ANNOUNCEMENT_MESSAGE] ?: "",
             lastAnnouncementPublishedAt = p[K.LAST_ANNOUNCEMENT_PUBLISHED_AT] ?: "",
+            lastAnnouncementType = p[K.LAST_ANNOUNCEMENT_TYPE] ?: "info",
+            lastAnnouncementLink = p[K.LAST_ANNOUNCEMENT_LINK] ?: "",
             erpNoticeJson = p[K.ERP_NOTICE_JSON] ?: "",
             erpNoticeUpdatedAt = p[K.ERP_NOTICE_UPDATED_AT] ?: 0L,
             holidayJson = p[K.HOLIDAY_JSON] ?: "",
@@ -235,11 +241,20 @@ class SettingsManager(private val context: Context) {
     }
     suspend fun setAnnouncementNotifications(enabled: Boolean) = context.dataStore.edit { it[K.ANNOUNCEMENT_NOTIFICATIONS] = enabled }
     suspend fun setLastAnnouncementId(id: String) = context.dataStore.edit { it[K.LAST_ANNOUNCEMENT_ID] = id }
-    suspend fun setAnnouncementCache(id: String, title: String, message: String, publishedAt: String) = context.dataStore.edit {
+    suspend fun setAnnouncementCache(
+        id: String,
+        title: String,
+        message: String,
+        publishedAt: String,
+        type: String = "info",
+        link: String = ""
+    ) = context.dataStore.edit {
         it[K.LAST_ANNOUNCEMENT_ID] = id
         it[K.LAST_ANNOUNCEMENT_TITLE] = title
         it[K.LAST_ANNOUNCEMENT_MESSAGE] = message
         it[K.LAST_ANNOUNCEMENT_PUBLISHED_AT] = publishedAt
+        it[K.LAST_ANNOUNCEMENT_TYPE] = type
+        it[K.LAST_ANNOUNCEMENT_LINK] = link
     }
     suspend fun setErpNoticeCache(json: String, updatedAt: Long) = context.dataStore.edit {
         it[K.ERP_NOTICE_JSON] = json

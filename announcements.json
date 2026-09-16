@@ -4,9 +4,10 @@
     {
       "id": "mse1-date-sheet-2026-09",
       "title": "MSE-1 Date Sheet",
-      "message": "Chemistry Group:\n25 Sep — Chemistry — 9:15–10:45 AM\n28 Sep — Mathematics-I — 9:15–10:45 AM\n29 Sep — PPS — 9:15–10:45 AM\n30 Sep — BEEE — 9:15–10:45 AM\n01 Oct — English — 9:15–10:45 AM\n\nPhysics Group:\n25 Sep — Physics — 12:45–2:15 PM\n28 Sep — Mathematics-I — 9:15–10:45 AM\n29 Sep — PPS — 9:15–10:45 AM\n30 Sep — EDG — 9:15–10:45 AM\n30 Sep — EDG — 11:00 AM–12:30 PM\n01 Oct — Economics — 12:45–2:15 PM",
+      "message": "**Chemistry Group:**\n25 Sep — Chemistry — 9:15–10:45 AM\n28 Sep — Mathematics-I — 9:15–10:45 AM\n29 Sep — PPS — 9:15–10:45 AM\n30 Sep — BEEE — 9:15–10:45 AM\n01 Oct — English — 9:15–10:45 AM\n\n**Physics Group:**\n25 Sep — Physics — 12:45–2:15 PM\n28 Sep — Mathematics-I — 9:15–10:45 AM\n29 Sep — PPS — 9:15–10:45 AM\n30 Sep — EDG — 9:15–10:45 AM\n30 Sep — EDG — 11:00 AM–12:30 PM\n01 Oct — Economics — 12:45–2:15 PM",
       "publishedAt": "2026-09-13T12:00:00Z",
       "type": "notice",
+      "link": "",
       "active": true
     }
   ]

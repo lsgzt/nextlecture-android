@@ -19,7 +19,10 @@ data class Announcement(
     val title: String,
     val message: String,
     val publishedAt: String = "",
+    /** info | notice | warn | happy | urgent | update — drives card color + emoji. */
     val type: String = "info",
+    /** Optional deep link / URL. When set, the whole home card is tappable. */
+    val link: String = "",
     val active: Boolean = true
 )
 
@@ -49,7 +52,9 @@ class AnnouncementManager(
                 id = cached.lastAnnouncementId,
                 title = cached.lastAnnouncementTitle,
                 message = cached.lastAnnouncementMessage,
-                publishedAt = cached.lastAnnouncementPublishedAt
+                publishedAt = cached.lastAnnouncementPublishedAt,
+                type = cached.lastAnnouncementType.ifBlank { "info" },
+                link = cached.lastAnnouncementLink
             )
         }
     }
@@ -76,7 +81,14 @@ class AnnouncementManager(
                 if (current.announcementNotifications && current.lastAnnouncementId != announcement.id) {
                     NotificationHelper.showAnnouncement(context, announcement.id, announcement.title, announcement.message)
                 }
-                settings.setAnnouncementCache(announcement.id, announcement.title, announcement.message, announcement.publishedAt)
+                settings.setAnnouncementCache(
+                    announcement.id,
+                    announcement.title,
+                    announcement.message,
+                    announcement.publishedAt,
+                    announcement.type,
+                    announcement.link
+                )
             }
             announcement
         } catch (_: Exception) {

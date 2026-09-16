@@ -3,6 +3,7 @@ package com.gndec.timetable.ui
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -50,6 +51,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -278,28 +287,251 @@ fun PremiumNextLectureCard(
     }
 }
 
+/**
+ * Home announcement card.
+ *
+ * JSON fields:
+ * - type: info | notice | warn | happy | urgent | update
+ * - link: optional URL — when set, the whole card opens it
+ * - message: supports lightweight markdown (**bold**, *italic*, [label](url), bare https:// links)
+ * Inline markdown links stay tappable even when the card has a [Announcement.link].
+ */
 @Composable
 fun PremiumAnnouncementCard(announcement: Announcement, modifier: Modifier = Modifier) {
+    val uriHandler = LocalUriHandler.current
+    val style = announcementVisualStyle(announcement.type)
+    val cardLink = announcement.link.trim().takeIf { it.isNotBlank() }
+    val cardModifier = if (cardLink != null) {
+        modifier.clickable {
+            runCatching { uriHandler.openUri(cardLink) }
+        }
+    } else {
+        modifier
+    }
     Card(
-        modifier = modifier,
+        modifier = cardModifier,
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        colors = CardDefaults.cardColors(containerColor = style.container),
+        border = BorderStroke(1.dp, style.border),
         elevation = CardDefaults.cardElevation(0.dp)
     ) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
-            Box(Modifier.size(36.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f), CircleShape), contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.Campaign, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(19.dp))
+            Box(
+                Modifier
+                    .size(36.dp)
+                    .background(style.accent.copy(alpha = 0.16f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                if (style.emoji != null) {
+                    Text(style.emoji, style = MaterialTheme.typography.titleMedium)
+                } else {
+                    Icon(
+                        Icons.Default.Campaign,
+                        contentDescription = null,
+                        tint = style.accent,
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
             }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text("ANNOUNCEMENT", color = MaterialTheme.colorScheme.primary, letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                Text(
+                    style.label,
+                    color = style.accent,
+                    letterSpacing = 1.2.sp,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.labelSmall
+                )
                 Spacer(Modifier.height(3.dp))
-                Text(announcement.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    announcement.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = style.onContainer
+                )
                 Spacer(Modifier.height(3.dp))
-                Text(announcement.message, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                AnnouncementMarkdownText(
+                    markdown = announcement.message,
+                    color = style.onContainer.copy(alpha = 0.82f),
+                    linkColor = style.accent
+                )
+                if (cardLink != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Tap card to open",
+                        color = style.accent.copy(alpha = 0.75f),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
         }
+    }
+}
+
+private data class AnnouncementVisualStyle(
+    val label: String,
+    val emoji: String?,
+    val container: Color,
+    val accent: Color,
+    val onContainer: Color,
+    val border: Color
+)
+
+@Composable
+private fun announcementVisualStyle(rawType: String): AnnouncementVisualStyle {
+    val scheme = MaterialTheme.colorScheme
+    val dark = scheme.background.luminance() < 0.5f
+    return when (rawType.trim().lowercase()) {
+        "warn", "warning" -> AnnouncementVisualStyle(
+            label = "WARNING",
+            emoji = "⚠️",
+            container = if (dark) Color(0xFF3D3218) else Color(0xFFFFF4D6),
+            accent = if (dark) Color(0xFFF5C542) else Color(0xFFB45309),
+            onContainer = if (dark) Color(0xFFFFF3C4) else Color(0xFF422006),
+            border = if (dark) Color(0xFF6B5420) else Color(0xFFF0D48A)
+        )
+        "happy", "celebrate", "celebration" -> AnnouncementVisualStyle(
+            label = "CELEBRATION",
+            emoji = "🎉",
+            container = if (dark) Color(0xFF1A3D2E) else Color(0xFFE8F8EF),
+            accent = if (dark) Color(0xFF6EE7B7) else Color(0xFF047857),
+            onContainer = if (dark) Color(0xFFD1FAE5) else Color(0xFF064E3B),
+            border = if (dark) Color(0xFF2F6B50) else Color(0xFFA7F3D0)
+        )
+        "urgent", "critical", "alert" -> AnnouncementVisualStyle(
+            label = "URGENT",
+            emoji = "🚨",
+            container = if (dark) Color(0xFF3F1D1D) else Color(0xFFFFE8E8),
+            accent = if (dark) Color(0xFFFCA5A5) else Color(0xFFB91C1C),
+            onContainer = if (dark) Color(0xFFFECACA) else Color(0xFF7F1D1D),
+            border = if (dark) Color(0xFF7F2A2A) else Color(0xFFFECACA)
+        )
+        "update", "feature" -> AnnouncementVisualStyle(
+            label = "UPDATE",
+            emoji = "✨",
+            container = if (dark) Color(0xFF1A2F3D) else Color(0xFFE8F4FC),
+            accent = if (dark) Color(0xFF7DD3FC) else Color(0xFF0369A1),
+            onContainer = if (dark) Color(0xFFE0F2FE) else Color(0xFF0C4A6E),
+            border = if (dark) Color(0xFF2A4A60) else Color(0xFFBAE6FD)
+        )
+        "notice" -> AnnouncementVisualStyle(
+            label = "NOTICE",
+            emoji = "📌",
+            container = if (dark) Color(0xFF1E2A3D) else Color(0xFFEEF2FF),
+            accent = if (dark) Color(0xFFA5B4FC) else Color(0xFF4338CA),
+            onContainer = if (dark) Color(0xFFE0E7FF) else Color(0xFF1E1B4B),
+            border = if (dark) Color(0xFF334155) else Color(0xFFC7D2FE)
+        )
+        else -> AnnouncementVisualStyle(
+            label = "ANNOUNCEMENT",
+            emoji = null,
+            container = scheme.secondaryContainer,
+            accent = scheme.primary,
+            onContainer = scheme.onSecondaryContainer,
+            border = scheme.outlineVariant
+        )
+    }
+}
+
+/**
+ * Lightweight markdown for announcement bodies: **bold**, *italic* / _italic_,
+ * [label](url), and bare https:// URLs. Inline links remain independently tappable.
+ */
+@Composable
+private fun AnnouncementMarkdownText(
+    markdown: String,
+    color: Color,
+    linkColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val uriHandler = LocalUriHandler.current
+    val annotated = remember(markdown, color, linkColor) {
+        announcementInlineAnnotated(markdown, color, linkColor)
+    }
+    ClickableText(
+        text = annotated,
+        modifier = modifier.fillMaxWidth(),
+        style = MaterialTheme.typography.bodyMedium.copy(color = color),
+        onClick = { offset ->
+            annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.let { match ->
+                runCatching { uriHandler.openUri(match.item) }
+            }
+        }
+    )
+}
+
+private fun announcementInlineAnnotated(
+    source: String,
+    color: Color,
+    linkColor: Color
+): AnnotatedString = buildAnnotatedString {
+    // Order: links first, then bold, then italic. Process line-by-line for readability.
+    val linkMd = Regex("""\[([^\]]+)\]\((https?://[^\s)]+)\)""")
+    val bareUrl = Regex("""(?<![(\["'])(https?://[^\s)\]>]+)""")
+    val bold = Regex("""\*\*(.+?)\*\*|__(.+?)__""")
+    val italic = Regex("""(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)|(?<!_)_(?!_)(.+?)(?<!_)_(?!_)""")
+
+    var i = 0
+    val text = source
+    // Combined token scan left-to-right
+    data class Tok(val start: Int, val end: Int, val kind: String, val display: String, val url: String? = null)
+    val tokens = mutableListOf<Tok>()
+    linkMd.findAll(text).forEach { m ->
+        tokens += Tok(m.range.first, m.range.last + 1, "link", m.groupValues[1], m.groupValues[2])
+    }
+    bareUrl.findAll(text).forEach { m ->
+        // skip if already inside a markdown link span
+        if (tokens.none { m.range.first >= it.start && m.range.last < it.end }) {
+            tokens += Tok(m.range.first, m.range.last + 1, "link", m.value, m.value)
+        }
+    }
+    bold.findAll(text).forEach { m ->
+        if (tokens.none { m.range.first >= it.start && m.range.last < it.end }) {
+            val display = m.groupValues[1].ifBlank { m.groupValues[2] }
+            tokens += Tok(m.range.first, m.range.last + 1, "bold", display)
+        }
+    }
+    italic.findAll(text).forEach { m ->
+        if (tokens.none { m.range.first >= it.start && m.range.last < it.end }) {
+            val display = m.groupValues[1].ifBlank { m.groupValues[2] }
+            tokens += Tok(m.range.first, m.range.last + 1, "italic", display)
+        }
+    }
+    tokens.sortBy { it.start }
+    // Drop overlapping later tokens
+    val kept = mutableListOf<Tok>()
+    var cursor = 0
+    for (t in tokens) {
+        if (t.start < cursor) continue
+        kept += t
+        cursor = t.end
+    }
+    cursor = 0
+    for (t in kept) {
+        if (t.start > cursor) {
+            withStyle(SpanStyle(color = color)) { append(text.substring(cursor, t.start)) }
+        }
+        when (t.kind) {
+            "link" -> {
+                val url = t.url.orEmpty()
+                pushStringAnnotation("URL", url)
+                withStyle(
+                    SpanStyle(
+                        color = linkColor,
+                        textDecoration = TextDecoration.Underline,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                ) { append(t.display) }
+                pop()
+            }
+            "bold" -> withStyle(SpanStyle(color = color, fontWeight = FontWeight.Bold)) { append(t.display) }
+            "italic" -> withStyle(SpanStyle(color = color, fontStyle = FontStyle.Italic)) { append(t.display) }
+        }
+        cursor = t.end
+    }
+    if (cursor < text.length) {
+        withStyle(SpanStyle(color = color)) { append(text.substring(cursor)) }
     }
 }
 
