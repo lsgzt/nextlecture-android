@@ -1,5 +1,12 @@
 package com.gndec.timetable.ui.attendance
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,7 +21,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -30,9 +36,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -40,6 +48,8 @@ import com.gndec.timetable.data.db.LectureEntity
 import com.gndec.timetable.data.db.TimetableSnapshotEntity
 import com.gndec.timetable.net.AttendanceRecord
 import com.gndec.timetable.net.AttendanceSummary
+import com.gndec.timetable.ui.motion.Motion
+import com.gndec.timetable.ui.motion.motionTween
 import com.gndec.timetable.ui.theme.GndecMuted
 import com.gndec.timetable.ui.theme.GndecTeal
 import java.time.LocalDate
@@ -163,24 +173,51 @@ internal fun SubjectSummaryCard(records: List<AttendanceRecord>, target: Float) 
                 subjectGroups.forEach { (subject, subjectRecords) ->
                     val summary = calculateSummary(subjectRecords, target.toDouble())
                     var expanded by remember(subject) { mutableStateOf(false) }
+                    val chevronRotation by animateFloatAsState(
+                        targetValue = if (expanded) 180f else 0f,
+                        animationSpec = motionTween(Motion.Fast),
+                        label = "subjectExpandChevron"
+                    )
                     Card(
                         onClick = { expanded = !expanded },
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f)),
                         shape = RoundedCornerShape(14.dp)
                     ) {
-                        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(
+                            Modifier
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
+                                .animateContentSize(animationSpec = motionTween<IntSize>(Motion.Normal)),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
                                     Text(subject, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     Text("${summary.present} present · ${summary.absent} absent", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                                 }
                                 Text(summary.percentage?.let { "${"%.1f".format(it)}%" } ?: "—", color = if ((summary.percentage ?: 100.0) < target) MaterialTheme.colorScheme.error else GndecTeal, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = if (expanded) "Hide attendance types" else "Show attendance types", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Icon(
+                                    Icons.Default.ExpandMore,
+                                    contentDescription = if (expanded) "Hide attendance types" else "Show attendance types",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.rotate(chevronRotation)
+                                )
                             }
-                            if (expanded) {
+                            // Match app-wide expand/collapse motion (onboarding, etc.)
+                            AnimatedVisibility(
+                                visible = expanded,
+                                enter = expandVertically(animationSpec = motionTween(Motion.Normal)) +
+                                    fadeIn(animationSpec = motionTween(Motion.Normal)),
+                                exit = shrinkVertically(animationSpec = motionTween(Motion.Fast)) +
+                                    fadeOut(animationSpec = motionTween(Motion.Fast))
+                            ) {
                                 val typeOrder = listOf("lecture", "practical", "tutorial", "unspecified")
-                                val typeLabels = mapOf("lecture" to "Lecture", "practical" to "Practical", "tutorial" to "Tutorial", "unspecified" to "Legacy / unclassified")
+                                val typeLabels = mapOf(
+                                    "lecture" to "Lecture",
+                                    "practical" to "Practical",
+                                    "tutorial" to "Tutorial",
+                                    "unspecified" to "Legacy / unclassified"
+                                )
                                 val groupedTypes = subjectRecords.groupBy { normalizeAttendanceType(it.lectureType) }
                                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                     typeOrder.mapNotNull { type ->
