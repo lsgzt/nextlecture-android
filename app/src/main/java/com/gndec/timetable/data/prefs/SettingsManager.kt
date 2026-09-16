@@ -54,6 +54,9 @@ data class AppSettings(
     val lastAnnouncementPublishedAt: String = "",
     val lastAnnouncementType: String = "info",
     val lastAnnouncementLink: String = "",
+    val lastAnnouncementBranch: String = "",
+    val lastAnnouncementSection: String = "",
+    val lastAnnouncementSubsection: String = "",
     val erpNoticeJson: String = "",
     val erpNoticeUpdatedAt: Long = 0L,
     val holidayJson: String = "",
@@ -115,6 +118,9 @@ class SettingsManager(private val context: Context) {
         val LAST_ANNOUNCEMENT_PUBLISHED_AT = stringPreferencesKey("last_announcement_published_at")
         val LAST_ANNOUNCEMENT_TYPE = stringPreferencesKey("last_announcement_type")
         val LAST_ANNOUNCEMENT_LINK = stringPreferencesKey("last_announcement_link")
+        val LAST_ANNOUNCEMENT_BRANCH = stringPreferencesKey("last_announcement_branch")
+        val LAST_ANNOUNCEMENT_SECTION = stringPreferencesKey("last_announcement_section")
+        val LAST_ANNOUNCEMENT_SUBSECTION = stringPreferencesKey("last_announcement_subsection")
         val ERP_NOTICE_JSON = stringPreferencesKey("erp_notice_json")
         val ERP_NOTICE_UPDATED_AT = longPreferencesKey("erp_notice_updated_at")
         val HOLIDAY_JSON = stringPreferencesKey("holiday_json")
@@ -167,6 +173,9 @@ class SettingsManager(private val context: Context) {
             lastAnnouncementPublishedAt = p[K.LAST_ANNOUNCEMENT_PUBLISHED_AT] ?: "",
             lastAnnouncementType = p[K.LAST_ANNOUNCEMENT_TYPE] ?: "info",
             lastAnnouncementLink = p[K.LAST_ANNOUNCEMENT_LINK] ?: "",
+            lastAnnouncementBranch = p[K.LAST_ANNOUNCEMENT_BRANCH] ?: "",
+            lastAnnouncementSection = p[K.LAST_ANNOUNCEMENT_SECTION] ?: "",
+            lastAnnouncementSubsection = p[K.LAST_ANNOUNCEMENT_SUBSECTION] ?: "",
             erpNoticeJson = p[K.ERP_NOTICE_JSON] ?: "",
             erpNoticeUpdatedAt = p[K.ERP_NOTICE_UPDATED_AT] ?: 0L,
             holidayJson = p[K.HOLIDAY_JSON] ?: "",
@@ -247,7 +256,10 @@ class SettingsManager(private val context: Context) {
         message: String,
         publishedAt: String,
         type: String = "info",
-        link: String = ""
+        link: String = "",
+        branch: String = "",
+        section: String = "",
+        subsection: String = ""
     ) = context.dataStore.edit {
         it[K.LAST_ANNOUNCEMENT_ID] = id
         it[K.LAST_ANNOUNCEMENT_TITLE] = title
@@ -255,6 +267,9 @@ class SettingsManager(private val context: Context) {
         it[K.LAST_ANNOUNCEMENT_PUBLISHED_AT] = publishedAt
         it[K.LAST_ANNOUNCEMENT_TYPE] = type
         it[K.LAST_ANNOUNCEMENT_LINK] = link
+        it[K.LAST_ANNOUNCEMENT_BRANCH] = branch
+        it[K.LAST_ANNOUNCEMENT_SECTION] = section
+        it[K.LAST_ANNOUNCEMENT_SUBSECTION] = subsection
     }
     suspend fun setErpNoticeCache(json: String, updatedAt: Long) = context.dataStore.edit {
         it[K.ERP_NOTICE_JSON] = json

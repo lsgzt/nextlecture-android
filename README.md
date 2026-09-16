@@ -83,12 +83,30 @@ To publish an announcement from a phone, open the repository on GitHub, open `an
 | `id` | yes | Stable unique string. Changing `id` is treated as a **new** announcement (notification can fire again). |
 | `title` | yes | Short headline shown on the Home card and in the notification. |
 | `message` | yes | Body text. Supports lightweight **markdown** (see below). |
-| `publishedAt` | recommended | ISO-8601 timestamp (e.g. `2026-09-16T10:00:00Z`). The app shows the **latest** active item by this value. |
+| `publishedAt` | recommended | ISO-8601 timestamp (e.g. `2026-09-16T10:00:00Z`). Among announcements that **match the student**, the app shows the one with the greatest `publishedAt`. |
 | `type` | no | Visual style of the Home card. Default: `info`. |
 | `link` | no | Optional URL. When set, **tapping anywhere on the card** opens it. When omitted or `""`, the card is not clickable. |
+| `branch` | no | Audience filter. Empty / `"all"` → every branch. e.g. `"IT"` → only IT students. |
+| `section` | no | Audience filter within the branch. Empty / `"all"` → every section. e.g. `"ITB"`. |
+| `subsection` | no | Audience filter within the section. Empty / `"all"` → every subgroup. e.g. `"ITB2"`. Matched against the student's saved group / subsection. |
 | `active` | no | Set `false` to hide without deleting. Default: `true`. |
 
-Only **active** announcements with non-blank `id`, `title`, and `message` are considered. Among those, the one with the greatest `publishedAt` is shown.
+Only **active** announcements with non-blank `id`, `title`, and `message` that **match the student's profile** are considered. Among those, the one with the greatest `publishedAt` is shown on Home (and may notify once).
+
+### Audience targeting (personalised notices)
+
+Targeting is hierarchical. Leave a field empty (or set `"all"`) to mean “everyone at that level”.
+
+| `branch` | `section` | `subsection` | Who sees it |
+|----------|-----------|--------------|-------------|
+| *(empty)* / `all` | *(empty)* | *(empty)* | All students |
+| `IT` | *(empty)* | *(empty)* | All IT students |
+| `IT` | `ITB` | *(empty)* | All ITB section students |
+| `IT` | `ITB` | `ITB2` | Only ITB2 subgroup |
+
+Matching is case-insensitive and ignores spaces/hyphens (`itb2` = `ITB2` = `ITB-2`).  
+`subsection` is compared to the student’s timetable group / directory subsection (whichever is saved on the device).  
+If the student has no branch/section stored yet, only announcements with no targeting (or `all`) apply.
 
 ### Types (Home card style)
 
@@ -124,20 +142,38 @@ Inline links stay independently tappable even when the card has a top-level `lin
   "version": 2,
   "announcements": [
     {
-      "id": "os1-lab-closed-2026-09-16",
+      "id": "college-wide-holiday-note",
+      "title": "Campus closed Friday",
+      "message": "College will remain closed on **Friday** for maintenance.",
+      "publishedAt": "2026-09-16T08:00:00Z",
+      "type": "notice",
+      "branch": "all",
+      "section": "",
+      "subsection": "",
+      "link": "",
+      "active": true
+    },
+    {
+      "id": "it-lab-closed-2026-09-16",
       "title": "OS1 Lab closed today",
       "message": "The **OS1 Lab** is closed for maintenance.\nDetails on the [notice board](https://example.com/notice).",
       "publishedAt": "2026-09-16T10:00:00Z",
       "type": "warn",
+      "branch": "IT",
+      "section": "",
+      "subsection": "",
       "link": "https://example.com/full-notice",
       "active": true
     },
     {
-      "id": "mse1-date-sheet-2026-09",
-      "title": "MSE-1 Date Sheet",
-      "message": "**Chemistry Group:**\n25 Sep — Chemistry — 9:15–10:45 AM\n\n**Physics Group:**\n25 Sep — Physics — 12:45–2:15 PM",
-      "publishedAt": "2026-09-13T12:00:00Z",
-      "type": "notice",
+      "id": "itb2-mentor-meet",
+      "title": "ITB2 mentor meeting",
+      "message": "Mentor meeting at **3 PM** in F108.",
+      "publishedAt": "2026-09-16T11:00:00Z",
+      "type": "info",
+      "branch": "IT",
+      "section": "ITB",
+      "subsection": "ITB2",
       "link": "",
       "active": true
     }
@@ -145,7 +181,9 @@ Inline links stay independently tappable even when the card has a top-level `lin
 }
 ```
 
-In the first example, tapping the card opens `link`; tapping “notice board” in the body opens that URL only.
+- First entry: every student  
+- Second: all **IT** students (card opens `link`; body link still works alone)  
+- Third: only **ITB2** students  
 
 ### Delivery notes
 
