@@ -339,4 +339,37 @@ class StudentDirectoryParserTest {
         assertEquals("Test Mother One", r.motherName)
         assertEquals("", r.classCoordinator)
     }
+
+    @Test
+    fun `fused reg crn branch and mobile venue cells from real Sept PDF`() {
+        // Exact shape produced by ColumnAwarePdfTextStripper on the 15_09_2026 IT PDF.
+        val lines = listOf(
+            "1|260136532621001IT|Aaditya Koundal|Monika|Kapil Dev|ITA|ITA1|ITAM1|Dr. Palwinder Kaur|9814828414S213|Mr. Sunil Kumar"
+        )
+        val r = StudentDirectoryParser.parse(lines, "IT", nameSplits = emptyMap()).single()
+        assertEquals("2621001", r.crn)
+        assertEquals("26013653", r.registrationNumber)
+        assertEquals("Aaditya Koundal", r.candidateName)
+        assertEquals("Kapil Dev", r.fatherName)
+        assertEquals("Monika", r.motherName)
+        assertEquals("ITA", r.section)
+        assertEquals("ITA1", r.subsection)
+        assertEquals("ITAM1", r.group)
+        assertEquals("Dr. Palwinder Kaur", r.mentorName)
+        assertEquals("9814828414", r.mentorMobile)
+        assertEquals("S213", r.venue)
+        assertEquals("Mr. Sunil Kumar", r.classCoordinator)
+    }
+
+    @Test
+    fun `fused mobile venue with multi word venue`() {
+        val lines = listOf(
+            "43|260103252621043IT|Diljot Singh|Poonampreet Kaur|Sukhdev Singh|ITA|ITA2|ITAM3|Er. Rupinder Kaur|6284162034HW LAB|Mr. Sunil Kumar"
+        )
+        val r = StudentDirectoryParser.parse(lines, "IT", nameSplits = emptyMap()).single()
+        assertEquals("2621043", r.crn)
+        assertEquals("HW LAB", r.venue)
+        assertEquals("Mr. Sunil Kumar", r.classCoordinator)
+        assertEquals("6284162034", r.mentorMobile)
+    }
 }
