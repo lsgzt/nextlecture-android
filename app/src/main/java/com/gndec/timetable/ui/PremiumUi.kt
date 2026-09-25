@@ -293,7 +293,7 @@ fun PremiumNextLectureCard(
  * JSON fields:
  * - type: info | notice | warn | happy | urgent | update
  * - link: optional URL — when set, the whole card opens it
- * - message: supports lightweight markdown (**bold**, *italic*, [label](url), bare https:// links)
+ * - message: supports lightweight markdown (**bold**, *italic*, ~~strikethrough~~, [label](url), bare https:// links)
  * Inline markdown links stay tappable even when the card has a [Announcement.link].
  */
 @Composable
@@ -470,6 +470,7 @@ private fun announcementInlineAnnotated(
     val linkMd = Regex("""\[([^\]]+)\]\((https?://[^\s)]+)\)""")
     val bareUrl = Regex("""(?<![(\["'])(https?://[^\s)\]>]+)""")
     val bold = Regex("""\*\*(.+?)\*\*|__(.+?)__""")
+    val strike = Regex("""~~(.+?)~~""")
     val italic = Regex("""(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)|(?<!_)_(?!_)(.+?)(?<!_)_(?!_)""")
 
     var i = 0
@@ -490,6 +491,11 @@ private fun announcementInlineAnnotated(
         if (tokens.none { m.range.first >= it.start && m.range.last < it.end }) {
             val display = m.groupValues[1].ifBlank { m.groupValues[2] }
             tokens += Tok(m.range.first, m.range.last + 1, "bold", display)
+        }
+    }
+    strike.findAll(text).forEach { m ->
+        if (tokens.none { m.range.first >= it.start && m.range.last < it.end }) {
+            tokens += Tok(m.range.first, m.range.last + 1, "strike", m.groupValues[1])
         }
     }
     italic.findAll(text).forEach { m ->
@@ -526,6 +532,7 @@ private fun announcementInlineAnnotated(
                 pop()
             }
             "bold" -> withStyle(SpanStyle(color = color, fontWeight = FontWeight.Bold)) { append(t.display) }
+            "strike" -> withStyle(SpanStyle(color = color, textDecoration = TextDecoration.LineThrough)) { append(t.display) }
             "italic" -> withStyle(SpanStyle(color = color, fontStyle = FontStyle.Italic)) { append(t.display) }
         }
         cursor = t.end

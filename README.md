@@ -130,6 +130,7 @@ The Home card renders a small markdown subset in the body:
 
 - `**bold**`
 - `*italic*` or `_italic_`
+- `~~strikethrough~~`
 - `[label](https://example.com)` — tappable link
 - Bare `https://…` URLs — also tappable
 
