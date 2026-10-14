@@ -35,6 +35,24 @@ test('includes dated admission notices and filters static panel pages', () => {
   assert.ok(notices.every((notice) => !/Fee Structure|Programs Offered/i.test(notice.title)));
 });
 
+test('parses linked and plain-text entries from Public Corner and Public Notice', () => {
+  const html = `
+    <div class="block-wrapper"><div class="block"><h2 class="block-title">PUBLIC CORNER</h2><div class="content">
+      <p><img src="newi.gif"><span style="color:blue">As declared by SGPC, the college and offices shall remain closed tomorrow i.e. 15th October, 2026 due to Punjab Bandh.</span></p>
+      <p><a href="/sites/default/files/fdpit.pdf"><span style="color:Blue">One Week STC on Scilab Programming for Engineering Applications from 12th-16th October, 2026</span></a></p>
+      <p><a href="/sites/default/files/QCN71026.pdf"><span style="color:red">Quotations Call Notice for Accidental Insurance Policy</span></a></p>
+    </div></div></div>
+    <div class="block-wrapper"><div class="block"><h2 class="block-title">Public Notice</h2><div class="content">
+      <p><a href="/sites/default/files/public_notice.jpeg"><span style="color:red">It is hereby informed to general public that some undesirable elements are trying to tarnish the image of our institution.</span></a></p>
+    </div></div></div>`;
+  const notices = parseHomepageNotices(html, '2026-10-14');
+  assert.equal(notices.length, 4);
+  assert.ok(notices.some((notice) => /Punjab Bandh/.test(notice.title) && notice.url === 'https://gndec.ac.in/'));
+  assert.ok(notices.some((notice) => /Scilab Programming/.test(notice.title) && /fdpit\.pdf$/.test(notice.url)));
+  assert.ok(notices.some((notice) => /Accidental Insurance/.test(notice.title)));
+  assert.ok(notices.some((notice) => /undesirable elements/.test(notice.title)));
+});
+
 test('keeps homepage first-seen date stable and gives it a two-day window', () => {
   const current = { id: 'home-1', title: 'Holiday announcement', publishedDate: '2026-08-27', url: 'https://gndec.ac.in/', source: 'GNDEC homepage' };
   const previous = [{ ...current, firstSeenAt: '2026-08-26T15:00:00.000Z', bannerStartDate: '2026-08-26', bannerUntilDate: '2026-08-27' }];

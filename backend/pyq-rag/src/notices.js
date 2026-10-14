@@ -182,6 +182,13 @@ function homepageSection($, heading) {
   return block.length ? block : title.parent();
 }
 
+function homepageSectionIfPresent($, heading) {
+  const title = $('h2.block-title').filter((_, element) => cleanText($(element).text()).toLowerCase().includes(heading)).first();
+  if (!title.length) return null;
+  const block = title.closest('.block-wrapper');
+  return block.length ? block : title.parent();
+}
+
 function homepagePanel($) {
   const title = $('h2.block-title').filter((_, element) => cleanText($(element).text()).toLowerCase().includes('admission')).first();
   if (!title.length) return $('body');
@@ -189,11 +196,16 @@ function homepagePanel($) {
   return block.length ? block : title.parent();
 }
 
-function parseHomepageSectionNotices($, root, source, fetchedDate, { requireSignal = true } = {}) {
-  const candidates = root.find('.content p a, p a').toArray();
-  return candidates.map((anchor) => {
-    const link = $(anchor);
-    const title = cleanText(link.text());
+function parseHomepageSectionNotices($, root, source, fetchedDate, { requireSignal = true, includeUnlinked = false } = {}) {
+  if (!root?.length) return [];
+  // GNDEC uses both linked and plain-text entries. Public Corner can publish
+  // an urgent closure without an <a>; linked entries use color only for UI.
+  const candidates = root.find('.content p, p').toArray().filter((element, index, list) => list.indexOf(element) === index);
+  return candidates.map((paragraph) => {
+    const item = $(paragraph);
+    const link = item.find('a').first();
+    if (!link.length && !includeUnlinked) return null;
+    const title = cleanText(link.length ? link.text() : item.clone().find('img').remove().end().text());
     if (!title || EXCLUDED_HOME_ITEMS.some((pattern) => pattern.test(title))) return null;
     if (requireSignal && !ANNOUNCEMENT_SIGNALS.test(title) && !DATE_PATTERNS.some((pattern) => pattern.test(title))) return null;
     return makeNotice({
@@ -210,7 +222,11 @@ export function parseHomepageNotices(html, fetchedDate = new Date().toISOString(
   const roots = [homepagePanel($)];
   $('div.marquee').each((_, element) => roots.push($(element)));
   const notices = roots.flatMap((root) => parseHomepageSectionNotices($, root, 'GNDEC homepage', fetchedDate));
-  const studentCorner = homepageSection($, 'student corner');
+  for (const heading of ['public corner', 'public notice']) {
+    const section = homepageSectionIfPresent($, heading);
+    notices.push(...parseHomepageSectionNotices($, section, 'GNDEC homepage', fetchedDate, { requireSignal: false, includeUnlinked: true }));
+  }
+  const studentCorner = homepageSectionIfPresent($, 'student corner');
   const studentNotices = parseHomepageSectionNotices($, studentCorner, 'GNDEC Student Corner', fetchedDate, { requireSignal: false })
     .filter((notice) => /notice|scholarship|fee\s+notice|original documents|document(?:s)? submission/i.test(notice.title))
     .map((notice) => ({ ...notice, source: 'GNDEC Student Corner', id: stableId('GNDEC Student Corner', notice.title, '', notice.url) }));
