@@ -1,4 +1,13 @@
 {
   "version": 2,
-  "announcements": []
+  "announcements": [
+    {
+      "id": "keep-app-updated-attendance-daily",
+      "title": "Keep NextLecture updated",
+      "message": "Please keep your app updated and mark your attendance daily to maintain an accurate attendance record.",
+      "publishedAt": "2026-10-14T19:45:00+05:30",
+      "type": "update",
+      "active": true
+    }
+  ]
 }
