@@ -2,11 +2,12 @@
   "version": 2,
   "announcements": [
     {
-      "id": "keep-app-updated-attendance-daily",
-      "title": "Keep NextLecture updated",
-      "message": "Please keep your app updated and mark your attendance daily to maintain an accurate attendance record.",
-      "publishedAt": "2026-10-14T19:45:00+05:30",
+      "id": "nextlecture-update-2026-10-24",
+      "title": "New NextLecture version available",
+      "message": "🚀 The new version of NextLecture just dropped! Update now to enjoy the latest features and improvements.",
+      "publishedAt": "2026-10-24T20:59:24+05:30",
       "type": "update",
+      "link": "https://nextlecture.vercel.app/download",
       "active": true
     }
   ]
