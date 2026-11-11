@@ -1,9 +1,12 @@
 name: PYQ RAG queue worker
 
+# DISABLED 2026-11-11: Scheduled processing paused to conserve Vercel Hobby limits.
+# Heavy RAG routes (process-batch, retry-failed) are also disabled in the API.
+# Keep workflow_dispatch so it can be re-enabled and run manually later.
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "*/15 * * * *"
+  # schedule:
+  #   - cron: "*/15 * * * *"
 
 permissions:
   contents: read
