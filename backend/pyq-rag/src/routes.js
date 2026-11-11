@@ -109,6 +109,11 @@ function createRateLimiter(maxPerMinute) {
 
 export function buildRouter() {
   const router = express.Router();
+  // NOTE (2026-11-11): Heavy RAG paper processing, seeding, batch jobs, public retry,
+  // and live /pyq/ask (Gemini + embeddings) are intentionally disabled to reduce
+  // Vercel Hobby usage. GET /pyq/frequently-asked and group detail endpoints that
+  // serve already-indexed FAQ data from Supabase remain fully active.
+  const router = express.Router();
   const publicLimit = createRateLimiter(config.publicRateLimitPerMinute);
   const askLimit = createRateLimiter(config.askRateLimitPerMinute);
   const retryLimit = createRateLimiter(2);
@@ -125,33 +130,14 @@ export function buildRouter() {
     }
   });
 
-  router.post('/admin/seed', requireAdmin, async (req, res) => {
-    const parsed = z.object({ limit: z.number().int().min(1).max(1628).default(1628), offset: z.number().int().min(0).max(1627).default(0) }).safeParse(req.body || {});
-    if (!parsed.success) return validationError(res, parsed);
-    try {
-      const catalog = await readCatalog();
-      const selected = catalog.papers.slice(parsed.data.offset, parsed.data.offset + parsed.data.limit);
-      let upserted = 0;
-      for (let offset = 0; offset < selected.length; offset += 100) {
-        const result = await importPapers(selected.slice(offset, offset + 100));
-        upserted += result.upserted;
-      }
-      return res.json({ ok: true, sourceFolderUrl: catalog.sourceFolderUrl, sourceCount: catalog.papers.length, selectedCount: selected.length, upserted, offset: parsed.data.offset });
-    } catch (error) {
-      console.error('[PYQ] seed failed', error.message);
-      return res.status(503).json({ error: 'seed failed' });
-    }
+  // HEAVY RAG disabled to reduce Vercel Hobby usage (seed / catalog import)
+  router.post('/admin/seed', requireAdmin, async (_req, res) => {
+    return res.status(503).json({ error: 'rag processing temporarily disabled', message: 'Paper seeding/processing is paused to conserve Vercel Hobby limits. Already-indexed FAQ reads remain available.' });
   });
 
-  router.post('/admin/retry-failed', requireAdmin, async (req, res) => {
-    const parsed = z.object({ limit: z.number().int().min(1).max(config.batchMax).default(config.batchMax) }).safeParse(req.body || {});
-    if (!parsed.success) return validationError(res, parsed);
-    try {
-      return res.json({ ok: true, reset: await retryFailedPapers(parsed.data.limit) });
-    } catch (error) {
-      console.error('[PYQ] retry failed', error.message);
-      return res.status(503).json({ error: 'retry unavailable' });
-    }
+  // HEAVY RAG disabled
+  router.post('/admin/retry-failed', requireAdmin, async (_req, res) => {
+    return res.status(503).json({ error: 'rag processing temporarily disabled', message: 'Retry/failed-paper processing is paused. FAQ reads remain available.' });
   });
 
   router.post('/attendance/session', attendanceSessionLimit, async (req, res) => {
@@ -253,71 +239,32 @@ export function buildRouter() {
     }
   });
 
+  // HEAVY RAG disabled — public single-paper retry (Gemini + PDF processing)
   router.post('/pyq/retry-course', retryLimit, async (req, res) => {
     const parsed = z.object({ course: courseSchema }).strict().safeParse(req.body || {});
     if (!parsed.success) return validationError(res, parsed);
-    const course = parsed.data.course;
     try {
-      const gate = await claimCourseRetry(course);
-      const cooldownUntil = gate.cooldownUntil;
-      const retryAfterSeconds = cooldownUntil ? Math.max(0, Math.ceil((new Date(cooldownUntil).getTime() - Date.now()) / 1000)) : 0;
-      if (!gate.accepted) {
-        return res.status(429).json({ ok: true, accepted: false, status: 'cooldown', cooldownUntil, retryAfterSeconds, coverage: await getCourseCoverage(course) });
-      }
-
-      const claimed = await claimCoursePaper(course);
-      if (!claimed) {
-        return res.json({ ok: true, accepted: true, status: 'nothing_to_retry', cooldownUntil, retryAfterSeconds, coverage: await getCourseCoverage(course) });
-      }
-
-      try {
-        await processPaper(claimed);
-        await invalidateCourseCache(claimed.course_code);
-        return res.json({ ok: true, accepted: true, status: 'processed', cooldownUntil, retryAfterSeconds, coverage: await getCourseCoverage(course) });
-      } catch (error) {
-        await invalidateCourseCache(claimed.course_code).catch((cacheError) => console.warn('[PYQ] retry cache invalidation failed', cacheError.message));
-        return res.json({ ok: true, accepted: true, status: 'failed', failureReason: retryFailureReason(error), cooldownUntil, retryAfterSeconds, coverage: await getCourseCoverage(course) });
-      }
+      const coverage = await getCourseCoverage(parsed.data.course);
+      return res.status(503).json({
+        ok: false,
+        accepted: false,
+        status: 'rag_disabled',
+        message: 'Paper processing is temporarily disabled to conserve Vercel Hobby limits. Already-indexed Frequently Asked data remains available.',
+        coverage,
+      });
     } catch (error) {
-      console.error('[PYQ] public retry failed', error.message);
-      return res.status(503).json({ error: 'retry unavailable' });
+      return res.status(503).json({ error: 'rag processing temporarily disabled' });
     }
   });
 
-  router.post('/admin/process-one', requireAdmin, async (req, res) => {
-    const parsed = z.object({ paperId: paperIdSchema, force: z.boolean().default(false) }).safeParse(req.body || {});
-    if (!parsed.success) return validationError(res, parsed);
-    try {
-      const claimed = await claimSpecificPaper(parsed.data.paperId, parsed.data.force);
-      if (!claimed) return res.status(409).json({ error: 'paper is already processing or not eligible' });
-      const result = await processPaper(claimed, { force: parsed.data.force });
-      await invalidateCourseCache(claimed.course_code);
-      return res.json({ ok: true, result });
-    } catch (error) {
-      console.error('[PYQ] process-one failed', error.message);
-      return res.status(502).json({ error: 'paper processing failed', paperId: parsed.data.paperId });
-    }
+  // HEAVY RAG disabled
+  router.post('/admin/process-one', requireAdmin, async (_req, res) => {
+    return res.status(503).json({ error: 'rag processing temporarily disabled', message: 'Single-paper processing is paused. FAQ reads remain available.' });
   });
 
-  router.post('/admin/process-batch', requireAdmin, async (req, res) => {
-    const parsed = z.object({ limit: z.number().int().min(1).max(config.batchMax).default(Math.min(2, config.batchMax)), includeFailed: z.boolean().default(false) }).safeParse(req.body || {});
-    if (!parsed.success) return validationError(res, parsed);
-    try {
-      const claimed = await claimPaperBatch(parsed.data.limit, parsed.data.includeFailed);
-      const results = [];
-      for (const paper of claimed) {
-        try {
-          results.push(await processPaper(paper));
-          await invalidateCourseCache(paper.course_code);
-        } catch (error) {
-          results.push({ id: paper.id, status: 'failed', error: error.message.slice(0, 300) });
-        }
-      }
-      return res.json({ ok: true, claimed: claimed.length, results, resumable: true });
-    } catch (error) {
-      console.error('[PYQ] process-batch failed', error.message);
-      return res.status(503).json({ error: 'batch unavailable' });
-    }
+  // HEAVY RAG disabled
+  router.post('/admin/process-batch', requireAdmin, async (_req, res) => {
+    return res.status(503).json({ error: 'rag processing temporarily disabled', message: 'Batch paper processing is paused. FAQ reads remain available.' });
   });
 
   router.get('/pyq/frequently-asked', publicLimit, async (req, res) => {
@@ -363,20 +310,12 @@ export function buildRouter() {
     }
   });
 
-  router.post('/pyq/ask', askLimit, async (req, res) => {
-    const parsed = z.object({ course: courseSchema, question: z.string().trim().min(3).max(1000), topK: z.number().int().min(1).max(5).default(5) }).safeParse(req.body || {});
-    if (!parsed.success) return validationError(res, parsed);
-    try {
-      const embedding = await embedText(parsed.data.question, 'RETRIEVAL_QUERY');
-      const { data, error } = await getDb().rpc('match_pyq_questions', { query_embedding: embedding, match_threshold: 0.45, match_count: parsed.data.topK, filter_course_code: parsed.data.course });
-      if (error) throw new Error(`retrieval failed: ${error.message}`);
-      const evidence = buildEvidence(data || []);
-      const answer = evidence.length ? await answerWithEvidence(parsed.data.question, evidence) : 'I could not find an indexed previous-year question for this course yet. Try again after the course papers have been processed.';
-      return res.json({ course: parsed.data.course, answer, evidence });
-    } catch (error) {
-      console.error('[PYQ] ask failed', error.message);
-      return res.status(503).json({ error: 'ask unavailable' });
-    }
+  // HEAVY RAG disabled — /pyq/ask does live embeddings + Gemini generation
+  router.post('/pyq/ask', askLimit, async (_req, res) => {
+    return res.status(503).json({
+      error: 'rag ask temporarily disabled',
+      message: 'Live question answering (embeddings + Gemini) is paused to conserve Vercel Hobby limits. Use Frequently Asked for already-indexed groups.',
+    });
   });
 
   return router;
