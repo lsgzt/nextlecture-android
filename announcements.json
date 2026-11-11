@@ -2,11 +2,11 @@
   "version": 2,
   "announcements": [
     {
-      "id": "second-mst-final-exam-dates-2026-11-v5",
-      "title": "📚 Get Ready for Your 2nd MSE!",
-      "message": "B.Tech 1st Year students, gear up! 🎯 The **2nd MST** is scheduled for **21 November** and **25–28 November 2026**. **Final exams** begin from **4 December 2026 onwards**. Start preparing early and stay ahead! 💪",
-      "publishedAt": "2026-11-02T12:11:16+05:30",
-      "type": "notice",
+      "id": "android-services-suspended-until-2026-11-15",
+      "title": "🚨 Important Notice: NextLecture Android Services Temporarily Limited",
+      "message": "Due to unexpectedly heavy traffic and resource limitations, some NextLecture Android services have been temporarily disabled until **15 November**.\n\n**Attendance and notice fetching will remain disabled** during this period. Other server-dependent features may also be unavailable.\n\n**What will continue working?**\n- 📅 Timetable\n- 👨‍🏫 Faculty Details\n- 🏫 Vacant Room Finder\n- 🤖 Syllabus AI\n- 📚 Previous Year Question Papers (PYQs)\n\nWe apologise for the inconvenience. The sudden growth in usage has pushed our infrastructure beyond its current limits. We are working to resolve these issues and improve stability.\n\n**Expected restoration: 15 November.**\n\nThank you for your patience and continued support. ❤️\n\n— **Team NextLecture**",
+      "publishedAt": "2026-11-11T08:51:02+05:30",
+      "type": "urgent",
       "branch": "all",
       "section": "",
       "subsection": "",
