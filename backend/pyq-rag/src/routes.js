@@ -113,7 +113,6 @@ export function buildRouter() {
   // and live /pyq/ask (Gemini + embeddings) are intentionally disabled to reduce
   // Vercel Hobby usage. GET /pyq/frequently-asked and group detail endpoints that
   // serve already-indexed FAQ data from Supabase remain fully active.
-  const router = express.Router();
   const publicLimit = createRateLimiter(config.publicRateLimitPerMinute);
   const askLimit = createRateLimiter(config.askRateLimitPerMinute);
   const retryLimit = createRateLimiter(2);
