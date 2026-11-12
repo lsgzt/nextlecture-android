@@ -2,11 +2,12 @@
   "version": 2,
   "announcements": [
     {
-      "id": "android-services-suspended-until-2026-11-15",
-      "title": "🚨 Important Notice: NextLecture Android Services Temporarily Limited",
-      "message": "Due to unexpectedly heavy traffic and resource limitations, some NextLecture Android services have been temporarily disabled until **15 November**.\n\n**Attendance and notice fetching will remain disabled** during this period. Other server-dependent features may also be unavailable.\n\n**What will continue working?**\n- 📅 Timetable\n- 👨‍🏫 Faculty Details\n- 🏫 Vacant Room Finder\n- 🤖 Syllabus AI\n- 📚 Previous Year Question Papers (PYQs)\n\nWe apologise for the inconvenience. The sudden growth in usage has pushed our infrastructure beyond its current limits. We are working to resolve these issues and improve stability.\n\n**Expected restoration: 15 November.**\n\nThank you for your patience and continued support. ❤️\n\n— **Team NextLecture**",
-      "publishedAt": "2026-11-11T08:51:02+05:30",
-      "type": "urgent",
+      "id": "android-services-restored-2026-11-12",
+      "title": "✅ All NextLecture services are working fine",
+      "message": "All NextLecture Android services are now working fine.\n\nPlease replace the **Previous-Year Paper Analysis** URL in Settings with:\nhttps://nextlecture-android.vercel.app/",
+      "publishedAt": "2026-11-12T21:24:04+05:30",
+      "type": "notice",
+      "for": "android-app",
       "branch": "all",
       "section": "",
       "subsection": "",
