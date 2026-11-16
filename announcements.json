@@ -26,6 +26,19 @@
       "subsection": "",
       "link": "",
       "active": true
+    },
+    {
+      "id": "android-version-update-2026-11-16",
+      "title": "🚀 New Version of NextLecture Available",
+      "message": "A new version of NextLecture just dropped with multiple new features and bug fixes!\n\n[Download the latest version here](https://github.com/lsgzt/nextlecture-android/releases/latest).",
+      "publishedAt": "2026-11-16T16:32:13+05:30",
+      "type": "update",
+      "for": "android-app",
+      "branch": "all",
+      "section": "",
+      "subsection": "",
+      "link": "https://github.com/lsgzt/nextlecture-android/releases/latest",
+      "active": true
     }
   ]
 }
