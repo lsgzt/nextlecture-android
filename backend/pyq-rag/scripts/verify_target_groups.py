@@ -7,7 +7,7 @@ output = []
 for course in courses:
     raw = subprocess.check_output([
         "curl", "-sS", "--max-time", "30",
-        f"https://gndec-pyq-rag-api.vercel.app/api/pyq/frequently-asked?course={course}"
+        f"https://nextlecture-android.vercel.app/api/pyq/frequently-asked?course={course}"
     ], text=True)
     data = json.loads(raw)
     groups = data.get("groups", [])
@@ -16,7 +16,7 @@ for course in courses:
     for group in top[:1]:
         detail_raw = subprocess.check_output([
             "curl", "-sS", "--max-time", "30",
-            f"https://gndec-pyq-rag-api.vercel.app/api/pyq/frequently-asked/{group['group_id']}"
+            f"https://nextlecture-android.vercel.app/api/pyq/frequently-asked/{group['group_id']}"
         ], text=True)
         detail = json.loads(detail_raw)
         occurrences = detail.get("occurrences", [])

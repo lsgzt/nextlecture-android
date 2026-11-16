@@ -8,7 +8,7 @@ import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.domain.GroupTimetableManager
 import com.gndec.timetable.domain.NotificationHelper
 import com.gndec.timetable.domain.RefreshResult
-import com.gndec.timetable.net.GeminiClient
+import com.gndec.timetable.net.AiProvider
 import com.gndec.timetable.parse.GroupMatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,8 +27,14 @@ data class ReliabilityStatus(
     val exactAlarms: Boolean,
     val timetableCached: Boolean,
     val scheduledReminders: Int,
-    val batteryUnrestricted: Boolean
-)
+    val batteryUnrestricted: Boolean,
+    /** Live state of the reminder channel — a muted channel looks "enabled" to the OS. */
+    val reminderChannel: NotificationHelper.ReminderChannelState
+) {
+    /** True when a lecture reminder would actually be seen and heard. */
+    val remindersWillAlert: Boolean
+        get() = notificationsEnabled && reminderChannel.healthy
+}
 
 /**
  * Live departmental section catalog for 2nd/3rd/4th-year students. Sections
@@ -59,6 +65,13 @@ class SettingsViewModel(private val c: AppContainer) {
     val groups = _groups.asStateFlow()
     private val _models = MutableStateFlow<List<String>>(emptyList())
     val models = _models.asStateFlow()
+
+    /**
+     * Whether a key is stored for each provider, so the screen can show all three states
+     * at once instead of only the selected provider's.
+     */
+    private val _keyStatus = MutableStateFlow<Map<AiProvider, Boolean>>(emptyMap())
+    val keyStatus = _keyStatus.asStateFlow()
     private val _message = MutableStateFlow<String?>(null)
     val message = _message.asStateFlow()
     private val _busy = MutableStateFlow(false)
@@ -69,7 +82,12 @@ class SettingsViewModel(private val c: AppContainer) {
     val seniorCatalog = _seniorCatalog.asStateFlow()
     val releaseUpdate = c.releaseUpdateManager.state.stateIn(scope, SharingStarted.Eagerly, com.gndec.timetable.domain.ReleaseUpdateState())
 
-    init { scope.launch { _groups.value = c.db.lectureDao().distinctGroups() } }
+    init {
+        scope.launch {
+            _groups.value = c.db.lectureDao().distinctGroups()
+            refreshKeyStatus()
+        }
+    }
 
     fun changeGroup(g: String) = scope.launch {
         _message.value = if (c.refreshManager.changeGroup(g)) "✓ Group changed to $g — alarms rescheduled"
@@ -168,33 +186,62 @@ class SettingsViewModel(private val c: AppContainer) {
     fun setPyqRagBackendUrl(u: String) = scope.launch { c.settings.setPyqRagBackendUrl(u); _message.value = "PYQ analysis URL saved" }
     fun setModel(m: String) = scope.launch { c.settings.setModel(m); _message.value = "Model set to $m" }
 
+    /**
+     * Switching provider clears the fetched model list, because the IDs belong to the
+     * provider that was just left and would be nonsense under the new one.
+     */
+    fun setProvider(id: String) = scope.launch {
+        val provider = AiProvider.fromId(id)
+        _models.value = emptyList()
+        c.settings.setAiProvider(provider.id)
+        _message.value = "AI provider set to ${provider.label}"
+    }
+
     private suspend fun reschedule() {
         val cfg = c.settings.flow.first()
-        cfg.group?.let { g -> c.scheduler.rescheduleAll(c.db, g, com.gndec.timetable.domain.ReminderConfig.from(cfg)) }
+        cfg.group?.let { g ->
+            // Holiday-aware: toggling reminder stages must not arm holiday reminders.
+            c.scheduler.rescheduleAll(
+                c.db, g, com.gndec.timetable.domain.ReminderConfig.from(cfg),
+                com.gndec.timetable.domain.HolidayGate.decode(cfg.holidayJson)
+            )
+        }
     }
 
-    fun hasUserKey(): Boolean = c.keys.getGeminiKey() != null
-
-    fun saveKey(key: String) {
-        if (key.isBlank()) return
-        c.keys.setGeminiKey(key) // encrypted at rest; never logged, never sent to our backend
-        _message.value = "API key saved (stored encrypted on this device)"
+    /**
+     * Re-reads every provider's key presence. Reading the encrypted store is disk work, so
+     * this is always called from the ViewModel scope rather than the main thread, and the
+     * screen only ever sees the resulting booleans — never the key itself.
+     */
+    private suspend fun refreshKeyStatus() {
+        _keyStatus.value = AiProvider.values().associateWith { c.keys.getApiKey(it) != null }
     }
 
-    fun removeKey() {
-        c.keys.removeGeminiKey()
-        _message.value = "API key removed"
+    fun saveKey(key: String) = scope.launch {
+        if (key.isBlank()) return@launch
+        val provider = settings.value.provider
+        c.keys.setApiKey(provider, key) // encrypted at rest; never logged, never sent to our backend
+        refreshKeyStatus()
+        _message.value = "${provider.label} API key saved (stored encrypted on this device)"
+    }
+
+    fun removeKey() = scope.launch {
+        val provider = settings.value.provider
+        c.keys.removeApiKey(provider)
+        refreshKeyStatus()
+        _message.value = "${provider.label} API key removed"
     }
 
     fun testKey() = scope.launch {
-        val key = c.keys.getGeminiKey()
-        if (key == null) { _message.value = "Enter and save a Gemini API key first"; return@launch }
+        val provider = settings.value.provider
+        val key = c.keys.getApiKey(provider)
+        if (key == null) { _message.value = "Enter and save a ${provider.label} API key first"; return@launch }
         val model = settings.value.model
         _busy.value = true
         _message.value = "Testing API key…"
-        val (keyOk, modelOk) = GeminiClient().test(key, model)
+        val (keyOk, modelOk) = c.aiClients[provider].test(key, model)
         _message.value = buildString {
-            append(if (keyOk) "✓ API key works" else "✕ API key rejected by Gemini")
+            append(if (keyOk) "✓ API key works" else "✕ API key rejected by ${provider.label}")
             if (keyOk) append("\n" + (if (modelOk) "✓ Model available ($model)"
             else "✕ Selected model unavailable — please choose another model"))
         }.trim()
@@ -203,14 +250,15 @@ class SettingsViewModel(private val c: AppContainer) {
     }
 
     fun refreshModels() = scope.launch {
-        val key = c.keys.getGeminiKey()
+        val provider = settings.value.provider
+        val key = c.keys.getApiKey(provider)
         if (key == null) {
-            _message.value = "A Gemini API key is required to list available models"
+            _message.value = "A ${provider.label} API key is required to list available models"
             return@launch
         }
         _busy.value = true
         try {
-            _models.value = GeminiClient().listModels(key)
+            _models.value = c.aiClients[provider].listModels(key).map { it.id }
             if (_models.value.isNotEmpty()) _message.value = "✓ ${_models.value.size} models loaded"
         } catch (e: Exception) {
             _message.value = "Couldn't fetch models (${e.message})"
@@ -234,7 +282,8 @@ class SettingsViewModel(private val c: AppContainer) {
             exactAlarms = c.scheduler.canScheduleExact(),
             timetableCached = c.db.lectureDao().countAll() > 0,
             scheduledReminders = c.db.alarmDao().countFuture(System.currentTimeMillis()),
-            batteryUnrestricted = pm.isIgnoringBatteryOptimizations(ctx.packageName)
+            batteryUnrestricted = pm.isIgnoringBatteryOptimizations(ctx.packageName),
+            reminderChannel = NotificationHelper.reminderChannelState(ctx)
         )
     }
 

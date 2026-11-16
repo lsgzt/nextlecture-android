@@ -1,0 +1,27 @@
+{
+  "version": 2,
+  "installCommand": "cd backend/pyq-rag && npm install --omit=dev",
+  "builds": [
+    {
+      "src": "backend/pyq-rag/api/index.js",
+      "use": "@vercel/node",
+      "config": {
+        "maxDuration": 300,
+        "memory": 1024,
+        "includeFiles": "backend/pyq-rag/src/**"
+      }
+    }
+  ],
+  "routes": [
+    { "src": "/(.*)", "dest": "backend/pyq-rag/api/index.js" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "no-referrer" }
+      ]
+    }
+  ]
+}

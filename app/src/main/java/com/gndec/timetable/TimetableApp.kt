@@ -18,12 +18,16 @@ import com.gndec.timetable.push.FcmRegistration
 import com.gndec.timetable.work.RefreshWorker
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.util.concurrent.ThreadLocalRandom
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 class TimetableApp : Application() {
 
     lateinit var container: AppContainer
         private set
+
+    private val startupWorkStarted = AtomicBoolean(false)
 
     override fun onCreate() {
         super.onCreate()
@@ -36,7 +40,21 @@ class TimetableApp : Application() {
 
         container = AppContainer(this)
         NotificationHelper.ensureChannels(this)
+        // FCM registration deliberately stays in onCreate: a device whose process is
+        // only ever woken by a reminder alarm must still be able to receive a push.
         FcmRegistration.registerCurrent(this)
+    }
+
+    /**
+     * Content refresh + periodic work, deferred until the student actually opens the app.
+     *
+     * Application.onCreate also runs when a reminder alarm cold-starts the process on
+     * an OEM-reaped device, so doing the network work there re-ran the whole feed
+     * refresh roughly twice per lecture with the user nowhere in sight. Runs at most
+     * once per process and is safe to call from every Activity create.
+     */
+    fun ensureStartupWork() {
+        if (!startupWorkStarted.compareAndSet(false, true)) return
 
         // On APK upgrade: invalidate HTTP validators + AI cell cache and force a
         // full re-download/re-parse. Lectures are NOT deleted first — RefreshManager
@@ -64,14 +82,29 @@ class TimetableApp : Application() {
             runCatching { container.releaseUpdateManager.loadCached() }
             runCatching { container.releaseUpdateManager.refreshIfStale() }
         }
+        // Arming is idempotent (the next 05:32 IST boundary is recomputed from "now"), so
+        // every foreground re-arms safely. ensureCurrent() only hits the network when a
+        // fetch is genuinely owed — a fresh install, or a day whose 05:32 alarm was lost.
+        container.appScope.launch {
+            runCatching { container.quoteScheduler.scheduleNext() }
+            runCatching { container.quoteManager.ensureCurrent() }
+        }
 
+        enqueuePeriodicRefresh()
+    }
+
+    private fun enqueuePeriodicRefresh() {
         val work = PeriodicWorkRequestBuilder<RefreshWorker>(12, TimeUnit.HOURS)
             .setConstraints(
                 Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
             )
+            // Spread the first run: with no initial delay every fresh install fires
+            // inside the same flex window, so a release or a new cohort syncs in one
+            // synchronized burst against GitHub and the college host.
+            .setInitialDelay(ThreadLocalRandom.current().nextLong(0, 45), TimeUnit.MINUTES)
             .build()
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "timetable_refresh", ExistingPeriodicWorkPolicy.KEEP, work
+            "timetable_refresh", ExistingPeriodicWorkPolicy.UPDATE, work
         )
     }
 
@@ -96,7 +129,8 @@ class TimetableApp : Application() {
                     lastChecked = 0L,
                     etag = null,
                     lastModified = null,
-                    timetableHash = null
+                    timetableHash = null,
+                    generatedAtMillis = meta.generatedAtMillis
                 )
             )
         }

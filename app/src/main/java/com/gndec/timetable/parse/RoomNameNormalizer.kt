@@ -47,6 +47,10 @@ object RoomNameNormalizer {
     private val WHITESPACE = Regex("""\s+""")
     private val LETTER_NUMBER = Regex("""^([A-Z]{1,3})[\s\-_]*(\d{1,4}[A-Z]{0,2})$""")
 
+    // Case-insensitive on purpose: search pre-filters lowercase the query before
+    // asking whether it looks like a room, and the merge keys are upper-case.
+    private val ROOM_LIKE_PREFIX = Regex("""^[A-Z]{1,3}\d""", RegexOption.IGNORE_CASE)
+
     /** Normalized merge key, or null when the name carries no usable token. */
     fun canonical(raw: String): String? {
         var s = raw
@@ -87,16 +91,25 @@ object RoomNameNormalizer {
 
     /** True for numbered classroom names like F119, G-1, S-220, A6, F112A. */
     fun isRoomLike(canonicalKey: String): Boolean =
-        Regex("""^[A-Z]{1,3}\d""").containsMatchIn(canonicalKey)
+        ROOM_LIKE_PREFIX.containsMatchIn(canonicalKey)
 
     /**
      * Search matching tolerant of separators and partial numbers: "F19" finds
      * F119 (same block, digits ending with the query digits), "f-19" finds
      * F-119/F119, "sem hall" finds SEMINAR HALL BA.
+     *
+     * A query carrying the snowflake (❄ / ❄️, see [AcRooms]) matches only
+     * air-conditioned rooms; any text typed alongside it still applies, so
+     * "❄️F108" finds F108 (and nothing else) and "❄ lab" finds the AC labs.
      */
     fun matches(roomName: String, query: String): Boolean {
         val q = query.trim()
         if (q.isEmpty()) return true
+        if (AcRooms.hasSnowflake(q)) {
+            if (!AcRooms.isAcRoomName(roomName)) return false
+            val rest = AcRooms.stripSnowflake(q).trim()
+            return rest.isEmpty() || matches(roomName, rest)
+        }
         if (roomName.contains(q, ignoreCase = true)) return true
         val qKey = canonical(q) ?: return false
         val nKey = canonical(roomName) ?: return false

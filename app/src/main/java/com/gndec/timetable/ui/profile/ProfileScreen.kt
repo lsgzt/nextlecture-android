@@ -236,7 +236,7 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit, onOpenAttendance:
     fun saveManual() {
         scope.launch {
             container.keys.removeAttendanceSession()
-            container.settings.saveStudentProfile(manualName, manualCrn, branch, manualRegistration, manualFather, manualMother, manualMentor, manualSection, manualSubsection, manualSubsection, "", "", "manual")
+            container.settings.saveStudentProfile(manualName, com.gndec.timetable.util.RollNumbers.sanitize(manualCrn), branch, com.gndec.timetable.util.RollNumbers.sanitize(manualRegistration), manualFather, manualMother, manualMentor, manualSection, manualSubsection, manualSubsection, "", "", "manual")
             runCatching { if (manualSubsection.isNotBlank()) container.refreshManager.changeGroup(manualSubsection) }
             savedMessage = "Manual profile saved on this device"
             manualMode = false
@@ -247,6 +247,7 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit, onOpenAttendance:
     val matches = matchingStudents(directory, query)
     val displayName = settings.studentName.ifBlank { "Your profile" }
     val initials = displayName.split(" ").filter { it.isNotBlank() }.take(2).joinToString("") { it.first().uppercase() }.ifBlank { "S" }
+    val friends = remember(settings.friendsJson) { container.settings.decodeFriends(settings.friendsJson) }
 
     PremiumScreenBackground {
         LazyColumn(
@@ -257,6 +258,17 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit, onOpenAttendance:
             item { PremiumPageHeader("Profile", "Student identity", onBack = onBack) }
             item { ProfileHero(initials, displayName, settings.studentSubsection.ifBlank { settings.branch.ifBlank { "Add your branch" } }, settings.rollNumber.ifBlank { "CRN not added" }) }
             item { SourceStatus(settings.profileSource, loading, savedMessage) }
+
+            // Hide while re-searching the official PDF so the form stays focused.
+            if (!lookupOpen) {
+                item {
+                    FriendsSection(
+                        container = container,
+                        friends = friends,
+                        modifier = Modifier.padding(horizontal = 20.dp)
+                    )
+                }
+            }
 
             if (hasSavedProfile && !lookupOpen) {
                 item(key = "attendance-action") {
@@ -413,8 +425,8 @@ fun ProfileScreen(container: AppContainer, onBack: () -> Unit, onOpenAttendance:
                         section = manualSection,
                         subsection = manualSubsection,
                         onName = { manualName = it },
-                        onCrn = { manualCrn = it },
-                        onRegistration = { manualRegistration = it },
+                        onCrn = { manualCrn = com.gndec.timetable.util.RollNumbers.sanitize(it) },
+                        onRegistration = { manualRegistration = com.gndec.timetable.util.RollNumbers.sanitize(it) },
                         onFather = { manualFather = it },
                         onMother = { manualMother = it },
                         onMentor = { manualMentor = it },
@@ -646,18 +658,31 @@ private fun ErrorCard(message: String, hasCache: Boolean) {
 
 @Composable
 private fun ManualFields(name: String, crn: String, registration: String, father: String, mother: String, mentor: String, section: String, subsection: String, onName: (String) -> Unit, onCrn: (String) -> Unit, onRegistration: (String) -> Unit, onFather: (String) -> Unit, onMother: (String) -> Unit, onMentor: (String) -> Unit, onSection: (String) -> Unit, onSubsection: (String) -> Unit, onSave: () -> Unit) {
+    // Same roll-number rules as onboarding: numeric only, plausible length.
+    val crnValid = com.gndec.timetable.util.RollNumbers.isValid(crn)
+    val registrationValid = com.gndec.timetable.util.RollNumbers.isValid(registration)
     Card(Modifier.fillMaxWidth().padding(horizontal = 20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), elevation = CardDefaults.cardElevation(0.dp)) {
         Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Manual details", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Input("Full name", name, onName)
-            Input("CRN (Class Roll Number)", crn, onCrn)
-            Input("Registration number", registration, onRegistration)
+            Input(
+                "CRN (Class Roll Number)", crn, onCrn,
+                keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+                isError = !crnValid,
+                supportingText = if (crn.isNotBlank() && !crnValid) com.gndec.timetable.util.RollNumbers.errorMessage("CRN") else null
+            )
+            Input(
+                "Registration number", registration, onRegistration,
+                keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+                isError = !registrationValid,
+                supportingText = if (registration.isNotBlank() && !registrationValid) com.gndec.timetable.util.RollNumbers.errorMessage("Registration number") else null
+            )
             Input("Father name", father, onFather)
             Input("Mother name", mother, onMother)
             Input("Mentor name", mentor, onMentor)
             Input("Permanent section", section, onSection)
         Input("Permanent subsection / timetable group", subsection, onSubsection)
-            Button(onClick = onSave, enabled = name.isNotBlank(), modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary)) {
+            Button(onClick = onSave, enabled = name.isNotBlank() && crnValid && registrationValid, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary)) {
                 Icon(Icons.Default.Badge, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(7.dp))
                 Text("Save manual profile", fontWeight = FontWeight.SemiBold)
@@ -667,8 +692,32 @@ private fun ManualFields(name: String, crn: String, registration: String, father
 }
 
 @Composable
-private fun Input(label: String, value: String, onValue: (String) -> Unit) {
-    OutlinedTextField(value, onValue, Modifier.fillMaxWidth(), singleLine = true, label = { Text(label) })
+private fun Input(
+    label: String,
+    value: String,
+    onValue: (String) -> Unit,
+    keyboardType: androidx.compose.ui.text.input.KeyboardType = androidx.compose.ui.text.input.KeyboardType.Text,
+    isError: Boolean = false,
+    supportingText: String? = null
+) {
+    OutlinedTextField(
+        value,
+        onValue,
+        Modifier.fillMaxWidth(),
+        singleLine = true,
+        label = { Text(label) },
+        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = keyboardType),
+        isError = isError,
+        supportingText = {
+            if (supportingText != null) {
+                Text(
+                    supportingText,
+                    color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+    )
 }
 
 @Composable

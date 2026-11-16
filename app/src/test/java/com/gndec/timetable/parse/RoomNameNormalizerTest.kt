@@ -105,4 +105,42 @@ class RoomNameNormalizerTest {
         assertTrue(RoomNameNormalizer.matches("F119", ""))
         assertFalse(RoomNameNormalizer.matches("G14", "F119"))
     }
+
+    @Test
+    fun snowflakeQueryMatchesAcRoomsOnly() {
+        // Emoji form, bare glyph, snowflake buried in spaces — all the same ask.
+        assertTrue(RoomNameNormalizer.matches("F108", AcRooms.SNOWFLAKE))
+        assertTrue(RoomNameNormalizer.matches("F108", "❄"))
+        assertTrue(RoomNameNormalizer.matches("Central Library", AcRooms.SNOWFLAKE))
+        assertTrue(RoomNameNormalizer.matches("PROJ/L", AcRooms.SNOWFLAKE))
+        assertTrue(RoomNameNormalizer.matches("OS LAB · CSE", AcRooms.SNOWFLAKE))
+        // Near misses that must stay hidden.
+        assertFalse(RoomNameNormalizer.matches("F108A", AcRooms.SNOWFLAKE))
+        assertFalse(RoomNameNormalizer.matches("F107", AcRooms.SNOWFLAKE))
+        assertFalse(RoomNameNormalizer.matches("OS_Lab · IT", AcRooms.SNOWFLAKE))
+        assertFalse(RoomNameNormalizer.matches("TNP SEMINAR HALL 1", AcRooms.SNOWFLAKE))
+        assertFalse(RoomNameNormalizer.matches("BEE LAB 2", AcRooms.SNOWFLAKE))
+    }
+
+    @Test
+    fun snowflakeQueryCombinesWithRoomText() {
+        assertTrue(RoomNameNormalizer.matches("F108", "${AcRooms.SNOWFLAKE}F108"))
+        assertTrue(RoomNameNormalizer.matches("F108", "${AcRooms.SNOWFLAKE} f108"))
+        assertTrue(RoomNameNormalizer.matches("F108", "F108 ${AcRooms.SNOWFLAKE}"))
+        assertTrue(RoomNameNormalizer.matches("F108", "${AcRooms.SNOWFLAKE}f1"))
+        assertTrue(RoomNameNormalizer.matches("CHEM LAB 1", "❄ chem"))
+        // The text still has to match — a snowflake does not widen the query.
+        assertFalse(RoomNameNormalizer.matches("F107", "${AcRooms.SNOWFLAKE}F108"))
+        assertFalse(RoomNameNormalizer.matches("F108", "${AcRooms.SNOWFLAKE}F107"))
+    }
+
+    @Test
+    fun roomLikeChecksAreCaseInsensitive() {
+        // Search pre-filters lowercase the query before this check.
+        assertTrue(RoomNameNormalizer.isRoomLike("f108"))
+        assertTrue(RoomNameNormalizer.isRoomLike("F108"))
+        assertTrue(RoomNameNormalizer.isRoomLike("S220"))
+        assertFalse(RoomNameNormalizer.isRoomLike("OS LAB"))
+        assertFalse(RoomNameNormalizer.isRoomLike("library"))
+    }
 }

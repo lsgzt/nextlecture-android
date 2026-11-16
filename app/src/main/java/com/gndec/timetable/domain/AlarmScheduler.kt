@@ -53,16 +53,33 @@ class AlarmScheduler(private val context: Context) {
 
     private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
-    /** Cancel every recorded alarm, clear records, then schedule upcoming lectures and gaps. */
-    suspend fun rescheduleAll(db: AppDatabase, group: String, config: ReminderConfig) {
+    /**
+     * Cancel every recorded alarm, clear records, then schedule upcoming lectures and gaps.
+     * [holidays] is the cached official holiday list: reminders for full holidays are
+     * not scheduled at all, because no class runs on those days.
+     */
+    suspend fun rescheduleAll(
+        db: AppDatabase,
+        group: String,
+        config: ReminderConfig,
+        holidays: List<Holiday> = emptyList()
+    ) {
         val dao = db.alarmDao()
         dao.getAll().forEach { cancel(it.requestCode) }
         dao.clear()
-        scheduleUpcoming(db, group, config)
+        scheduleUpcoming(db, group, config, holidays)
     }
 
-    /** Schedule reminders for lectures and real gaps in the next [DAYS_AHEAD] days. */
-    suspend fun scheduleUpcoming(db: AppDatabase, group: String, config: ReminderConfig) {
+    /**
+     * Schedule reminders for lectures and real gaps in the next [DAYS_AHEAD] days,
+     * skipping full-holiday dates ([holidays] comes from the cached official list).
+     */
+    suspend fun scheduleUpcoming(
+        db: AppDatabase,
+        group: String,
+        config: ReminderConfig,
+        holidays: List<Holiday> = emptyList()
+    ) {
         val lectures = db.lectureDao().getForGroup(group)
         val zone = ZoneId.systemDefault()
         val today = LocalDate.now(zone)
@@ -74,6 +91,9 @@ class AlarmScheduler(private val context: Context) {
         // stage is enabled.
         for (dayOffset in 0 until DAYS_AHEAD) {
             val date = today.plusDays(dayOffset.toLong())
+            // A full holiday has no classes: neither lecture reminders nor free-period
+            // alerts belong on it. Half-days keep their whole schedule.
+            if (HolidayGate.isFullHolidayOn(holidays, date.toString())) continue
             val dow = date.dayOfWeek.value
             val dayLectures = lectures
                 .filter { it.dayOfWeek == dow }

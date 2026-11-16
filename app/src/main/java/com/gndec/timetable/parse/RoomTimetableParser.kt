@@ -362,7 +362,10 @@ object RoomTimetableParser {
             val activityMatch = DIALECT_B_ACTIVITY.find(subjectLine)
             if (activityMatch != null) {
                 act = activityMatch.groupValues[1]
-                val stripped = subjectLine.substringBefore(activityMatch.value).trim()
+                // Remove only the trailing activity tag — substringBefore(match)
+                // would cut at the first "L" inside words like ELECTRICAL
+                // ("BASIC ELECTRICAL … L" → "BASIC E").
+                val stripped = subjectLine.substring(0, activityMatch.range.first).trim()
                 subject = stripped.ifEmpty { subjectLine }
             } else {
                 subject = subjectLine

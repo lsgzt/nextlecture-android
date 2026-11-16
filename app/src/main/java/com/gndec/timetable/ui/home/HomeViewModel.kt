@@ -2,6 +2,8 @@ package com.gndec.timetable.ui.home
 
 import com.gndec.timetable.data.db.LectureEntity
 import com.gndec.timetable.domain.AppContainer
+import com.gndec.timetable.domain.Holiday
+import com.gndec.timetable.domain.HolidayGate
 import com.gndec.timetable.domain.NextLectureEngine
 import com.gndec.timetable.domain.RefreshResult
 import com.gndec.timetable.util.Formatters
@@ -40,6 +42,9 @@ data class HomeUiState(
     val lastFetch: Long? = null,
     val nowMillis: Long = System.currentTimeMillis(),
     val status: NextLectureEngine.Status = NextLectureEngine.Status.NoData,
+    /** Every lecture of the selected group — the holiday gate searches these for the
+     * next teaching day, not just today’s rows. */
+    val lectures: List<LectureEntity> = emptyList(),
     val upcomingToday: List<LectureEntity> = emptyList(),
     val todayLectures: List<LectureEntity> = emptyList(),
     val freeGapMinutes: Int? = null,
@@ -71,7 +76,7 @@ class HomeViewModel(private val c: AppContainer) {
 
     // Home loads instantly from Room — NO network access happens here.
     val ui: StateFlow<HomeUiState> =
-        combine(c.settings.flow, c.db.metaDao().observe(), lecturesFlow, ticker) { s, m, lectures, now ->
+        combine(c.settings.flow, c.db.metaDao().observe(), lecturesFlow, ticker, c.holidayManager.holidays) { s, m, lectures, now, holidays ->
             val zdt = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault())
             val dow = zdt.dayOfWeek.value
             val nowMin = zdt.hour * 60 + zdt.minute
@@ -81,13 +86,38 @@ class HomeViewModel(private val c: AppContainer) {
                 group = s.group,
                 lastFetch = m?.lastSuccessfulFetch,
                 nowMillis = now,
-                status = NextLectureEngine.compute(lectures, dow, nowMin),
+                status = holidayAwareStatus(lectures, dow, nowMin, holidays, zdt.toLocalDate().toString()),
+                lectures = lectures,
                 upcomingToday = todayLectures.filter { it.startMinutes > nowMin },
                 todayLectures = todayLectures,
                 freeGapMinutes = NextLectureEngine.freeGapMinutes(lectures, dow, nowMin),
                 stale = Formatters.isStale(m?.lastSuccessfulFetch, now)
             )
         }.stateIn(scope, SharingStarted.WhileSubscribed(5000), HomeUiState())
+
+    /**
+     * The engine's "later" search jumps by day-of-week, so once today's classes
+     * are over it happily points the hero at tomorrow's first lecture — even
+     * when the college calendar says tomorrow is a full holiday (the home
+     * banners say "holiday" while the hero says "Tomorrow"). Route that search
+     * through [HolidayGate.nextLectureAfter] instead: it anchors to real dates
+     * and skips every full holiday within its horizon, so the next lecture
+     * lands on the first actual teaching day. Today's statuses are untouched —
+     * a holiday TODAY is already gated off by the home screen's holiday hero.
+     */
+    private fun holidayAwareStatus(
+        lectures: List<LectureEntity>,
+        dow: Int,
+        nowMin: Int,
+        holidays: List<Holiday>,
+        todayIso: String
+    ): NextLectureEngine.Status = when (val base = NextLectureEngine.compute(lectures, dow, nowMin)) {
+        is NextLectureEngine.Status.DoneForToday ->
+            NextLectureEngine.Status.DoneForToday(HolidayGate.nextLectureAfter(lectures, holidays, todayIso))
+        is NextLectureEngine.Status.FreeDay ->
+            NextLectureEngine.Status.FreeDay(HolidayGate.nextLectureAfter(lectures, holidays, todayIso))
+        else -> base
+    }
 
     fun fetchAgain() {
         if (_fetchState.value == FetchState.Running) return

@@ -4,8 +4,9 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.gndec.timetable.net.AiProvider
 
-/** Stores the user-provided Gemini API key with Android Keystore-backed encryption. */
+/** Stores the user's AI provider API keys with Android Keystore-backed encryption. */
 class SecureKeyStore(context: Context) {
 
     private val prefs: SharedPreferences by lazy {
@@ -21,14 +22,15 @@ class SecureKeyStore(context: Context) {
         )
     }
 
-    fun getGeminiKey(): String? = prefs.getString(KEY_GEMINI, null)?.takeIf { it.isNotBlank() }
+    fun getApiKey(provider: AiProvider): String? =
+        prefs.getString(provider.keyName, null)?.takeIf { it.isNotBlank() }
 
-    fun setGeminiKey(key: String) {
-        prefs.edit().putString(KEY_GEMINI, key.trim()).apply()
+    fun setApiKey(provider: AiProvider, key: String) {
+        prefs.edit().putString(provider.keyName, key.trim()).apply()
     }
 
-    fun removeGeminiKey() {
-        prefs.edit().remove(KEY_GEMINI).apply()
+    fun removeApiKey(provider: AiProvider) {
+        prefs.edit().remove(provider.keyName).apply()
     }
 
     fun getAttendanceInstallationId(): String? = prefs.getString(KEY_ATTENDANCE_INSTALLATION_ID, null)?.takeIf { it.isNotBlank() }
@@ -52,7 +54,6 @@ class SecureKeyStore(context: Context) {
     }
 
     companion object {
-        private const val KEY_GEMINI = "gemini_api_key"
         private const val KEY_ATTENDANCE_INSTALLATION_ID = "attendance_installation_id"
         private const val KEY_ATTENDANCE_TOKEN = "attendance_access_token"
         private const val KEY_ATTENDANCE_PROFILE_FINGERPRINT = "attendance_profile_fingerprint"

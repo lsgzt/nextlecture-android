@@ -31,6 +31,10 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -62,6 +66,7 @@ import androidx.compose.ui.unit.dp
 import com.gndec.timetable.BuildConfig
 import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.domain.NotificationHelper
+import com.gndec.timetable.net.AiProvider
 import com.gndec.timetable.ui.Header
 import com.gndec.timetable.ui.IconBadge
 import com.gndec.timetable.ui.ScreenSurface
@@ -77,7 +82,7 @@ import com.gndec.timetable.parse.GroupMatcher
 import com.gndec.timetable.util.Formatters
 
 private val TestDelayOptions = listOf(1, 5, 10, 15)
-private const val SOURCE_CODE_URL = "https://github.com/lsgzt/nextlecture-android"
+private const val SOURCE_CODE_URL = "https://github.com/lsgzt/nextlecture"
 private const val MAINTAINER_URL = "https://lsgz.vercel.app"
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -89,6 +94,7 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onOpenAlerts: ()
     val meta by vm.meta.collectAsStateWithLifecycle()
     val groups by vm.groups.collectAsStateWithLifecycle()
     val models by vm.models.collectAsStateWithLifecycle()
+    val keyStatus by vm.keyStatus.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
     val reliability by vm.reliability.collectAsStateWithLifecycle()
@@ -101,6 +107,7 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onOpenAlerts: ()
     var backendInput by remember(settings.backendUrl) { mutableStateOf(settings.backendUrl) }
     var pyqBackendInput by remember(settings.pyqRagBackendUrl) { mutableStateOf(settings.pyqRagBackendUrl) }
     var modelMenu by remember { mutableStateOf(false) }
+    var providerMenu by remember { mutableStateOf(false) }
     var testDelay by remember { mutableStateOf(5) }
     var testDelayMenu by remember { mutableStateOf(false) }
 
@@ -124,10 +131,52 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onOpenAlerts: ()
                         onReload = { vm.loadSeniorCatalog(force = true) }
                     )
                 } else {
-                    LazyColumn(Modifier.heightIn(max = 360.dp)) {
-                        items(groups) { group ->
-                            TextButton(onClick = { vm.changeGroup(group); groupDialog = false }, modifier = Modifier.fillMaxWidth()) {
-                                Text(group, fontWeight = if (group == settings.group) FontWeight.Bold else FontWeight.Normal)
+                    var groupFilter by remember { mutableStateOf("") }
+                    val filteredGroups = remember(groups, groupFilter) {
+                        val needle = groupFilter.trim()
+                        if (needle.isEmpty()) groups
+                        else groups.filter { it.contains(needle, ignoreCase = true) }
+                    }
+                    Column(Modifier.heightIn(max = 400.dp)) {
+                        OutlinedTextField(
+                            value = groupFilter,
+                            onValueChange = { groupFilter = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = { Text("Search section…") },
+                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                            trailingIcon = {
+                                if (groupFilter.isNotEmpty()) {
+                                    IconButton(onClick = { groupFilter = "" }) {
+                                        Icon(Icons.Default.Close, contentDescription = "Clear")
+                                    }
+                                }
+                            },
+                            singleLine = true
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        LazyColumn(Modifier.heightIn(max = 320.dp)) {
+                            if (filteredGroups.isEmpty()) {
+                                item {
+                                    Text(
+                                        if (groups.isEmpty()) "No sections in the saved timetable yet."
+                                        else "No sections match “$groupFilter”.",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        modifier = Modifier.padding(vertical = 8.dp)
+                                    )
+                                }
+                            } else {
+                                items(filteredGroups) { group ->
+                                    TextButton(
+                                        onClick = { vm.changeGroup(group); groupDialog = false },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            group,
+                                            fontWeight = if (group == settings.group) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -223,7 +272,7 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onOpenAlerts: ()
                             TextButton(onClick = vm::checkAnnouncements, enabled = !busy) { Text("Check announcements") }
                         }
                         TextButton(onClick = {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/lsgzt/nextlecture-android/edit/main/announcements.json")))
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/lsgzt/nextlecture/edit/main/announcements.json")))
                         }) { Text("Manage announcements on GitHub") }
                     }
                 }
@@ -233,6 +282,16 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onOpenAlerts: ()
                         TealOutlineButton("Run reliability check", Icons.Default.Security, modifier = Modifier.fillMaxWidth(), onClick = vm::runReliabilityCheck)
                         reliability?.let {
                             StatusRow("Notifications", if (it.notificationsEnabled) "Enabled" else "Disabled", it.notificationsEnabled)
+                            val channel = it.reminderChannel
+                            val channelLabel = when {
+                                !channel.exists -> "Created on first reminder"
+                                channel.blocked -> "Blocked in system settings"
+                                channel.reduced -> "Reduced (no sound)"
+                                channel.silent -> "Muted (no sound)"
+                                else -> "Sound on"
+                            }
+                            StatusRow("Reminder channel", channelLabel, channel.healthy)
+                            StatusRow("Reminders will alert", if (it.remindersWillAlert) "Yes" else "No", it.remindersWillAlert)
                             StatusRow("Exact alarms", if (it.exactAlarms) "Enabled" else "Not granted", it.exactAlarms)
                             StatusRow("Timetable cached", if (it.timetableCached) "Ready" else "Missing", it.timetableCached)
                             StatusRow("Scheduled reminders", it.scheduledReminders.toString(), it.scheduledReminders > 0)
@@ -241,6 +300,7 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onOpenAlerts: ()
                         Row {
                             TextButton(onClick = { context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }) { Text("Battery settings") }
                             if (Build.VERSION.SDK_INT >= 31) TextButton(onClick = { context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}"))) }) { Text("Exact alarms") }
+                            TextButton(onClick = { context.startActivity(NotificationHelper.reminderChannelSettingsIntent(context)) }) { Text("Channel") }
                         }
                     }
                 }
@@ -252,18 +312,49 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onOpenAlerts: ()
                     }
                 }
                 item {
-                    SectionCard("Gemini AI & timetable parsing", Icons.Default.Tune) {
-                        ToggleRow("AI normalization (Gemini)", settings.aiEnabled, vm::setAiEnabled)
-                        Text("AI helps normalize ambiguous fields; timetable parsing stays authoritative.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth())
+                    SectionCard("AI provider & model", Icons.Default.Tune) {
+                        ToggleRow("AI normalization", settings.aiEnabled, vm::setAiEnabled)
+                        Text("AI helps normalize ambiguous timetable fields; timetable parsing stays authoritative.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth())
+                        Text("Provider", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.foundation.layout.Box {
+                                TealOutlineButton(settings.provider.label, modifier = Modifier, onClick = { providerMenu = true })
+                                DropdownMenu(expanded = providerMenu, onDismissRequest = { providerMenu = false }) {
+                                    AiProvider.values().forEach { option ->
+                                        DropdownMenuItem(text = { Text(option.label) }, onClick = { vm.setProvider(option.id); providerMenu = false })
+                                    }
+                                }
+                            }
+                        }
+                        Text("Each provider keeps its own key and model, so switching back restores your earlier choice.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth())
+                        // All three key states at once, so there is no need to switch provider
+                        // just to find out whether a key was already saved for another one.
+                        AiProvider.values().forEach { option ->
+                            val saved = keyStatus[option] == true
+                            val active = option == settings.provider
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    option.label,
+                                    Modifier.weight(1f),
+                                    fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    if (saved) "key saved" else "no key",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (saved) GndecGreen else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                         OutlinedTextField(backendInput, { backendInput = it }, label = { Text("Backend URL") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                         TealOutlineButton("Save backend URL", modifier = Modifier.fillMaxWidth(), onClick = { vm.setBackendUrl(backendInput) })
-                        OutlinedTextField(keyInput, { keyInput = it }, label = { Text(if (vm.hasUserKey()) "Gemini API key · saved" else "Gemini API key") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(keyInput, { keyInput = it }, label = { Text(if (keyStatus[settings.provider] == true) "${settings.provider.label} API key · saved" else "${settings.provider.label} API key") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
                         Row {
                             TextButton(onClick = { vm.saveKey(keyInput); keyInput = "" }) { Text("Save") }
                             TextButton(onClick = vm::testKey, enabled = !busy) { Text("Test") }
                             TextButton(onClick = vm::removeKey) { Text("Remove") }
                         }
-                        Text("Gemini model", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("${settings.provider.label} model", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             androidx.compose.foundation.layout.Box {
                                 TealOutlineButton(settings.model, modifier = Modifier, onClick = { modelMenu = true })
@@ -302,7 +393,7 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit, onOpenAlerts: ()
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            "Built and maintained by LSGZ",
+                            "Built and Maintained by Team <MYLV> Matrix at Hacknauts 2.0",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontWeight = FontWeight.Medium
@@ -358,7 +449,8 @@ private fun SeniorSectionPicker(
     onPick: (String) -> Unit,
     onReload: () -> Unit
 ) {
-    Column(Modifier.heightIn(max = 430.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    var groupFilter by remember { mutableStateOf("") }
+    Column(Modifier.heightIn(max = 460.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (catalog.loading) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -383,26 +475,57 @@ private fun SeniorSectionPicker(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            OutlinedTextField(
+                value = groupFilter,
+                onValueChange = { groupFilter = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Search section…") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (groupFilter.isNotEmpty()) {
+                        IconButton(onClick = { groupFilter = "" }) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear")
+                        }
+                    }
+                },
+                singleLine = true
+            )
             val dept = branch.trim().uppercase()
-            val byYear = remember(groups, dept) {
+            val needle = groupFilter.trim()
+            val byYear = remember(groups, dept, needle) {
                 (2..4).mapNotNull { year ->
                     val sections = sectionsForYear(groups, dept, year)
+                        .let { list ->
+                            if (needle.isEmpty()) list
+                            else list.filter { it.contains(needle, ignoreCase = true) }
+                        }
                     if (sections.isEmpty()) null else year to sections
                 }
             }
-            LazyColumn(Modifier.heightIn(max = 320.dp)) {
-                byYear.forEach { (year, sections) ->
-                    item(key = "header-$year") {
+            LazyColumn(Modifier.heightIn(max = 280.dp)) {
+                if (byYear.isEmpty()) {
+                    item {
                         Text(
-                            "${ordinalLabel(year)} year · ${sections.size} section${if (sections.size == 1) "" else "s"}",
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(top = 6.dp)
+                            "No sections match “$groupFilter”.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(vertical = 8.dp)
                         )
                     }
-                    items(sections) { group ->
-                        TextButton(onClick = { onPick(group) }, modifier = Modifier.fillMaxWidth()) {
-                            Text(group, fontWeight = if (group == currentGroup) FontWeight.Bold else FontWeight.Normal)
+                } else {
+                    byYear.forEach { (year, sections) ->
+                        item(key = "header-$year") {
+                            Text(
+                                "${ordinalLabel(year)} year · ${sections.size} section${if (sections.size == 1) "" else "s"}",
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(top = 6.dp)
+                            )
+                        }
+                        items(sections) { group ->
+                            TextButton(onClick = { onPick(group) }, modifier = Modifier.fillMaxWidth()) {
+                                Text(group, fontWeight = if (group == currentGroup) FontWeight.Bold else FontWeight.Normal)
+                            }
                         }
                     }
                 }

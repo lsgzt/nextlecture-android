@@ -159,4 +159,41 @@ class LiveRoomDataIntegrationTest {
             )
         }
     }
+
+    @Test
+    fun everyAcRoomKeyResolvesToALiveMergedRoom() {
+        val merged = RoomMerger.merge(docs, incompleteRoots = listOf("mba"))
+        // Guards the hand-maintained AC registry against typos and renames:
+        // every key must be a real room in the merged live dataset…
+        for (acKey in AcRooms.AC_KEYS) {
+            assertTrue(
+                "AC registry key [$acKey] is not a merged room",
+                merged.rooms.any { it.key == acKey }
+            )
+        }
+        // …and the snowflake must land on exactly those rooms — all 16 of them,
+        // and nothing else.
+        val badged = merged.rooms.filter { AcRooms.badge(it.name, it.key) != it.name }
+        assertEquals(AcRooms.AC_KEYS.size, badged.size)
+        assertEquals(
+            setOf(
+                "❄️F101", "❄️F108", "❄️F109", "❄️F112", "❄️F113", "❄️F114",
+                "❄️BEE LAB 1", "❄️CHEM LAB 1", "❄️COMPUTATIONAL LAB", "❄️HW LAB",
+                "❄️OS LAB CSE DEPT", "❄️OS1 LAB IT DEPT", "❄️PROJ/L",
+                "❄️TNP SEMINAR HALL", "❄️Central Library", "❄️OS LAB · CSE"
+            ),
+            badged.map { AcRooms.badge(it.name, it.key) }.toSet()
+        )
+    }
+
+    @Test
+    fun snowflakeSearchFindsTheAcRoomsInLiveData() {
+        val merged = RoomMerger.merge(docs, incompleteRoots = listOf("mba"))
+        val acHits = merged.rooms.filter { RoomNameNormalizer.matches(it.name, "❄️") }
+        assertEquals(AcRooms.AC_KEYS.size, acHits.size)
+        // And the near-miss rooms stay out.
+        assertFalse(acHits.any { it.key == "F108A" })
+        assertFalse(acHits.any { it.key == "it:OS LAB" })
+        assertFalse(acHits.any { it.key == "TNP SEMINAR HALL 1" })
+    }
 }

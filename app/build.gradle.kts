@@ -23,11 +23,11 @@ android {
         applicationId = "com.gndec.timetable"
         minSdk = 26
         targetSdk = 34
-        versionCode = 73
-        versionName = "2.4.37"
+        versionCode = 74
+        versionName = "2.4.39"
         // GitHub release marker is intentionally independent from Android versionName.
         // Update this marker whenever a new APK is published under GitHub Releases.
-        buildConfigField("String", "RELEASE_MARKER", "\"2.4.37\"")
+        buildConfigField("String", "RELEASE_MARKER", "\"2.4.39\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -47,7 +47,11 @@ android {
             isMinifyEnabled = true
             // Keep bundled notification audio in every release artifact; R8 code shrinking remains enabled.
             isShrinkResources = false
-            signingConfig = if (hasPersistentKeystore) signingConfigs.getByName("gndecPersistent") else signingConfigs.getByName("debug")
+            // Never fall back to the shared AOSP debug key: an artifact signed that way
+            // cannot be installed over an existing release install (signature mismatch),
+            // which silently breaks the GitHub "Download update" path for every user.
+            // The task-graph guard below fails the build outright instead.
+            signingConfig = if (hasPersistentKeystore) signingConfigs.getByName("gndecPersistent") else null
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
         debug { }
@@ -66,6 +70,31 @@ android {
     }
 
     packaging { resources { excludes += setOf("META-INF/DEPENDENCIES", "META-INF/LICENSE", "META-INF/LICENSE.txt", "META-INF/NOTICE", "META-INF/NOTICE.txt", "META-INF/*.kotlin_module") } }
+}
+
+// A release artifact must carry the production signature. AGP only discovers a
+// missing signing config at packaging time, so fail here with an actionable
+// message — and only when a release task was actually requested, so debug builds,
+// unit tests and lint keep working without a keystore.
+gradle.taskGraph.whenReady {
+    val releaseRequested = allTasks.any { it.name.contains("Release") }
+    if (releaseRequested && !hasPersistentKeystore) {
+        throw GradleException(
+            "Release build requested but no production keystore is configured.\n" +
+                "Add to local.properties (gitignored):\n" +
+                "  gndec.keystore.path=/absolute/path/to/release.jks\n" +
+                "  gndec.keystore.password=…\n" +
+                "  gndec.keystore.alias=…\n" +
+                "  gndec.keystore.keyPassword=…\n" +
+                "The release variant will NOT be signed with the debug key, because a\n" +
+                "debug-signed release cannot be installed over an existing install."
+        )
+    }
+}
+
+ksp {
+    // Exported schemas make the (now mandatory) Room migrations reviewable in code.
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {
@@ -87,6 +116,7 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
     implementation("org.jsoup:jsoup:1.18.1")
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

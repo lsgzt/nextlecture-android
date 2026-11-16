@@ -5,8 +5,10 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,52 +20,64 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gndec.timetable.data.db.LectureEntity
 import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.domain.AttendanceManager
+import com.gndec.timetable.domain.FacultyPhotoStore
+import com.gndec.timetable.domain.FacultyRecord
 import com.gndec.timetable.ui.Header
 import com.gndec.timetable.ui.IconBadge
 import com.gndec.timetable.ui.InfoRow
 import com.gndec.timetable.ui.PremiumBottomBarContentClearance
 import com.gndec.timetable.ui.ScreenSurface
 import com.gndec.timetable.ui.TealOutlineButton
+import com.gndec.timetable.ui.faculty.FacultyAvatar
+import com.gndec.timetable.ui.faculty.FacultyPhotoViewer
 import com.gndec.timetable.ui.motion.Motion
+import com.gndec.timetable.ui.motion.hapticTick
 import com.gndec.timetable.ui.motion.motionTween
 import com.gndec.timetable.ui.motion.pressFeedback
-import com.gndec.timetable.ui.theme.GndecAqua
-import com.gndec.timetable.ui.theme.GndecGreenSoft
 import com.gndec.timetable.ui.theme.GndecMuted
 import com.gndec.timetable.ui.theme.GndecTeal
-import com.gndec.timetable.ui.theme.GndecTealDark
 import com.gndec.timetable.util.Formatters
+import com.gndec.timetable.util.displayTeacher
+import com.gndec.timetable.util.displayVenue
+import com.gndec.timetable.util.resolvedTeacher
 import java.time.LocalDate
 import java.time.LocalTime
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun LectureDetailScreen(
@@ -74,7 +88,8 @@ fun LectureDetailScreen(
     onOpenHome: () -> Unit,
     onOpenToday: () -> Unit,
     onOpenAlerts: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onOpenFaculty: (String) -> Unit = {}
 ) {
     val settings by container.settings.flow.collectAsStateWithLifecycle(initialValue = com.gndec.timetable.data.prefs.AppSettings())
     val scope = rememberCoroutineScope()
@@ -111,6 +126,25 @@ fun LectureDetailScreen(
         attendanceBusy = false
     }
     val reminderEnabled = settings.remind15 || settings.remind30 || settings.remind5 || settings.remindAtStart
+
+    // Match timetable teacher → directory profile off the main thread so this
+    // screen never freezes on open. Cached Ready lookups stay instant.
+    val displayTeacherName = lecture.displayTeacher(settings.mentorName)
+    val displayVenueName = lecture.displayVenue(settings.mentorVenue)
+    val resolvedTeacherName = lecture.resolvedTeacher(settings.mentorName)
+    var matchedFaculty by remember(resolvedTeacherName) { mutableStateOf<FacultyRecord?>(null) }
+    var photoViewerOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(resolvedTeacherName) {
+        val name = resolvedTeacherName
+        if (name == null) {
+            matchedFaculty = null
+            return@LaunchedEffect
+        }
+        matchedFaculty = withContext(Dispatchers.Default) {
+            container.facultyDirectory.findBestByPublishedName(name)
+        }
+    }
+
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         ScreenSurface {
             LazyColumn(
@@ -144,8 +178,15 @@ fun LectureDetailScreen(
                     ) {
                         Column(Modifier.padding(horizontal = 18.dp, vertical = 10.dp)) {
                             InfoRow(Icons.Default.AccessTime, Formatters.range(lecture.startMinutes, lecture.endMinutes), divider = true)
-                            InfoRow(Icons.Default.LocationOn, lecture.venue?.takeIf { it.isNotBlank() } ?: "Venue unavailable", divider = true)
-                            InfoRow(Icons.Default.Person, lecture.teacher?.takeIf { it.isNotBlank() } ?: "Teacher unavailable", divider = true)
+                            InfoRow(Icons.Default.LocationOn, displayVenueName, divider = true)
+                            TeacherDetailRow(
+                                teacherName = displayTeacherName,
+                                faculty = matchedFaculty,
+                                store = container.facultyPhotos,
+                                onOpenFaculty = { matchedFaculty?.profileId?.let(onOpenFaculty) },
+                                onOpenPhoto = { photoViewerOpen = true },
+                                divider = true
+                            )
                             InfoRow(Icons.Default.School, lecture.lectureType ?: "Lecture")
                         }
                     }
@@ -219,10 +260,88 @@ fun LectureDetailScreen(
                     )
                 }
             }
+            matchedFaculty?.takeIf { it.imageUrl.isNotBlank() && photoViewerOpen }?.let { faculty ->
+                FacultyPhotoViewer(
+                    store = container.facultyPhotos,
+                    url = faculty.imageUrl,
+                    name = faculty.name,
+                    onDismiss = { photoViewerOpen = false }
+                )
+            }
         }
     }
 }
 
+@Composable
+private fun TeacherDetailRow(
+    teacherName: String,
+    faculty: FacultyRecord?,
+    store: com.gndec.timetable.domain.FacultyPhotoStore,
+    onOpenFaculty: () -> Unit,
+    onOpenPhoto: () -> Unit,
+    divider: Boolean
+) {
+    val view = LocalView.current
+    val clickable = faculty != null
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(
+                    if (clickable) Modifier.clickable {
+                        view.hapticTick()
+                        onOpenFaculty()
+                    } else Modifier
+                )
+                .padding(vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (faculty != null && faculty.imageUrl.isNotBlank()) {
+                FacultyAvatar(
+                    store = store,
+                    url = faculty.imageUrl,
+                    name = faculty.name,
+                    size = 40.dp,
+                    onPhotoClick = {
+                        view.hapticTick()
+                        onOpenPhoto()
+                    }
+                )
+            } else {
+                Box(
+                    modifier = Modifier.size(40.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    IconBadge(
+                        Icons.Default.Person,
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        size = 36.dp
+                    )
+                }
+            }
+            Spacer(Modifier.width(14.dp))
+            Text(
+                teacherName,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (clickable) {
+                Icon(
+                    Icons.Default.ChevronRight,
+                    contentDescription = "Open faculty profile",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }
+        if (divider) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+        }
+    }
+}
 
 @Composable
 private fun AttendanceDetailCard(

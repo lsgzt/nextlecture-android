@@ -47,6 +47,19 @@
             android:name=".receiver.LectureAlarmReceiver"
             android:exported="false" />
 
+        <!-- Exact-alarm target for the 05:32 IST quote refresh. Not exported and given no
+             intent filter: it is only ever reached through the explicit PendingIntent that
+             QuoteScheduler builds, so no other app can trigger the fetch. -->
+        <receiver
+            android:name=".receiver.QuoteAlarmReceiver"
+            android:exported="false" />
+
+        <!-- BOOT_COMPLETED / MY_PACKAGE_REPLACED clear pending alarms. TIMEZONE_CHANGED
+             is handled because every scheduled trigger is an absolute instant resolved
+             against the zone at schedule time, so a student who travels (or crosses a
+             DST boundary) would otherwise keep getting reminders at campus-local time.
+             QUICKBOOT_POWERON covers vendor fast-boot; coverage is best-effort, and the
+             startup self-heal in MainActivity backs up the rest. -->
         <receiver
             android:name=".receiver.BootReceiver"
             android:enabled="true"
@@ -54,6 +67,9 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
     </application>

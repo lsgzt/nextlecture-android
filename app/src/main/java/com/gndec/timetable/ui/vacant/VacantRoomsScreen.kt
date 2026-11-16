@@ -83,6 +83,7 @@ import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.domain.VacantRoomsManager
 import com.gndec.timetable.domain.RoomMerger
 import com.gndec.timetable.domain.VacantRoomsState
+import com.gndec.timetable.parse.AcRooms
 import com.gndec.timetable.parse.MergedRoom
 import com.gndec.timetable.parse.RoomCell
 import com.gndec.timetable.parse.RoomNameNormalizer
@@ -632,7 +633,12 @@ private fun RoomRowContent(room: MergedRoom, cell: RoomCell?, expanded: Boolean,
             }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text(room.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    AcRooms.badge(room.name, room.key),
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
                 Text(
                     text = when {
                         cell == null -> "Not published for this slot by any department"

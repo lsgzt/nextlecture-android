@@ -26,11 +26,16 @@ fun routeRank(route: String?): Int = when {
     route.startsWith("onboarding") || route.startsWith("notification_onboarding") -> RankOnboarding
     route == "home" -> 0
     route == "today" -> 1
-    route == "notice" -> 2
+    route == "notice" || route == "notice/holidays" -> 2
+    route == "notice_detail" -> 9
     route == "syllabus" -> 3
-    route == "previous_year_papers" -> 11
-    route == "frequently_asked" -> 12
-    route.startsWith("frequently_asked_group") -> 13
+    route == "faculty_members" -> 10
+    // Deeper than the members browser so list → profile gets a forward slide
+    // (equal ranks previously used the "return" motion and felt like no animation).
+    route.startsWith("faculty/") -> 11
+    route == "previous_year_papers" -> 12
+    route == "frequently_asked" -> 13
+    route.startsWith("frequently_asked_group") -> 14
     else -> 10 // detail, settings, profile, alerts, attendance
 }
 

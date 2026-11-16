@@ -77,7 +77,9 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.KeyboardOptions
 import com.gndec.timetable.data.db.LectureEntity
+import androidx.compose.ui.text.input.KeyboardType
 import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.domain.GroupTimetableManager
 import com.gndec.timetable.domain.RefreshResult
@@ -89,6 +91,8 @@ import com.gndec.timetable.parse.GroupMatcher
 import com.gndec.timetable.ui.motion.Motion
 import com.gndec.timetable.ui.motion.motionTween
 import com.gndec.timetable.ui.motion.pressFeedback
+import com.gndec.timetable.util.RollNumbers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /** Onboarding step indices — the flow branches on the chosen academic year. */
@@ -130,8 +134,10 @@ fun OnboardingScreen(container: AppContainer, onDone: () -> Unit) {
         scope.launch {
             loading = true
             val name = record?.candidateName ?: manualName
-            val crn = record?.crn ?: manualCrn
-            val registration = record?.registrationNumber ?: manualRegistration
+            // Roll numbers are numeric — sanitize at save time too so a legacy
+            // junk value can never survive a re-save.
+            val crn = RollNumbers.sanitize(record?.crn ?: manualCrn)
+            val registration = RollNumbers.sanitize(record?.registrationNumber ?: manualRegistration)
             val father = record?.fatherName.orEmpty().ifBlank { manualFather }
             val mother = record?.motherName.orEmpty().ifBlank { manualMother }
             val mentor = record?.mentorName ?: manualMentor
@@ -179,7 +185,7 @@ fun OnboardingScreen(container: AppContainer, onDone: () -> Unit) {
             container.settings.setAcademicYear(academicYear)
             container.settings.setBranch(branch)
             container.settings.saveStudentProfile(
-                manualName, manualCrn, branch, manualRegistration,
+                manualName, RollNumbers.sanitize(manualCrn), branch, RollNumbers.sanitize(manualRegistration),
                 "", "", "",
                 pickedSection.orEmpty(), group, "",
                 "", "",
@@ -239,8 +245,42 @@ fun OnboardingScreen(container: AppContainer, onDone: () -> Unit) {
         }
     }
 
-    val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+    /**
+     * Resume support: a senior (2nd-4th year) whose profile was already saved but
+     * whose timetable group never linked — the departmental download failed at
+     * save time, or the app was killed right after the profile write — returns
+     * straight to the section picker with the saved year, branch, identity and
+     * section prefilled. Nothing already answered is asked again; the student
+     * just taps Save profile to retry the download + link (or picks a different
+     * section if the department republished).
+     */
+    LaunchedEffect(Unit) {
+        val saved = container.settings.flow.first()
+        if (saved.academicYear in 2..4 &&
+            saved.profileSource == "manual_departmental" &&
+            saved.branch.isNotBlank() &&
+            saved.group.isNullOrBlank()
+        ) {
+            academicYear = saved.academicYear
+            branch = saved.branch
+            manualName = saved.studentName
+            manualCrn = saved.rollNumber
+            manualRegistration = saved.registrationNumber
+            manualSection = saved.studentSection
+            manualSubsection = saved.studentSubsection
+            pickedSection = saved.studentSection.ifBlank { null }
+            pickedGroup = saved.studentSubsection.ifBlank { null }
+            loadCatalog(force = false)
+            step = STEP_PROFILE
+        }
+    }
+
+    val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         scope.launch {
+            // Record the real answer: a denial used to be stored exactly like a grant,
+            // so the app believed reminders were live while none could ever be posted.
+            container.settings.setNotificationPermissionGranted(granted)
+            // Still mark as prompted either way — a user who said no must not be nagged.
             container.settings.setNotificationPermissionPrompted(true)
             onDone()
         }
@@ -351,8 +391,8 @@ fun OnboardingScreen(container: AppContainer, onDone: () -> Unit) {
                                         crn = manualCrn,
                                         registration = manualRegistration,
                                         onName = { manualName = it },
-                                        onCrn = { manualCrn = it },
-                                        onRegistration = { manualRegistration = it },
+                                        onCrn = { manualCrn = RollNumbers.sanitize(it) },
+                                        onRegistration = { manualRegistration = RollNumbers.sanitize(it) },
                                         onContinue = { step = STEP_PROFILE },
                                         onBack = { step = STEP_BRANCH }
                                     )
@@ -410,8 +450,8 @@ fun OnboardingScreen(container: AppContainer, onDone: () -> Unit) {
                                                 section = manualSection,
                                                 subsection = manualSubsection,
                                                 onName = { manualName = it },
-                                                onCrn = { manualCrn = it },
-                                                onRegistration = { manualRegistration = it },
+                                                onCrn = { manualCrn = RollNumbers.sanitize(it) },
+                                                onRegistration = { manualRegistration = RollNumbers.sanitize(it) },
                                                 onFather = { manualFather = it },
                                                 onMother = { manualMother = it },
                                                 onMentor = { manualMentor = it },
@@ -438,8 +478,9 @@ fun OnboardingScreen(container: AppContainer, onDone: () -> Unit) {
 @Composable
 fun NotificationPermissionOnboardingScreen(container: AppContainer, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         scope.launch {
+            container.settings.setNotificationPermissionGranted(granted)
             container.settings.setNotificationPermissionPrompted(true)
             onDone()
         }
@@ -720,16 +761,36 @@ private fun SeniorManualStep(
     onContinue: () -> Unit,
     onBack: () -> Unit
 ) {
+    // Roll numbers are numeric (official CRNs are 7 digits, URNs 8) — a filled
+    // value that is not all digits of a plausible length blocks Continue.
+    val crnValid = RollNumbers.isValid(crn)
+    val urnValid = RollNumbers.isValid(registration)
     Column(Modifier.fillMaxWidth()) {
         Text("Your details", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(5.dp))
         Text("${academicYear}${yearSuffix(academicYear)} year · $branch. Next you'll pick your section from the official departmental timetable.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(12.dp))
         ProfileInput("Full name", name, onName)
-        ProfileInput("CRN / roll number", crn, onCrn)
-        ProfileInput("URN (University Roll Number)", registration, onRegistration)
+        ProfileInput(
+            "CRN / roll number", crn, onCrn,
+            keyboardType = KeyboardType.Number,
+            isError = !crnValid,
+            supportingText = if (crn.isNotBlank() && !crnValid) RollNumbers.errorMessage("CRN") else null
+        )
+        ProfileInput(
+            "URN (University Roll Number)", registration, onRegistration,
+            keyboardType = KeyboardType.Number,
+            isError = !urnValid,
+            supportingText = if (registration.isNotBlank() && !urnValid) RollNumbers.errorMessage("URN") else null
+        )
         Spacer(Modifier.height(7.dp))
-        PrimaryAction("Continue to section picker", Icons.Default.ArrowForward, enabled = name.isNotBlank(), onClick = onContinue, modifier = Modifier.fillMaxWidth())
+        PrimaryAction(
+            "Continue to section picker",
+            Icons.Default.ArrowForward,
+            enabled = name.isNotBlank() && crnValid && urnValid,
+            onClick = onContinue,
+            modifier = Modifier.fillMaxWidth()
+        )
         TextButton(onClick = onBack) { Text("Back") }
     }
 }
@@ -881,21 +942,39 @@ private fun ConfirmProfileStep(record: StudentDirectoryRecord?, onConfirm: () ->
 
 @Composable
 private fun ManualProfileStep(branch: String, name: String, crn: String, registration: String, father: String, mother: String, mentor: String, section: String, subsection: String, onName: (String) -> Unit, onCrn: (String) -> Unit, onRegistration: (String) -> Unit, onFather: (String) -> Unit, onMother: (String) -> Unit, onMentor: (String) -> Unit, onSection: (String) -> Unit, onSubsection: (String) -> Unit, onSave: () -> Unit, onBack: () -> Unit) {
+    val crnValid = RollNumbers.isValid(crn)
+    val registrationValid = RollNumbers.isValid(registration)
     Column(Modifier.fillMaxWidth()) {
         Text("Enter your details", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(5.dp))
         Text("Manual entry stays available if your record needs correction.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(12.dp))
         ProfileInput("Full name", name, onName)
-        ProfileInput("CRN (Class Roll Number)", crn, onCrn)
-        ProfileInput("Registration number", registration, onRegistration)
+        ProfileInput(
+            "CRN (Class Roll Number)", crn, onCrn,
+            keyboardType = KeyboardType.Number,
+            isError = !crnValid,
+            supportingText = if (crn.isNotBlank() && !crnValid) RollNumbers.errorMessage("CRN") else null
+        )
+        ProfileInput(
+            "Registration number", registration, onRegistration,
+            keyboardType = KeyboardType.Number,
+            isError = !registrationValid,
+            supportingText = if (registration.isNotBlank() && !registrationValid) RollNumbers.errorMessage("Registration number") else null
+        )
         ProfileInput("Father name", father, onFather)
         ProfileInput("Mother name", mother, onMother)
         ProfileInput("Mentor name", mentor, onMentor)
         ProfileInput("Permanent section", section, onSection)
         ProfileInput("Permanent subsection / timetable group", subsection, onSubsection)
         Spacer(Modifier.height(7.dp))
-        PrimaryAction("Save profile", Icons.Default.ArrowForward, enabled = name.isNotBlank(), onClick = onSave, modifier = Modifier.fillMaxWidth())
+        PrimaryAction(
+            "Save profile",
+            Icons.Default.ArrowForward,
+            enabled = name.isNotBlank() && crnValid && registrationValid,
+            onClick = onSave,
+            modifier = Modifier.fillMaxWidth()
+        )
         TextButton(onClick = onBack) { Text("Back to official search") }
     }
 }
@@ -954,8 +1033,32 @@ private fun ChipGrid(options: List<String>, selected: String?, onSelect: (String
 }
 
 @Composable
-private fun ProfileInput(label: String, value: String, onValue: (String) -> Unit) {
-    OutlinedTextField(value, onValue, Modifier.fillMaxWidth().padding(vertical = 4.dp), label = { Text(label) }, singleLine = true)
+private fun ProfileInput(
+    label: String,
+    value: String,
+    onValue: (String) -> Unit,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    isError: Boolean = false,
+    supportingText: String? = null
+) {
+    OutlinedTextField(
+        value,
+        onValue,
+        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        label = { Text(label) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+        isError = isError,
+        supportingText = {
+            if (supportingText != null) {
+                Text(
+                    supportingText,
+                    color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+    )
 }
 
 @Composable

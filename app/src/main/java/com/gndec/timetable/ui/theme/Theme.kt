@@ -8,6 +8,7 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -117,7 +118,13 @@ fun GndecTheme(mode: String, content: @Composable () -> Unit) {
             medium = RoundedCornerShape(18.dp),
             large = RoundedCornerShape(24.dp),
             extraLarge = RoundedCornerShape(28.dp)
-        ),
-        content = content
-    )
+        )
+    ) {
+        // Provided inside MaterialTheme so the lecture palette can read the scheme
+        // (the lecture entry is derived from it) while still using the same
+        // dark/light decision the rest of the app makes.
+        CompositionLocalProvider(LocalLectureTypePalette provides lectureTypePalette(dark, colors)) {
+            content()
+        }
+    }
 }

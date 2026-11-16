@@ -36,7 +36,7 @@ class NextLectureFirebaseMessagingService : FirebaseMessagingService() {
 }
 
 object FcmRegistration {
-    private const val BACKEND_URL = "https://nextlecture.vercel.app"
+    private const val BACKEND_URL = "https://nextlecture-android.vercel.app"
 
     fun register(context: android.content.Context, token: String) {
         Thread {

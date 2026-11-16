@@ -4,8 +4,16 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationManagerCompat
+import com.gndec.timetable.data.prefs.SettingsManager
 import com.gndec.timetable.domain.AlarmScheduler
+import com.gndec.timetable.domain.HolidayGate
 import com.gndec.timetable.domain.NotificationHelper
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 /**
  * Fired by AlarmManager at reminder time. Everything needed for the
@@ -21,6 +29,33 @@ class LectureAlarmReceiver : BroadcastReceiver() {
             return
         }
 
+        // Reminders are armed up to 14 days ahead, while the holiday list can refresh
+        // any time after that (a newly published list, or one cached before the
+        // reminder was scheduled). Re-check the cached list at fire time so a full
+        // holiday stays silent no matter when it became known. The read is a tiny
+        // local file, so goAsync's ten-second window is far more than enough.
+        val pending = goAsync()
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            try {
+                if (!suppressForHoliday(context, intent)) {
+                    fireReminder(context, intent)
+                }
+            } finally {
+                pending.finish()
+            }
+        }
+    }
+
+    /** True when this alarm points at a full holiday and must not notify. */
+    private suspend fun suppressForHoliday(context: Context, intent: Intent): Boolean {
+        val epochDay = intent.getLongExtra(EXTRA_EPOCH_DAY, -1L)
+        if (epochDay < 0L) return false
+        val date = LocalDate.ofEpochDay(epochDay)
+        val holidayJson = SettingsManager(context).flow.first().holidayJson
+        return HolidayGate.isFullHolidayOn(HolidayGate.decode(holidayJson), date.toString())
+    }
+
+    private fun fireReminder(context: Context, intent: Intent) {
         val type = intent.getStringExtra(EXTRA_TYPE) ?: return
         val notificationManager = NotificationManagerCompat.from(context)
         if (type == AlarmScheduler.FREE_PERIOD_TYPE) {

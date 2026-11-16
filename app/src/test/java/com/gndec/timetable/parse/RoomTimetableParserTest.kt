@@ -198,6 +198,41 @@ class RoomTimetableParserTest {
     }
 
     @Test
+    fun dialectBTrailingActivityDoesNotCutSubjectAtFirstLetterL() {
+        // Real appsc rooms cells look like:
+        // ITB<br/>ER. MANI BANSAL (EE)<br/>BASIC ELECTRICAL AND ELECTRONICS ENGINEERING L
+        // substringBefore("L") used to yield "BASIC E".
+        val html = """
+            <html><body>
+            <table id="table_1" border="1" class="odd_table">
+              <caption>GNDEC</caption>
+              <thead>
+                <tr><td rowspan="2"></td><th colspan="5">S205</th></tr>
+                <tr>
+                  <th class="xAxis">Monday</th><th class="xAxis">Tuesday</th><th class="xAxis">Wednesday</th>
+                  <th class="xAxis">Thursday</th><th class="xAxis">Friday</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th class="yAxis">09:30-10:30</th>
+                  <td>ITB<br />ER. MANI BANSAL (EE)<br />BASIC ELECTRICAL AND ELECTRONICS ENGINEERING L<br /></td>
+                  <td>---</td><td>---</td><td>---</td><td>---</td>
+                </tr>
+                <tr><td colspan="5">Timetable generated with FET 6.13.2 on 8/24/26 1:24 PM</td></tr>
+              </tbody>
+            </table>
+            </body></html>
+        """.trimIndent()
+        val doc = RoomTimetableParser.parseRoomsDoc(html, "appsc", "https://x/rooms.html", 0L)
+        val cell = doc.rooms.first().occupancy[0][0]!!
+        assertEquals("BASIC ELECTRICAL AND ELECTRONICS ENGINEERING", cell.subject)
+        assertEquals("L", cell.activity)
+        assertEquals("ER. MANI BANSAL (EE)", cell.teacher)
+        assertEquals("ITB", cell.studentsSet)
+    }
+
+    @Test
     fun dialectBRowspanCarryWorks() {
         val doc = parseB()
         val g12 = doc.rooms.first()

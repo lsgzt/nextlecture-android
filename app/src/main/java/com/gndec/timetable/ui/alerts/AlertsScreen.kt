@@ -244,6 +244,18 @@ private fun ReliabilitySummary(status: ReliabilityStatus) {
         Column(Modifier.padding(16.dp)) {
             Text("Reliability check", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text("Notifications: ${if (status.notificationsEnabled) "Enabled" else "Disabled"}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val channel = status.reminderChannel
+            val channelLabel = when {
+                !channel.exists -> "Created on first reminder"
+                channel.blocked -> "Blocked in system settings"
+                channel.reduced -> "Reduced (no sound)"
+                channel.silent -> "Muted (no sound)"
+                else -> "Sound on"
+            }
+            // The channel is reported separately because a muted channel still reports
+            // "Notifications: Enabled" above — this is the actual reason alerts are silent.
+            Text("Reminder channel: $channelLabel", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Reminders will alert: ${if (status.remindersWillAlert) "Yes" else "No"}", color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text("Exact alarms: ${if (status.exactAlarms) "Enabled" else "Not granted"}", color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text("Scheduled reminders: ${status.scheduledReminders}", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

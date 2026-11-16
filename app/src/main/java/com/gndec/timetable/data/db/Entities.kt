@@ -4,7 +4,15 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "lectures")
+@Entity(
+    tableName = "lectures",
+    // Every read path filters on groupName (observeForGroup / getForGroup / findOne /
+    // countForGroup / distinctGroups), and the table holds every group in the parsed
+    // document — not just the student's. RefreshManager replaces the whole table on
+    // each refresh, so the group-filtered Flow used by the Home/Today/Alerts screens
+    // used to full-scan and sort on every invalidation.
+    indices = [Index(value = ["groupName"])]
+)
 data class LectureEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val groupName: String,
@@ -51,7 +59,13 @@ data class TimetableMetaEntity(
     val lastChecked: Long?,
     val etag: String?,
     val lastModified: String?,
-    val timetableHash: String?
+    val timetableHash: String?,
+    /**
+     * Epoch millis of the FET footer line on the official document
+     * ("Timetable generated with FET … on M/D/YY h:mm AM/PM"), when parseable.
+     * Null for caches saved before this field existed or for documents without the footer.
+     */
+    val generatedAtMillis: Long? = null
 )
 
 @Entity(tableName = "ai_cache")
@@ -97,5 +111,11 @@ data class SyllabusChatMessageEntity(
     /** Gemini-compatible role: user or model. */
     val role: String,
     val content: String,
-    val timestamp: Long
+    val timestamp: Long,
+    /**
+     * Model reasoning the provider exposed as a separate stream, kept apart from [content]
+     * so it is never replayed as conversation history. Null for models without thinking and
+     * for every message written before v5.
+     */
+    val reasoning: String? = null
 )

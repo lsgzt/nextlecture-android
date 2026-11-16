@@ -7,7 +7,7 @@ rows = []
 for course in courses:
     raw = subprocess.check_output([
         "curl", "-sS", "--max-time", "30",
-        f"https://gndec-pyq-rag-api.vercel.app/api/pyq/frequently-asked?course={course}"
+        f"https://nextlecture-android.vercel.app/api/pyq/frequently-asked?course={course}"
     ], text=True)
     data = json.loads(raw)
     rows.append({

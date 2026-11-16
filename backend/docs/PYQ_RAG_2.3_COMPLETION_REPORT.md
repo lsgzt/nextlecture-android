@@ -6,7 +6,7 @@
 
 The production Previous-year-papers RAG add-on is implemented and released as Android **2.3**, with the follow-up status-visibility fix released as Android **2.3.1** and the retry/failover patch released as Android **2.3.3**. The existing **Previous year papers** browser was preserved: its bundled catalog, search behavior, session grouping, metadata, original Google Drive links, and fallback behavior remain independent of the analysis service. A compact **🔥 Frequently Asked** entry point has been added above that browser, with course filtering, repeated-question groups, distinct-paper frequency, exact source-page provenance, exam sessions, and original PDF opening.
 
-The production service is live at [https://gndec-pyq-rag-api.vercel.app](https://gndec-pyq-rag-api.vercel.app). The full catalog of **1,628 known Drive PDFs** has been imported idempotently into Supabase. The initial ten-paper validation gate passed before the full catalog seed: **10/10 validation papers completed, 171 questions extracted, 8 papers routed through vision extraction, and 2 through conventional text extraction**. Additional protected production batches and one user-triggered retry have completed more papers. The current database state is **19 completed, 1,602 pending, 1 processing, 6 failed, and 0 skipped**, with the remaining papers intentionally pending for resumable batches; the system has not claimed that all 1,628 PDFs were processed.
+The production service is live at [https://nextlecture-android.vercel.app](https://nextlecture-android.vercel.app). The full catalog of **1,628 known Drive PDFs** has been imported idempotently into Supabase. The initial ten-paper validation gate passed before the full catalog seed: **10/10 validation papers completed, 171 questions extracted, 8 papers routed through vision extraction, and 2 through conventional text extraction**. Additional protected production batches and one user-triggered retry have completed more papers. The current database state is **19 completed, 1,602 pending, 1 processing, 6 failed, and 0 skipped**, with the remaining papers intentionally pending for resumable batches; the system has not claimed that all 1,628 PDFs were processed.
 
 > **Critical scanned-PDF behavior:** a paper is not failed merely because conventional text extraction is empty. The pipeline records the PDF’s page count and text quality, then sends low-text/image-only PDFs to a vision-capable Gemini document route. Every extracted question is validated against the PDF page count and stored with a required 1-indexed `source_page`.
 
@@ -43,7 +43,7 @@ The design follows Gemini’s documented native PDF understanding and Files/docu
 
 ## API surface
 
-The Android client uses the stable base URL `https://gndec-pyq-rag-api.vercel.app`.
+The Android client uses the stable base URL `https://nextlecture-android.vercel.app`.
 
 | Method and path | Purpose | Protection |
 |---|---|---|

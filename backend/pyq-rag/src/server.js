@@ -12,15 +12,46 @@ app.use((req, res, next) => {
   if (origin && !config.allowedOrigins.includes(origin)) return res.status(403).json({ error: 'origin not allowed' });
   if (origin) res.set('access-control-allow-origin', origin);
   res.set('access-control-allow-headers', 'content-type, authorization, x-pyq-admin-token');
-  res.set('access-control-allow-methods', 'GET,POST,OPTIONS');
+  res.set('access-control-allow-methods', 'GET,POST,OPTIONS,DELETE');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   return next();
 });
 app.use(express.json({ limit: '64kb', strict: true }));
-app.get('/health', (_req, res) => res.json({ ok: true, service: 'gndec-pyq-rag-api', version: '1.0.0', dependencies: { supabase: hasSupabase(), gemini: hasGemini(), geminiKeysConfigured: config.geminiApiKeys.length } }));
+
+// Health and service discovery
+app.get('/health', (_req, res) =>
+  res.json({
+    ok: true,
+    service: 'gndec-pyq-rag-api',
+    version: '1.0.0',
+    dependencies: {
+      supabase: hasSupabase(),
+      gemini: hasGemini(),
+      geminiKeysConfigured: config.geminiApiKeys.length,
+    },
+  }),
+);
+
+// Friendly root — this is an API, not a website
+app.get('/', (_req, res) =>
+  res.json({
+    ok: true,
+    service: 'gndec-pyq-rag-api',
+    message: 'NextLecture satellite API. Use /health or /api/* endpoints.',
+    docs: 'See repository README for available routes.',
+    health: '/health',
+  }),
+);
+
+// APK download redirect (used by the Android app update flow)
+app.get('/download', (_req, res) => {
+  res.redirect(302, 'https://github.com/lsgzt/nextlecture/releases/latest');
+});
+
 const apiRouter = buildRouter();
 app.use('/api', apiRouter);
 app.use(apiRouter);
+
 app.use((_req, res) => res.status(404).json({ error: 'not found' }));
 app.use((error, _req, res, _next) => {
   console.error('[PYQ] unhandled request error', error?.message || error);

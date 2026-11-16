@@ -11,23 +11,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-@Serializable
-data class Holiday(
-    val id: String,
-    val name: String,
-    val date: String,
-    val displayDate: String,
-    val weekday: String,
-    val category: String,
-    val year: Int,
-    val source: String = ""
-)
-
+/** Loads and caches the college's official holiday list (see [Holiday] and [HolidayGate]). */
 class HolidayManager(
     private val settings: SettingsManager,
     private val backend: PyqRagClient
@@ -75,7 +62,5 @@ class HolidayManager(
         }
     }
 
-    private fun decode(value: String): List<Holiday> = runCatching {
-        if (value.isBlank()) emptyList() else json.decodeFromString<List<Holiday>>(value)
-    }.getOrDefault(emptyList())
+    private fun decode(value: String): List<Holiday> = HolidayGate.decode(value)
 }

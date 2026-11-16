@@ -2,8 +2,9 @@ package com.gndec.timetable.domain
 
 import com.gndec.timetable.data.db.AiCacheDao
 import com.gndec.timetable.data.db.AiCacheEntity
+import com.gndec.timetable.net.AiClients
+import com.gndec.timetable.net.AiProvider
 import com.gndec.timetable.net.BackendClient
-import com.gndec.timetable.net.GeminiClient
 import com.gndec.timetable.parse.AiCellParser
 import com.gndec.timetable.parse.AiFields
 import com.gndec.timetable.parse.LectureFields
@@ -11,20 +12,21 @@ import com.gndec.timetable.parse.RawLecture
 
 /**
  * Hybrid normalization: deterministic parser results stay authoritative;
- * Gemini AI is consulted ONLY for ambiguous cells (low confidence), and only
+ * the selected AI provider is consulted ONLY for ambiguous cells (low confidence), and only
  * when AI is enabled and a route (user key or backend) exists.
  * Results are cached by sha256(parserVersion|rawCell) so the same cell is
- * never sent to Gemini twice. Any AI failure keeps the deterministic fields —
+ * never sent to the provider twice. Any AI failure keeps the deterministic fields —
  * the lecture itself is never dropped.
  */
 class AiNormalizer(
     private val cache: AiCacheDao,
-    private val gemini: GeminiClient,
+    private val clients: AiClients,
     private val backend: BackendClient
 ) {
     data class AiRoute(
         val enabled: Boolean,
-        val userApiKey: String?,   // present => call Gemini directly
+        val provider: AiProvider,  // the backend the user configured
+        val userApiKey: String?,   // present => call the provider directly
         val backendUrl: String,    // used when userApiKey == null
         val model: String
     )
@@ -47,14 +49,14 @@ class AiNormalizer(
         cache.get(key)?.let { return AiFields(it.subject, it.teacher, it.venue, it.lectureType) }
         val fields = try {
             if (route.userApiKey != null) {
-                gemini.normalize(cell.rawText, route.model, route.userApiKey)
+                clients[route.provider].normalize(cell.rawText, route.model, route.userApiKey)
             } else if (route.backendUrl.isNotBlank()) {
                 backend.normalize(route.backendUrl, cell.rawText, route.model)
             } else {
                 null
             }
         } catch (e: Exception) {
-            null // Gemini/backend down, 429, 5xx, timeout, model removed: keep deterministic data
+            null // provider/backend down, 429, 5xx, timeout, model removed: keep deterministic data
         }
         if (fields != null) {
             aiWasUsed = true

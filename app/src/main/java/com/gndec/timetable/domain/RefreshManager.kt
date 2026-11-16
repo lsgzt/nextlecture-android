@@ -1,5 +1,6 @@
 package com.gndec.timetable.domain
 
+import androidx.room.withTransaction
 import com.gndec.timetable.data.db.AppDatabase
 import com.gndec.timetable.data.db.LectureEntity
 import com.gndec.timetable.data.db.TimetableMetaEntity
@@ -12,6 +13,7 @@ import com.gndec.timetable.net.TimetableFetcher
 import com.gndec.timetable.net.TimetableSourceResolver
 import com.gndec.timetable.parse.GroupMatcher
 import com.gndec.timetable.parse.ParseException
+import com.gndec.timetable.parse.RoomTimetableParser
 import com.gndec.timetable.parse.TimetableParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -46,6 +48,14 @@ class RefreshManager(
 ) {
     /** Minimum age of last check before an automatic (non-forced) refresh is attempted. */
     var autoRefreshMinAgeMillis: Long = 6L * 3_600_000
+
+    /**
+     * After a FAILED fetch, allow the next automatic attempt this soon instead of
+     * waiting out the whole [autoRefreshMinAgeMillis] window. Short enough that a
+     * student who was briefly offline recovers on the next open, long enough that a
+     * dead network cannot turn every foreground into a request.
+     */
+    var failureRetryMinAgeMillis: Long = 15L * 60_000
 
     private val mutex = Mutex()
 
@@ -84,12 +94,17 @@ class RefreshManager(
         val etag = if (sourceUrlChanged) null else meta?.etag
         val lastModified = if (sourceUrlChanged) null else meta?.lastModified
 
-        fun markChecked() = TimetableMetaEntity(
+        fun markChecked(backoffForRetry: Boolean = false) = TimetableMetaEntity(
             id = 1, sourceUrl = resolved.url,
             lastSuccessfulFetch = meta?.lastSuccessfulFetch,
-            lastChecked = now,
+            // A success (incl. 304) advances lastChecked by the full auto window. A
+            // failure is instead recorded as an OLDER check, so refreshIfStale()
+            // becomes eligible again after failureRetryMinAgeMillis. lastSuccessfulFetch
+            // is never advanced by a failure, so freshness stays honest either way.
+            lastChecked = if (backoffForRetry) now - (autoRefreshMinAgeMillis - failureRetryMinAgeMillis) else now,
             etag = etag, lastModified = lastModified,
-            timetableHash = meta?.timetableHash
+            timetableHash = meta?.timetableHash,
+            generatedAtMillis = meta?.generatedAtMillis
         )
 
         when (val outcome = fetcher.fetch(resolved.url, etag, lastModified)) {
@@ -99,7 +114,7 @@ class RefreshManager(
                 RefreshResult.UpToDate
             }
             is FetchOutcome.Failed -> {
-                db.metaDao().put(markChecked())
+                db.metaDao().put(markChecked(backoffForRetry = true))
                 RefreshResult.Failed(outcome.reason, hadCachedTimetable = db.lectureDao().countAll() > 0)
             }
             is FetchOutcome.Changed ->
@@ -147,7 +162,8 @@ class RefreshManager(
 
         val route = AiNormalizer.AiRoute(
             enabled = cfg.aiEnabled,
-            userApiKey = keys.getGeminiKey(),
+            provider = cfg.provider,
+            userApiKey = keys.getApiKey(cfg.provider),
             backendUrl = cfg.backendUrl,
             model = cfg.model
         )
@@ -166,15 +182,23 @@ class RefreshManager(
             }
         }
 
-        db.lectureDao().deleteAll()
-        db.lectureDao().insertAll(entities)
+        // Replace rows in a SINGLE transaction. As two separate DAO calls these were
+        // two distinct Room transactions, so a process death / OOM between them left
+        // the student with an empty timetable while timetable_meta still advertised a
+        // successful fetch. lastSuccessfulFetch is written after the transaction
+        // commits, so a crash here keeps the previous (honest) freshness value.
+        db.withTransaction {
+            db.lectureDao().deleteAll()
+            db.lectureDao().insertAll(entities)
+        }
         saveCurrentWeekSnapshots(entities, now)
         db.metaDao().put(
             TimetableMetaEntity(
                 id = 1, sourceUrl = sourceUrl,
                 lastSuccessfulFetch = now, lastChecked = now,
                 etag = etag, lastModified = lastModified,
-                timetableHash = TimetableParser.sha256(html)
+                timetableHash = TimetableParser.sha256(html),
+                generatedAtMillis = RoomTimetableParser.parseGeneratedAtMillis(html)
             )
         )
         // Persist the self-healed link so the UI immediately follows the
@@ -182,7 +206,8 @@ class RefreshManager(
         relinkedTo?.let { settings.setGroup(it) }
         val rescheduleGroup = relinkedTo ?: group
         if (rescheduleGroup != null && rawForGroup != null) {
-            scheduler.rescheduleAll(db, rescheduleGroup, ReminderConfig.from(cfg))
+            // Holiday-aware: reminders on full holidays are never armed.
+            scheduler.rescheduleAll(db, rescheduleGroup, ReminderConfig.from(cfg), HolidayGate.decode(cfg.holidayJson))
         }
 
         // Document is already persisted above so Change-group / other sections work.
@@ -269,7 +294,7 @@ class RefreshManager(
             target, monday.toString(), monday.plusDays(6).toString()
         )
         val cfg = settings.flow.first()
-        scheduler.rescheduleAll(db, target, ReminderConfig.from(cfg))
+        scheduler.rescheduleAll(db, target, ReminderConfig.from(cfg), HolidayGate.decode(cfg.holidayJson))
         return true
     }
 }

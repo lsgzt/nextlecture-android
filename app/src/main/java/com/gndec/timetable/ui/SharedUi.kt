@@ -70,6 +70,8 @@ import com.gndec.timetable.ui.theme.GndecOrangeSoft
 import com.gndec.timetable.ui.theme.GndecTeal
 import com.gndec.timetable.ui.theme.GndecTealDark
 import com.gndec.timetable.util.Formatters
+import com.gndec.timetable.util.displayTeacher
+import com.gndec.timetable.util.resolvedVenue
 
 @Composable
 fun ScreenSurface(content: @Composable () -> Unit) {
@@ -214,7 +216,9 @@ fun NextLectureCard(
     lecture: LectureEntity,
     countdown: String,
     happening: Boolean,
-    onOpen: () -> Unit
+    onOpen: () -> Unit,
+    mentorName: String = "",
+    mentorVenue: String = ""
 ) {
     Card(
         onClick = onOpen,
@@ -236,14 +240,14 @@ fun NextLectureCard(
             Text(if (happening) "ENDS IN $countdown" else "STARTS IN $countdown", color = if (happening) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(14.dp))
             InfoRow(Icons.Default.AccessTime, Formatters.range(lecture.startMinutes, lecture.endMinutes))
-            lecture.venue?.takeIf { it.isNotBlank() }?.let { InfoRow(Icons.Default.LocationOn, it) }
-            InfoRow(Icons.Default.Person, lecture.teacher?.takeIf { it.isNotBlank() } ?: "Teacher unavailable", iconContainer = MaterialTheme.colorScheme.surfaceVariant)
+            lecture.resolvedVenue(mentorVenue)?.let { InfoRow(Icons.Default.LocationOn, it) }
+            InfoRow(Icons.Default.Person, lecture.displayTeacher(mentorName), iconContainer = MaterialTheme.colorScheme.surfaceVariant)
         }
     }
 }
 
 @Composable
-fun CompactUpcomingCard(lecture: LectureEntity, onOpen: () -> Unit) {
+fun CompactUpcomingCard(lecture: LectureEntity, onOpen: () -> Unit, mentorVenue: String = "") {
     Card(
         onClick = onOpen,
         modifier = Modifier.fillMaxWidth(),
@@ -259,7 +263,7 @@ fun CompactUpcomingCard(lecture: LectureEntity, onOpen: () -> Unit) {
                 Text(Formatters.hm(lecture.startMinutes), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(3.dp))
                 Text(lecture.subject ?: "Lecture", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                lecture.venue?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = GndecMuted) }
+                lecture.resolvedVenue(mentorVenue)?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = GndecMuted) }
             }
             Icon(Icons.Default.Notifications, contentDescription = "Reminder", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(26.dp))
         }

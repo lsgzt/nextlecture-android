@@ -10,6 +10,7 @@ import android.media.AudioAttributes
 import android.net.Uri
 import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -25,6 +26,20 @@ object NotificationHelper {
     private const val TEST_NOTIFICATION_ID = 190816
     private const val APP_UPDATE_NOTIFICATION_ID = 190817
     const val GROUP_LECTURE_REMINDERS = "gndec_lecture_reminders"
+
+    /**
+     * What the reminder channel currently permits. A missing channel is not a fault —
+     * it is created on first use — so only [blocked], [reduced] and [silent] mean the
+     * student will not hear a lecture alert.
+     */
+    data class ReminderChannelState(
+        val exists: Boolean,
+        val blocked: Boolean,
+        val reduced: Boolean,
+        val silent: Boolean
+    ) {
+        val healthy: Boolean get() = exists && !blocked && !reduced && !silent
+    }
 
     fun ensureChannels(context: Context) {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -161,6 +176,39 @@ object NotificationHelper {
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         return appNotificationsEnabled && runtimePermissionGranted
     }
+
+    /**
+     * Live state of the lecture-reminder channel.
+     *
+     * [notificationsEnabled] only reports the app-level toggle and the runtime
+     * permission. It stays `true` when the user later muted the channel or turned it
+     * down to "silent", so reminders are posted but never make a sound and nothing in
+     * the app could tell — the single most likely "reminders stopped working" cause
+     * that was previously invisible.
+     *
+     * Read-only by design. The channel belongs to the user, so the app reports the
+     * problem and deep-links to the system channel page rather than recreating the
+     * channel over their choice.
+     */
+    fun reminderChannelState(context: Context): ReminderChannelState {
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val channel = nm.getNotificationChannel(CHANNEL_REMINDERS)
+            ?: return ReminderChannelState(exists = false, blocked = false, reduced = false, silent = false)
+        val importance = channel.importance
+        return ReminderChannelState(
+            exists = true,
+            blocked = importance == NotificationManager.IMPORTANCE_NONE,
+            // Below HIGH the bundled lecture sound is dropped (silent or heads-up only).
+            reduced = importance < NotificationManager.IMPORTANCE_HIGH,
+            silent = channel.sound == null
+        )
+    }
+
+    /** Intent that opens the system page for [CHANNEL_REMINDERS] so the user can fix it. */
+    fun reminderChannelSettingsIntent(context: Context): Intent =
+        Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+            .putExtra(Settings.EXTRA_CHANNEL_ID, CHANNEL_REMINDERS)
 
     /**
      * Keep the notification shade focused on the newest timetable event.

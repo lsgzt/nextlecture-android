@@ -61,10 +61,12 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -76,15 +78,31 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gndec.timetable.data.db.LectureEntity
 import com.gndec.timetable.data.prefs.AppSettings
 import com.gndec.timetable.domain.AppContainer
+import com.gndec.timetable.domain.Friend
+import com.gndec.timetable.domain.FriendDay
+import com.gndec.timetable.domain.FriendEarlySlot
+import com.gndec.timetable.domain.FriendLateSlot
+import com.gndec.timetable.domain.earlySlotsBefore
+import com.gndec.timetable.domain.lateSlotsAfter
+import com.gndec.timetable.domain.FriendFreeWindow
+import com.gndec.timetable.domain.HolidayGate
+import com.gndec.timetable.domain.friendAvailabilitySentences
+import com.gndec.timetable.domain.friendsFreeWithin
 import com.gndec.timetable.ui.PremiumBottomBarContentClearance
+import com.gndec.timetable.ui.PremiumHolidayHeroCard
+import com.gndec.timetable.ui.PremiumHolidayOverrideStrip
+import com.gndec.timetable.ui.PremiumNextAfterHolidayCard
 import com.gndec.timetable.ui.PremiumPageHeader
 import com.gndec.timetable.ui.PremiumScreenBackground
 import com.gndec.timetable.ui.motion.LocalReducedMotion
@@ -93,8 +111,14 @@ import com.gndec.timetable.ui.motion.hapticTick
 import com.gndec.timetable.ui.motion.motionSpring
 import com.gndec.timetable.ui.motion.motionTween
 import com.gndec.timetable.ui.motion.pressFeedback
+import com.gndec.timetable.ui.theme.lectureTypeColors
+import com.gndec.timetable.util.Formatters
+import com.gndec.timetable.util.displayTeacher
+import com.gndec.timetable.util.resolvedVenue
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.ZoneId
@@ -136,6 +160,8 @@ fun DayScreen(
     val lectures by remember(group) {
         if (group == null) flowOf(emptyList()) else container.db.lectureDao().observeForGroup(group)
     }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val meta by container.db.metaDao().observe().collectAsStateWithLifecycle(initialValue = null)
+    val holidays by container.holidayManager.holidays.collectAsStateWithLifecycle()
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var viewModeName by rememberSaveable { mutableStateOf(DayViewMode.TODAY.name) }
     val viewMode = DayViewMode.valueOf(viewModeName)
@@ -150,15 +176,30 @@ fun DayScreen(
     val scheduledReminders by produceState(initialValue = 0, group, nowMillis / 60_000L) {
         value = if (group == null) 0 else container.db.alarmDao().countFuture(nowMillis)
     }
-    val reduced = LocalReducedMotion.current
+    // Friends are stored locally; their timetables come from the groups this
+    // device has already parsed, so this costs no network at all.
+    val friends = remember(settings.friendsJson) { container.settings.decodeFriends(settings.friendsJson) }
     val time = Instant.ofEpochMilli(nowMillis).atZone(Zone)
     val nowMinutes = time.hour * 60 + time.minute
     val todayDow = time.dayOfWeek.value
     val tomorrowDow = if (todayDow == 7) 1 else todayDow + 1
+    val todayFriendDays = rememberFriendDays(container, friends, todayDow)
+    val tomorrowFriendDays = rememberFriendDays(container, friends, tomorrowDow)
+    val reduced = LocalReducedMotion.current
     val background = MaterialTheme.colorScheme.background
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val primaryText = MaterialTheme.colorScheme.onSurface
     val accent = MaterialTheme.colorScheme.primary
+    // Full-holiday gate (see HolidayGate): on a full holiday, today's schedule is
+    // replaced by the holiday notice. "Not a holiday?" reveals the timetable for
+    // that one day — day-scoped and closable, so an accidental tap never sticks.
+    val scope = rememberCoroutineScope()
+    val todayIso = time.toLocalDate().toString()
+    val todayFullHolidays = HolidayGate.fullHolidaysOn(holidays, todayIso)
+    val holidayNames = HolidayGate.displayNames(todayFullHolidays)
+    val holidayOverride = settings.holidayTimetableOverrideDay == todayIso
+    val holidayActive = todayFullHolidays.isNotEmpty() && !holidayOverride
+    val nextAfterHoliday = if (holidayActive) HolidayGate.nextLectureAfter(lectures, holidays, todayIso) else null
     val selectedDate = when (viewMode) {
         DayViewMode.TODAY -> time.toLocalDate()
         DayViewMode.TOMORROW -> time.toLocalDate().plusDays(1)
@@ -205,6 +246,7 @@ fun DayScreen(
                                     muted = muted,
                                     accent = accent
                                 )
+                                WeekTypeLegend(muted = muted)
                                 (0L..6L).map { selectedDate.plusDays(it) }.forEach { date ->
                                     WeekDaySection(
                                         date = date,
@@ -212,69 +254,126 @@ fun DayScreen(
                                         primaryText = primaryText,
                                         muted = muted,
                                         accent = accent,
-                                        onOpenLecture = onOpenLecture
+                                        onOpenLecture = onOpenLecture,
+                                        mentorName = settings.mentorName,
+                                        mentorVenue = settings.mentorVenue
                                     )
                                 }
                             }
                         } else {
                             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                val modeLectures = when (viewMode) {
-                                    DayViewMode.TODAY -> lectures.filter { it.dayOfWeek == todayDow }
-                                    DayViewMode.TOMORROW -> lectures.filter { it.dayOfWeek == tomorrowDow }
-                                    DayViewMode.WEEK -> emptyList()
-                                }.sortedBy { it.startMinutes }
-                                val modeTimeline = buildTimeline(modeLectures, if (viewMode == DayViewMode.TODAY) nowMinutes else -1)
-                                val modeFreeMinutes = modeTimeline.filterIsInstance<TimelineItem.Free>().sumOf { it.end - it.start }
-                                DaySummary(
-                                    lectures = modeLectures.size,
-                                    freeMinutes = modeFreeMinutes,
-                                    reminders = if (viewMode == DayViewMode.TODAY) scheduledReminders else 0,
-                                    accent = accent,
-                                    primaryText = primaryText,
-                                    muted = muted,
-                                    cardColor = MaterialTheme.colorScheme.surface
-                                )
-                                AnimatedContent(
-                                    targetState = viewMode,
-                                    transitionSpec = {
-                                        if (reduced) {
-                                            fadeIn(tween(Motion.Normal, easing = Motion.EasingStandard)) togetherWith
-                                                fadeOut(tween(Motion.Fast, easing = Motion.EasingStandard))
-                                        } else {
-                                            // Segmented-control motion: content slides toward the
-                                            // direction of the newly selected tab.
-                                            val dir = if (targetState.ordinal >= initialState.ordinal) 1 else -1
-                                            (slideInHorizontally(tween(Motion.Emphasized, easing = Motion.EasingEnter)) { dir * it / 12 } +
-                                                fadeIn(tween(Motion.Emphasized, easing = Motion.EasingEnter))) togetherWith
-                                                (slideOutHorizontally(tween(Motion.Normal, easing = Motion.EasingExit)) { -dir * it / 14 } +
-                                                    fadeOut(tween(Motion.Normal, easing = Motion.EasingExit)))
-                                        }
-                                    },
-                                    label = "dayTimetableFade"
-                                ) { mode ->
-                                    val animatedLectures = when (mode) {
+                                if (viewMode == DayViewMode.TODAY && holidayActive) {
+                                    // Full holiday: the timeline itself steps aside for the
+                                    // holiday notice and the next teaching day.
+                                    PremiumHolidayHeroCard(
+                                        holidayNames = holidayNames,
+                                        onViewTimetable = { scope.launch { container.settings.setHolidayTimetableOverrideDay(todayIso) } }
+                                    )
+                                    nextAfterHoliday?.let { next ->
+                                        PremiumNextAfterHolidayCard(
+                                            next = next,
+                                            todayIso = todayIso
+                                        )
+                                    }
+                                } else {
+                                    if (viewMode == DayViewMode.TODAY && todayFullHolidays.isNotEmpty()) {
+                                        // Timetable shown by choice on a holiday: offer the way
+                                        // back to the holiday notice (accidental-tap escape).
+                                        PremiumHolidayOverrideStrip(
+                                            onClose = { scope.launch { container.settings.setHolidayTimetableOverrideDay("") } }
+                                        )
+                                    }
+                                    val modeLectures = when (viewMode) {
                                         DayViewMode.TODAY -> lectures.filter { it.dayOfWeek == todayDow }
                                         DayViewMode.TOMORROW -> lectures.filter { it.dayOfWeek == tomorrowDow }
                                         DayViewMode.WEEK -> emptyList()
                                     }.sortedBy { it.startMinutes }
-                                    val animatedTimeline = buildTimeline(animatedLectures, if (mode == DayViewMode.TODAY) nowMinutes else -1)
-                                    if (animatedTimeline.isEmpty()) {
-                                        EmptyDayCard(
-                                            cardColor = MaterialTheme.colorScheme.surface,
-                                            primaryText = primaryText,
-                                            muted = muted,
-                                            dayLabel = if (mode == DayViewMode.TODAY) "today" else "tomorrow"
-                                        )
+                                    val modeTimeline = buildTimeline(modeLectures, if (viewMode == DayViewMode.TODAY) nowMinutes else -1)
+                                    val modeFreeMinutes = modeTimeline.filterIsInstance<TimelineItem.Free>().sumOf { it.end - it.start }
+                                    val modeFriends = if (viewMode == DayViewMode.TODAY) todayFriendDays else tomorrowFriendDays
+                                    val myFirstStart = modeLectures.minOfOrNull { it.startMinutes }
+                                    val earlyFriendSlots = if (myFirstStart != null) {
+                                        modeFriends.earlySlotsBefore(myFirstStart)
                                     } else {
-                                        TimelineSection(
-                                            timeline = animatedTimeline,
-                                            nowMinutes = if (mode == DayViewMode.TODAY) nowMinutes else -1,
+                                        emptyList()
+                                    }
+                                    // Mirror of the top note: friends still in class after
+                                    // the student's last lecture of the day ends.
+                                    val myLastEnd = modeLectures.maxOfOrNull { it.endMinutes }
+                                    val lateFriendSlots = if (myLastEnd != null) {
+                                        modeFriends.lateSlotsAfter(myLastEnd)
+                                    } else {
+                                        emptyList()
+                                    }
+                                    DaySummary(
+                                        lectures = modeLectures.size,
+                                        freeMinutes = modeFreeMinutes,
+                                        reminders = if (viewMode == DayViewMode.TODAY) scheduledReminders else 0,
+                                        accent = accent,
+                                        primaryText = primaryText,
+                                        muted = muted,
+                                        cardColor = MaterialTheme.colorScheme.surface
+                                    )
+                                    if (earlyFriendSlots.isNotEmpty()) {
+                                        FriendsBeforeDayNote(
+                                            slots = earlyFriendSlots,
                                             accent = accent,
-                                            railBackground = background,
-                                            primaryText = primaryText,
-                                            muted = muted,
-                                            lectureDate = if (mode == DayViewMode.TODAY) time.toLocalDate() else time.toLocalDate().plusDays(1),
-                                            onOpenLecture = onOpenLecture
+                                            muted = muted
+                                        )
+                                    }
+                                    AnimatedContent(
+                                        targetState = viewMode,
+                                        transitionSpec = {
+                                            if (reduced) {
+                                                fadeIn(tween(Motion.Normal, easing = Motion.EasingStandard)) togetherWith
+                                                    fadeOut(tween(Motion.Fast, easing = Motion.EasingStandard))
+                                            } else {
+                                                // Segmented-control motion: content slides toward the
+                                                // direction of the newly selected tab.
+                                                val dir = if (targetState.ordinal >= initialState.ordinal) 1 else -1
+                                                (slideInHorizontally(tween(Motion.Emphasized, easing = Motion.EasingEnter)) { dir * it / 12 } +
+                                                    fadeIn(tween(Motion.Emphasized, easing = Motion.EasingEnter))) togetherWith
+                                                    (slideOutHorizontally(tween(Motion.Normal, easing = Motion.EasingExit)) { -dir * it / 14 } +
+                                                        fadeOut(tween(Motion.Normal, easing = Motion.EasingExit)))
+                                            }
+                                        },
+                                        label = "dayTimetableFade"
+                                    ) { mode ->
+                                        val animatedLectures = when (mode) {
+                                            DayViewMode.TODAY -> lectures.filter { it.dayOfWeek == todayDow }
+                                            DayViewMode.TOMORROW -> lectures.filter { it.dayOfWeek == tomorrowDow }
+                                            DayViewMode.WEEK -> emptyList()
+                                        }.sortedBy { it.startMinutes }
+                                        val animatedTimeline = buildTimeline(animatedLectures, if (mode == DayViewMode.TODAY) nowMinutes else -1)
+                                        if (animatedTimeline.isEmpty()) {
+                                            EmptyDayCard(
+                                                cardColor = MaterialTheme.colorScheme.surface,
+                                                primaryText = primaryText,
+                                                muted = muted,
+                                                dayLabel = if (mode == DayViewMode.TODAY) "today" else "tomorrow"
+                                            )
+                                        } else {
+                                            val shownDate = if (mode == DayViewMode.TODAY) time.toLocalDate() else time.toLocalDate().plusDays(1)
+                                            TimelineSection(
+                                                timeline = animatedTimeline,
+                                                nowMinutes = if (mode == DayViewMode.TODAY) nowMinutes else -1,
+                                                accent = accent,
+                                                railBackground = background,
+                                                primaryText = primaryText,
+                                                muted = muted,
+                                                lectureDate = shownDate,
+                                                friends = if (mode == DayViewMode.TODAY) todayFriendDays else tomorrowFriendDays,
+                                                mentorName = settings.mentorName,
+                                                mentorVenue = settings.mentorVenue,
+                                                onOpenLecture = onOpenLecture
+                                            )
+                                        }
+                                    }
+                                    if (lateFriendSlots.isNotEmpty()) {
+                                        FriendsAfterDayNote(
+                                            slots = lateFriendSlots,
+                                            accent = accent,
+                                            muted = muted
                                         )
                                     }
                                 }
@@ -298,7 +397,12 @@ fun DayScreen(
                     ) {
                         Icon(Icons.Default.CloudDone, contentDescription = null, tint = accent, modifier = Modifier.size(19.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Using saved timetable · reminders work offline", color = muted, style = MaterialTheme.typography.bodySmall)
+                        // One compact status line (matches FacultyDetail source footer style).
+                        // Prefer FET generation time when known; otherwise keep the offline cue.
+                        val status = meta?.generatedAtMillis?.let { generatedAt ->
+                            "Using saved timetable · generated ${Formatters.dateTime(generatedAt)}"
+                        } ?: "Using saved timetable · reminders work offline"
+                        Text(status, color = muted, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -378,8 +482,50 @@ private fun WeekSummary(totalLectures: Int, weekStart: java.time.LocalDate, card
     }
 }
 
+/** Colour key for the full-week rail marks (teal / blue / orange). */
 @Composable
-private fun WeekDaySection(date: java.time.LocalDate, lectures: List<LectureEntity>, primaryText: Color, muted: Color, accent: Color, onOpenLecture: (LectureEntity, java.time.LocalDate) -> Unit) {
+private fun WeekTypeLegend(muted: Color) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        WeekTypeLegendItem(color = lectureTypeColors("LECTURE").line, label = "Lecture", muted = muted)
+        WeekTypeLegendItem(color = lectureTypeColors("PRACTICAL").line, label = "Practical", muted = muted)
+        WeekTypeLegendItem(color = lectureTypeColors("TUTORIAL").line, label = "Tutorial", muted = muted)
+    }
+}
+
+@Composable
+private fun WeekTypeLegendItem(
+    color: Color,
+    label: String,
+    muted: Color
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp)
+    ) {
+        Box(
+            Modifier
+                .width(14.dp)
+                .height(3.dp)
+                .background(color, RoundedCornerShape(2.dp))
+        )
+        Text(
+            label,
+            color = muted,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1
+        )
+    }
+}
+
+
+@Composable
+private fun WeekDaySection(date: java.time.LocalDate, lectures: List<LectureEntity>, primaryText: Color, muted: Color, accent: Color, onOpenLecture: (LectureEntity, java.time.LocalDate) -> Unit, mentorName: String = "", mentorVenue: String = "") {
     Card(Modifier.fillMaxWidth().padding(horizontal = 20.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), elevation = CardDefaults.cardElevation(0.dp)) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 13.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -394,7 +540,7 @@ private fun WeekDaySection(date: java.time.LocalDate, lectures: List<LectureEnti
                 Text("No lectures scheduled", color = muted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 10.dp))
             } else {
                 lectures.forEachIndexed { index, lecture ->
-                    WeekLectureRow(lecture, date, primaryText, muted, accent, onOpenLecture)
+                    WeekLectureRow(lecture, date, primaryText, muted, accent, onOpenLecture, mentorName, mentorVenue)
                     if (index < lectures.lastIndex) androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
             }
@@ -403,7 +549,7 @@ private fun WeekDaySection(date: java.time.LocalDate, lectures: List<LectureEnti
 }
 
 @Composable
-private fun WeekLectureRow(lecture: LectureEntity, date: java.time.LocalDate, primaryText: Color, muted: Color, accent: Color, onOpenLecture: (LectureEntity, java.time.LocalDate) -> Unit) {
+private fun WeekLectureRow(lecture: LectureEntity, date: java.time.LocalDate, primaryText: Color, muted: Color, accent: Color, onOpenLecture: (LectureEntity, java.time.LocalDate) -> Unit, mentorName: String = "", mentorVenue: String = "") {
     val pressInteraction = remember { MutableInteractionSource() }
     Row(
         Modifier.fillMaxWidth()
@@ -416,13 +562,39 @@ private fun WeekLectureRow(lecture: LectureEntity, date: java.time.LocalDate, pr
             Text(formatTime(lecture.startMinutes), color = accent, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
             Text(formatTime(lecture.endMinutes), color = muted, style = MaterialTheme.typography.labelSmall)
         }
-        Box(Modifier.width(3.dp).height(34.dp).background(accent.copy(alpha = 0.7f)))
+        // Divider carries the lecture's type tint, matching the Today tab cards.
+        Box(Modifier.width(3.dp).height(34.dp).background(lectureTypeColors(lecture.lectureType).line))
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(lecture.subject ?: "Lecture", color = primaryText, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(lecture.teacher?.takeIf { it.isNotBlank() } ?: (lecture.venue ?: "Details unavailable"), color = muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(lecture.displayTeacher(mentorName, unavailable = "").ifBlank { lecture.resolvedVenue(mentorVenue) ?: "Details unavailable" }, color = muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
+}
+
+/**
+ * Resolves one friend against [dayOfWeek] from the timetable groups this device
+ * has already parsed. Nothing is fetched: [com.gndec.timetable.data.db.LectureDao]
+ * holds every group in the document, so a friend's week is a local read.
+ */
+@Composable
+private fun rememberFriendDay(dao: com.gndec.timetable.data.db.LectureDao, friend: Friend, dayOfWeek: Int): FriendDay? {
+    if (!friend.isUsable) return null
+    val week by remember(friend.group) {
+        dao.observeForGroup(friend.group).map { list ->
+            list.filter { it.dayOfWeek == dayOfWeek } to list.isNotEmpty()
+        }
+    }.collectAsStateWithLifecycle(initialValue = emptyList<LectureEntity>() to false)
+    return remember(week, friend) {
+        FriendDay(friend = friend, lectures = week.first, hasData = week.second)
+    }
+}
+
+@Composable
+private fun rememberFriendDays(container: AppContainer, friends: List<Friend>, dayOfWeek: Int): List<FriendDay> {
+    val dao = container.db.lectureDao()
+    val days = friends.map { friend -> rememberFriendDay(dao, friend, dayOfWeek) }
+    return remember(days) { days.filterNotNull() }
 }
 
 private fun buildTimeline(lectures: List<LectureEntity>, nowMinutes: Int): List<TimelineItem> = buildList {
@@ -504,41 +676,100 @@ private fun TimelineSection(
     primaryText: Color,
     muted: Color,
     lectureDate: java.time.LocalDate,
+    friends: List<FriendDay>,
+    mentorName: String,
+    mentorVenue: String,
     onOpenLecture: (LectureEntity, java.time.LocalDate) -> Unit
 ) {
     var sectionCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    // LayoutCoordinates alone can go stale when cards above expand (friend chips,
+    // multi-line subjects). Cache section-relative centres and refresh them on
+    // every node/section layout pass so the rail always reaches the last item.
     val nodeCoords = remember { mutableStateMapOf<Int, LayoutCoordinates>() }
-    val activeIndex = timeline.indexOfLast { it is TimelineItem.Lecture && it.state != LectureState.UPCOMING }
-    val glowTarget = run {
+    val nodeYs = remember { mutableStateMapOf<Int, Float>() }
+    val nodeHalfHs = remember { mutableStateMapOf<Int, Float>() }
+    var layoutEpoch by remember { mutableStateOf(0) }
+
+    fun refreshNode(index: Int, coords: LayoutCoordinates) {
+        nodeCoords[index] = coords
         val section = sectionCoords
-        val node = nodeCoords[activeIndex]
-        if (section == null || node == null || !section.isAttached || !node.isAttached) 0f
-        else section.localPositionOf(node, Offset(node.size.width / 2f, node.size.height / 2f)).y
+        if (section != null && section.isAttached && coords.isAttached) {
+            nodeYs[index] = section.localPositionOf(
+                coords,
+                Offset(coords.size.width / 2f, coords.size.height / 2f)
+            ).y
+            nodeHalfHs[index] = coords.size.height / 2f
+        }
+        layoutEpoch++
+    }
+
+    fun refreshAllFromSection(section: LayoutCoordinates) {
+        sectionCoords = section
+        if (!section.isAttached) return
+        nodeCoords.forEach { (index, coords) ->
+            if (!coords.isAttached) return@forEach
+            nodeYs[index] = section.localPositionOf(
+                coords,
+                Offset(coords.size.width / 2f, coords.size.height / 2f)
+            ).y
+            nodeHalfHs[index] = coords.size.height / 2f
+        }
+        layoutEpoch++
+    }
+
+    // Drop cached nodes when the timeline shape changes so indices never point
+    // at a previous day's leftover coordinates.
+    val timelineKey = timeline.joinToString("|") {
+        when (it) {
+            is TimelineItem.Lecture -> "L${it.lecture.startMinutes}-${it.lecture.endMinutes}-${it.lecture.subject}"
+            is TimelineItem.Free -> "F${it.start}-${it.end}"
+        }
+    }
+    androidx.compose.runtime.LaunchedEffect(timelineKey) {
+        nodeCoords.clear()
+        nodeYs.clear()
+        nodeHalfHs.clear()
+        layoutEpoch++
+    }
+
+    // When every lecture is done, drive the glow to the very last timeline node
+    // (including a trailing free period) so the rail looks fully completed.
+    val allDone = timeline.isNotEmpty() &&
+        timeline.none { it is TimelineItem.Lecture && it.state == LectureState.UPCOMING }
+    val activeIndex = if (allDone) {
+        timeline.lastIndex
+    } else {
+        timeline.indexOfLast { it is TimelineItem.Lecture && it.state != LectureState.UPCOMING }
+    }
+    // Subscribe to layoutEpoch so glow recomputes after late position updates.
+    // Keep the last known centre when a node has not reported yet so the
+    // animation does not collapse to y=0 mid-layout.
+    var lastGlowY by remember { mutableStateOf(0f) }
+    layoutEpoch.let {
+        nodeYs[activeIndex]?.let { lastGlowY = it }
     }
     val glowEnd by animateFloatAsState(
-        targetValue = glowTarget,
+        targetValue = lastGlowY,
         animationSpec = motionTween(700),
         label = "railGlowEnd"
     )
     Box(
         Modifier.fillMaxWidth()
-            .onGloballyPositioned { sectionCoords = it }
+            .onGloballyPositioned { refreshAllFromSection(it) }
+            // Rail is drawn behind the nodes/labels so the timing text stays
+            // readable; layoutEpoch forces a redraw when positions refresh.
             .drawBehind {
-                val section = sectionCoords ?: return@drawBehind
-                if (!section.isAttached) return@drawBehind
-                fun nodeY(index: Int): Float? {
-                    val coords = nodeCoords[index] ?: return null
-                    if (!coords.isAttached) return null
-                    return section.localPositionOf(coords, Offset(coords.size.width / 2f, coords.size.height / 2f)).y
-                }
-                val first = nodeY(0)
-                val last = nodeY(timeline.lastIndex)
-                if (first == null || last == null || last <= first) return@drawBehind
+                val epoch = layoutEpoch
+                if (epoch < 0) return@drawBehind
+                fun nodeY(index: Int): Float? = nodeYs[index]
+                fun nodeGap(index: Int): Float =
+                    (nodeHalfHs[index] ?: (RailNodeSize.toPx() / 2f)) + 4.dp.toPx()
+                val positioned = (0..timeline.lastIndex).mapNotNull { i -> nodeY(i)?.let { i to it } }
+                if (positioned.size < 2) return@drawBehind
+                val first = positioned.first().second
+                val last = positioned.last().second
+                if (last <= first) return@drawBehind
                 val x = RailCenterX.toPx()
-                fun nodeGap(index: Int): Float {
-                    val coords = nodeCoords[index]
-                    return (coords?.size?.height?.toFloat()?.div(2f) ?: RailNodeSize.toPx() / 2f) + 4.dp.toPx()
-                }
                 val labelBand = 58.dp.toPx()
                 for (index in 0 until timeline.lastIndex) {
                     val startY = nodeY(index) ?: continue
@@ -548,27 +779,70 @@ private fun TimelineSection(
                     val labelStart = segmentStart
                     val labelEnd = labelStart + if (timeline[index] is TimelineItem.Lecture) labelBand else 0f
                     if (segmentEnd > segmentStart) {
-                        if (labelStart > segmentStart) drawLine(muted.copy(alpha = 0.18f), Offset(x, segmentStart), Offset(x, minOf(segmentEnd, labelStart)), 2.dp.toPx(), StrokeCap.Round)
-                        if (segmentEnd > labelEnd) drawLine(muted.copy(alpha = 0.18f), Offset(x, maxOf(segmentStart, labelEnd)), Offset(x, segmentEnd), 2.dp.toPx(), StrokeCap.Round)
+                        if (labelStart > segmentStart) {
+                            drawLine(
+                                muted.copy(alpha = 0.18f),
+                                Offset(x, segmentStart),
+                                Offset(x, minOf(segmentEnd, labelStart)),
+                                2.dp.toPx(),
+                                StrokeCap.Round
+                            )
+                        }
+                        if (segmentEnd > labelEnd) {
+                            drawLine(
+                                muted.copy(alpha = 0.18f),
+                                Offset(x, maxOf(segmentStart, labelEnd)),
+                                Offset(x, segmentEnd),
+                                2.dp.toPx(),
+                                StrokeCap.Round
+                            )
+                        }
                     }
                 }
-                val tip = glowEnd.coerceIn(first, last)
+                val tip = when {
+                    activeIndex < 0 -> first
+                    allDone -> last
+                    glowEnd > first -> glowEnd.coerceIn(first, last)
+                    else -> first
+                }
                 if (tip > first + 2f) {
-                    val core = Brush.verticalGradient(
-                        0f to accent.copy(alpha = 0.98f),
-                        0.55f to accent.copy(alpha = 0.78f),
-                        0.9f to accent.copy(alpha = 0.45f),
-                        1f to Color.Transparent,
-                        startY = first,
-                        endY = tip
-                    )
-                    val halo = Brush.verticalGradient(
-                        0f to accent.copy(alpha = 0.18f),
-                        0.7f to accent.copy(alpha = 0.07f),
-                        1f to Color.Transparent,
-                        startY = first,
-                        endY = tip
-                    )
+                    // When the day is fully complete, keep the tip solid so the
+                    // rail looks finished instead of fading out at the last node.
+                    val core = if (allDone) {
+                        Brush.verticalGradient(
+                            0f to accent.copy(alpha = 0.98f),
+                            0.6f to accent.copy(alpha = 0.90f),
+                            1f to accent.copy(alpha = 0.85f),
+                            startY = first,
+                            endY = tip
+                        )
+                    } else {
+                        Brush.verticalGradient(
+                            0f to accent.copy(alpha = 0.98f),
+                            0.55f to accent.copy(alpha = 0.78f),
+                            0.9f to accent.copy(alpha = 0.45f),
+                            1f to Color.Transparent,
+                            startY = first,
+                            endY = tip
+                        )
+                    }
+                    val halo = if (allDone) {
+                        Brush.verticalGradient(
+                            0f to accent.copy(alpha = 0.18f),
+                            0.7f to accent.copy(alpha = 0.12f),
+                            1f to accent.copy(alpha = 0.08f),
+                            startY = first,
+                            endY = tip
+                        )
+                    } else {
+                        Brush.verticalGradient(
+                            0f to accent.copy(alpha = 0.22f),
+                            0.7f to accent.copy(alpha = 0.10f),
+                            1f to Color.Transparent,
+                            startY = first,
+                            endY = tip
+                        )
+                    }
                     for (index in 0 until timeline.lastIndex) {
                         val startY = nodeY(index) ?: continue
                         val endY = nodeY(index + 1) ?: continue
@@ -591,11 +865,10 @@ private fun TimelineSection(
                         }
                     }
                 }
-                // Draw the masks last so neither the base rail nor the gradient
-                // halo can bleed into the timing-label band.
+                // Mask the timing-label band so the rail does not cut through text.
                 for (index in 0 until timeline.lastIndex) {
                     val startY = nodeY(index) ?: continue
-                    val endY = nodeY(index + 1) ?: continue
+                    if (nodeY(index + 1) == null) continue
                     val labelStart = startY + nodeGap(index)
                     val labelEnd = labelStart + if (timeline[index] is TimelineItem.Lecture) labelBand else 0f
                     if (labelEnd > labelStart) {
@@ -617,20 +890,24 @@ private fun TimelineSection(
                         nowMinutes = nowMinutes,
                         nodeIndex = index,
                         sectionCoords = { sectionCoords },
-                        registerNode = { i, coords -> nodeCoords[i] = coords },
+                        registerNode = { i, coords -> refreshNode(i, coords) },
                         accent = accent,
                         primaryText = primaryText,
                         muted = muted,
-                        onClick = { onOpenLecture(item.lecture, lectureDate) }
+                        freeFriends = friends.friendsFreeWithin(item.lecture.startMinutes, item.lecture.endMinutes),
+                        onClick = { onOpenLecture(item.lecture, lectureDate) },
+                        mentorName = mentorName,
+                        mentorVenue = mentorVenue
                     )
                     is TimelineItem.Free -> FreePeriod(
                         start = item.start,
                         end = item.end,
                         nodeIndex = index,
                         sectionCoords = { sectionCoords },
-                        registerNode = { i, coords -> nodeCoords[i] = coords },
+                        registerNode = { i, coords -> refreshNode(i, coords) },
                         muted = muted,
-                        accent = accent
+                        accent = accent,
+                        freeFriends = friends.friendsFreeWithin(item.start, item.end)
                     )
                 }
             }
@@ -639,11 +916,14 @@ private fun TimelineSection(
 }
 
 @Composable
-private fun TimelineLectureCard(lecture: LectureEntity, state: LectureState, nowMinutes: Int, nodeIndex: Int, sectionCoords: () -> LayoutCoordinates?, registerNode: (Int, LayoutCoordinates) -> Unit, accent: Color, primaryText: Color, muted: Color, onClick: () -> Unit) {
+private fun TimelineLectureCard(lecture: LectureEntity, state: LectureState, nowMinutes: Int, nodeIndex: Int, sectionCoords: () -> LayoutCoordinates?, registerNode: (Int, LayoutCoordinates) -> Unit, accent: Color, primaryText: Color, muted: Color, freeFriends: List<FriendFreeWindow>, onClick: () -> Unit, mentorName: String = "", mentorVenue: String = "") {
     val live = state == LectureState.HAPPENING
+    // Teal for lectures, amber for tutorials, blue for practicals; the live card is
+    // the brighter step of whichever tint it is, not a fixed aqua.
+    val typeColors = lectureTypeColors(lecture.lectureType)
     // State colors glide between UPCOMING / LIVE / COMPLETED instead of snapping.
     val cardColor by animateColorAsState(
-        targetValue = if (live) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+        targetValue = if (live) typeColors.cardLive else typeColors.card,
         animationSpec = motionTween(Motion.Normal),
         label = "timelineCardColor"
     )
@@ -768,8 +1048,16 @@ private fun TimelineLectureCard(lecture: LectureEntity, state: LectureState, now
                 Spacer(Modifier.height(15.dp))
                 Text((lecture.subject ?: "Lecture").uppercase(), color = primaryText, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(13.dp))
-                TimelineMetaRow(Icons.Default.Person, lecture.teacher?.takeIf { it.isNotBlank() }?.uppercase() ?: "TEACHER UNAVAILABLE", primaryText, muted, maxLines = 1)
-                lecture.venue?.takeIf { it.isNotBlank() }?.let { Spacer(Modifier.height(8.dp)); TimelineMetaRow(Icons.Default.LocationOn, it, primaryText, muted) }
+                TimelineMetaRow(Icons.Default.Person, lecture.displayTeacher(mentorName, unavailable = "Teacher unavailable").uppercase(), primaryText, muted, maxLines = 1)
+                lecture.resolvedVenue(mentorVenue)?.let { Spacer(Modifier.height(8.dp)); TimelineMetaRow(Icons.Default.LocationOn, it, primaryText, muted) }
+                if (freeFriends.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    FriendAvailabilityNote(
+                        windows = freeFriends,
+                        startMinutes = lecture.startMinutes,
+                        endMinutes = lecture.endMinutes
+                    )
+                }
             }
         }
     }
@@ -816,6 +1104,192 @@ private fun TimelineRail(lecture: LectureEntity, state: LectureState, nodeIndex:
     }
 }
 
+/**
+ * Compact note above the student's timeline when friends already have a class
+ * before the student's first lecture of the day.
+ *
+ * Examples:
+ * - "Vishal has a lecture at 8:30 AM"
+ * - "Vishal and Prince have a lecture at 8:30 AM"
+ * - "Vishal has a lecture and Prince has a lab at 8:30 AM"
+ * Names and activity types are bold.
+ */
+@Composable
+private fun FriendsBeforeDayNote(slots: List<FriendEarlySlot>, accent: Color, muted: Color) {
+    if (slots.isEmpty()) return
+    // Plain text only — same weight as the "Also free · …" line under free periods,
+    // no chip/block so it stays light above the rail.
+    val bold = SpanStyle(fontWeight = FontWeight.Bold, color = accent)
+    val body = SpanStyle(fontWeight = FontWeight.Medium, color = muted)
+    val text = buildAnnotatedString {
+        withStyle(body) {
+            appendFriendsBeforeDay(slots, bold, body)
+        }
+    }
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = TimelineHorizontalPadding)
+    )
+}
+
+/**
+ * Builds the spoken clause(s) for [slots], applying [bold] to names and type labels.
+ * Groups by start time so mixed types at the same clock can share one "at …".
+ */
+private fun androidx.compose.ui.text.AnnotatedString.Builder.appendFriendsBeforeDay(
+    slots: List<FriendEarlySlot>,
+    bold: SpanStyle,
+    body: SpanStyle
+) {
+    val byTime = slots.groupBy { it.startMinutes }.toSortedMap()
+    byTime.entries.forEachIndexed { timeIndex, (startMinutes, group) ->
+        if (timeIndex > 0) {
+            withStyle(body) { append(" · ") }
+        }
+        val types = group.map { it.typeLabel }.distinct()
+        if (types.size == 1) {
+            // Same type: "Vishal and Prince have a lecture at 8:30 AM"
+            group.forEachIndexed { i, slot ->
+                if (i > 0) {
+                    withStyle(body) {
+                        append(if (i == group.lastIndex) " and " else ", ")
+                    }
+                }
+                withStyle(bold) { append(slot.name) }
+            }
+            withStyle(body) {
+                append(if (group.size == 1) " has a " else " have a ")
+            }
+            withStyle(bold) { append(types.first()) }
+            withStyle(body) {
+                append(" at ")
+                append(formatTime(startMinutes))
+            }
+        } else {
+            // Mixed types at the same time: "Vishal has a lecture and Prince has a lab at 8:30 AM"
+            group.forEachIndexed { i, slot ->
+                if (i > 0) withStyle(body) { append(" and ") }
+                withStyle(bold) { append(slot.name) }
+                withStyle(body) { append(" has a ") }
+                withStyle(bold) { append(slot.typeLabel) }
+            }
+            withStyle(body) {
+                append(" at ")
+                append(formatTime(startMinutes))
+            }
+        }
+    }
+}
+
+/**
+ * Compact note BELOW the student's timeline when friends are still in class
+ * after the student's last lecture of the day ends — the bottom mirror of
+ * [FriendsBeforeDayNote].
+ *
+ * Examples:
+ * - "Vishal has a lecture until 5:30 PM"
+ * - "Vishal and Prince have a lecture until 5:30 PM"
+ * - "Vishal has a lecture and Prince has a lab until 5:30 PM"
+ * Names and activity types are bold; "until" carries the class END time
+ * because the student's day is already over at that point.
+ */
+@Composable
+private fun FriendsAfterDayNote(slots: List<FriendLateSlot>, accent: Color, muted: Color) {
+    if (slots.isEmpty()) return
+    val bold = SpanStyle(fontWeight = FontWeight.Bold, color = accent)
+    val body = SpanStyle(fontWeight = FontWeight.Medium, color = muted)
+    val text = buildAnnotatedString {
+        withStyle(body) {
+            appendFriendsAfterDay(slots, bold, body)
+        }
+    }
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = TimelineHorizontalPadding)
+    )
+}
+
+/**
+ * Builds the spoken clause(s) for [slots], applying [bold] to names and type
+ * labels. Groups by END time so friends finishing together share one
+ * "until …".
+ */
+private fun androidx.compose.ui.text.AnnotatedString.Builder.appendFriendsAfterDay(
+    slots: List<FriendLateSlot>,
+    bold: SpanStyle,
+    body: SpanStyle
+) {
+    val byEnd = slots.groupBy { it.endMinutes }.toSortedMap()
+    byEnd.entries.forEachIndexed { timeIndex, (endMinutes, group) ->
+        if (timeIndex > 0) {
+            withStyle(body) { append(" · ") }
+        }
+        val types = group.map { it.typeLabel }.distinct()
+        if (types.size == 1) {
+            // Same type: "Vishal and Prince have a lecture until 5:30 PM"
+            group.forEachIndexed { i, slot ->
+                if (i > 0) {
+                    withStyle(body) {
+                        append(if (i == group.lastIndex) " and " else ", ")
+                    }
+                }
+                withStyle(bold) { append(slot.name) }
+            }
+            withStyle(body) {
+                append(if (group.size == 1) " has a " else " have a ")
+            }
+            withStyle(bold) { append(types.first()) }
+            withStyle(body) {
+                append(" until ")
+                append(formatTime(endMinutes))
+            }
+        } else {
+            // Mixed types at the same end: "Vishal has a lecture and Prince has a lab until 5:30 PM"
+            group.forEachIndexed { i, slot ->
+                if (i > 0) withStyle(body) { append(" and ") }
+                withStyle(bold) { append(slot.name) }
+                withStyle(body) { append(" has a ") }
+                withStyle(bold) { append(slot.typeLabel) }
+            }
+            withStyle(body) {
+                append(" until ")
+                append(formatTime(endMinutes))
+            }
+        }
+    }
+}
+
+/**
+ * "Aarav and Meera are free at this time slot", shown under the lecture card
+ * when a friend happens to be free for the whole class — no time range, the
+ * card above already carries the slot. Friends free for only part of it do
+ * show their actual stretch ("Raman and Prince are free at
+ * 12:30 PM - 1:30 PM"); the clauses come from [friendAvailabilitySentences].
+ */
+@Composable
+private fun FriendAvailabilityNote(windows: List<FriendFreeWindow>, startMinutes: Int, endMinutes: Int) {
+    val sentences = friendAvailabilitySentences(windows, startMinutes, endMinutes, ::formatTime)
+    if (sentences.isEmpty()) return
+    // Plain text, matching the other friend notes ("Also free · …"): a boxed row
+    // under every lecture card read as clutter, so this is just a quiet line.
+    Text(
+        sentences.joinToString(" · "),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodySmall,
+        fontWeight = FontWeight.Medium,
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
+    )
+}
+
 @Composable
 private fun TimelineMetaRow(icon: ImageVector, text: String, primaryText: Color, muted: Color, maxLines: Int = 2) {
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -826,7 +1300,7 @@ private fun TimelineMetaRow(icon: ImageVector, text: String, primaryText: Color,
 }
 
 @Composable
-private fun FreePeriod(start: Int, end: Int, nodeIndex: Int, sectionCoords: () -> LayoutCoordinates?, registerNode: (Int, LayoutCoordinates) -> Unit, muted: Color, accent: Color) {
+private fun FreePeriod(start: Int, end: Int, nodeIndex: Int, sectionCoords: () -> LayoutCoordinates?, registerNode: (Int, LayoutCoordinates) -> Unit, muted: Color, accent: Color, freeFriends: List<FriendFreeWindow>) {
     Row(Modifier.fillMaxWidth().padding(horizontal = TimelineHorizontalPadding), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.width(RailColumnWidth), horizontalAlignment = Alignment.CenterHorizontally) {
             Box(
@@ -835,9 +1309,42 @@ private fun FreePeriod(start: Int, end: Int, nodeIndex: Int, sectionCoords: () -
             )
         }
         Spacer(Modifier.width(TimelineCardGap))
-        Text("${formatDurationUpper(end - start)} FREE PERIOD", color = muted, style = MaterialTheme.typography.titleMedium, letterSpacing = 1.7.sp, fontWeight = FontWeight.Medium)
+        Column(Modifier.weight(1f)) {
+            Text(
+                "${formatDurationUpper(end - start)} FREE PERIOD",
+                color = muted,
+                style = MaterialTheme.typography.titleMedium,
+                letterSpacing = 1.7.sp,
+                fontWeight = FontWeight.Medium
+            )
+            if (freeFriends.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Also free · ${friendFreeLine(freeFriends, start, end)}",
+                    color = accent,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
     }
 }
+
+/**
+ * Names for the "Also free · …" line under a free period. Friends free the
+ * whole period stay plain; friends free for only part of it now show their
+ * actual stretch — "Aarav (until 1:30 PM)", "Meera (from 1:30 PM)" — so a
+ * partially-matching friend is listed instead of silently dropped.
+ */
+private fun friendFreeLine(windows: List<FriendFreeWindow>, periodStart: Int, periodEnd: Int): String =
+    windows.joinToString(", ") { window ->
+        when {
+            window.startMinutes <= periodStart && window.endMinutes >= periodEnd -> window.name
+            window.startMinutes <= periodStart -> "${window.name} (until ${formatTime(window.endMinutes)})"
+            window.endMinutes >= periodEnd -> "${window.name} (from ${formatTime(window.startMinutes)})"
+            else -> "${window.name} (${formatTime(window.startMinutes)} - ${formatTime(window.endMinutes)})"
+        }
+    }
 
 private fun formatTime(minutes: Int): String {
     val hour = (minutes / 60) % 24

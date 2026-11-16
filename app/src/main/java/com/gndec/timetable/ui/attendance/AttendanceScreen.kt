@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.gndec.timetable.data.db.LectureEntity
 import com.gndec.timetable.data.db.TimetableSnapshotEntity
+import com.gndec.timetable.data.prefs.AppSettings
 import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.domain.AttendanceManager
 import com.gndec.timetable.net.AttendanceRecord
@@ -78,11 +79,14 @@ import com.gndec.timetable.ui.theme.GndecMuted
 import com.gndec.timetable.ui.theme.GndecOrange
 import com.gndec.timetable.ui.theme.GndecTeal
 import com.gndec.timetable.util.Formatters
+import com.gndec.timetable.util.resolvedTeacher
+import com.gndec.timetable.util.resolvedVenue
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 private val attendanceDateFormatter = DateTimeFormatter.ofPattern("EEE, d MMM")
 private val attendanceShortFormatter = DateTimeFormatter.ofPattern("d MMM")
@@ -93,6 +97,7 @@ fun AttendanceScreen(
     onBack: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val settings by container.settings.flow.collectAsStateWithLifecycle(initialValue = AppSettings())
     val today = LocalDate.now()
     var selectedDate by remember { mutableStateOf(today) }
     var calendarMonth by remember { mutableStateOf(YearMonth.from(today)) }
@@ -300,7 +305,9 @@ fun AttendanceScreen(
                                     .onFailure { error = it.message ?: "Could not remove attendance" }
                                 savingKey = null
                             }
-                        }
+                        },
+                        mentorName = settings.mentorName,
+                        mentorVenue = settings.mentorVenue
                         )
                     }
                 }
@@ -365,7 +372,9 @@ private fun AttendanceLectureCard(
     status: String?,
     saving: Boolean,
     onStatus: (String) -> Unit,
-    onUnmark: () -> Unit
+    onUnmark: () -> Unit,
+    mentorName: String = "",
+    mentorVenue: String = ""
 ) {
     val iconSwapIn = motionTween<Float>(Motion.Fast)
     val iconSwapOut = motionTween<Float>(Motion.Fast)
@@ -379,7 +388,7 @@ private fun AttendanceLectureCard(
                 Column(Modifier.weight(1f)) {
                     Text(lecture.subject?.takeIf { it.isNotBlank() } ?: "Lecture", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(Formatters.range(lecture.startMinutes, lecture.endMinutes), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
-                    Text(listOf(lecture.teacher, lecture.venue).filter { !it.isNullOrBlank() }.joinToString(" · ").ifBlank { "Details unavailable" }, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(listOf(lecture.resolvedTeacher(mentorName), lecture.resolvedVenue(mentorVenue)).filter { !it.isNullOrBlank() }.joinToString(" · ").ifBlank { "Details unavailable" }, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 AnimatedContent(
                     targetState = status,

@@ -39,8 +39,11 @@ class ReleaseUpdateManager(
     private val settings: SettingsManager
 ) {
     companion object {
-        const val RELEASES_API_URL = "https://api.github.com/repos/lsgzt/nextlecture-android/releases/latest"
-        const val DOWNLOAD_URL = "https://nextlecture.vercel.app/download"
+        const val RELEASES_API_URL = "https://api.github.com/repos/lsgzt/nextlecture/releases/latest"
+        // The backend's /download route only redirected to GitHub Releases, and the
+        // current nextlecture-android deployment does not expose it — link straight
+        // to the Releases page so the button always works.
+        const val DOWNLOAD_URL = "https://github.com/lsgzt/nextlecture/releases/latest"
         private const val CHECK_INTERVAL_MS = 6L * 60L * 60L * 1000L
 
         fun installedMarker(): String = if (compareMarkers(BuildConfig.RELEASE_MARKER, BuildConfig.VERSION_NAME) >= 0) {

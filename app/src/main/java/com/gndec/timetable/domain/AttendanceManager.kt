@@ -25,17 +25,59 @@ class AttendanceManager(
     private val sessionMutex = Mutex()
     private var synchronizedFingerprint: String? = null
 
-    suspend fun load(from: LocalDate, to: LocalDate, target: Double): AttendanceResponse {
+    /** In-process list cache so Home / Attendance tab switches do not re-hit the network. */
+    private val cacheMutex = Mutex()
+    private var cachedResponse: AttendanceResponse? = null
+    private var cachedKey: String? = null
+
+    suspend fun load(from: LocalDate, to: LocalDate, target: Double, forceRefresh: Boolean = false): AttendanceResponse {
         val cfg = settings.flow.first()
-        return withSession(cfg) { token ->
+        val key = listCacheKey(cfg, from, to, target)
+        if (!forceRefresh) {
+            cacheMutex.withLock {
+                val hit = cachedResponse
+                if (hit != null && cachedKey == key) return hit
+            }
+        }
+        val response = withSession(cfg) { token ->
             client.list(cfg.pyqRagBackendUrl, token, from.toString(), to.toString(), target)
         }
+        cacheMutex.withLock {
+            cachedResponse = response
+            cachedKey = key
+        }
+        return response
     }
+
+    /** Drop the list cache after the student marks / unmarks a lecture. */
+    suspend fun invalidateListCache() {
+        cacheMutex.withLock {
+            cachedResponse = null
+            cachedKey = null
+        }
+    }
+
+    private fun listCacheKey(
+        cfg: com.gndec.timetable.data.prefs.AppSettings,
+        from: LocalDate,
+        to: LocalDate,
+        target: Double
+    ): String = listOf(
+        from.toString(),
+        to.toString(),
+        target.toString(),
+        cfg.registrationNumber,
+        cfg.rollNumber,
+        cfg.branch,
+        cfg.studentSubsection,
+        cfg.studentName,
+        cfg.group.orEmpty()
+    ).joinToString("|")
 
     suspend fun mark(date: LocalDate, lecture: LectureEntity, status: String): AttendanceRecord {
         require(status == "present" || status == "absent")
         val cfg = settings.flow.first()
-        return withSession(cfg) { token ->
+        val record = withSession(cfg) { token ->
             client.save(
                 cfg.pyqRagBackendUrl,
                 token,
@@ -52,6 +94,8 @@ class AttendanceManager(
                 )
             )
         }
+        invalidateListCache()
+        return record
     }
 
     suspend fun unmark(date: LocalDate, lecture: LectureEntity) {
@@ -59,6 +103,7 @@ class AttendanceManager(
         withSession(cfg) { token ->
             client.remove(cfg.pyqRagBackendUrl, token, date.toString(), lectureKey(date, lecture))
         }
+        invalidateListCache()
     }
 
     suspend fun leaderboard(scope: String, value: String = ""): com.gndec.timetable.net.LeaderboardResponse {
