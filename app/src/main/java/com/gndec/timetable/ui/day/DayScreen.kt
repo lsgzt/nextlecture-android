@@ -606,7 +606,7 @@ private fun WeekTypeLegend(muted: Color) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         WeekTypeLegendItem(color = lectureTypeColors("LECTURE").line, label = "Lecture", muted = muted)
-        WeekTypeLegendItem(color = lectureTypeColors("PRACTICAL").line, label = "Practical", muted = muted)
+        WeekTypeLegendItem(color = lectureTypeColors("PRACTICAL").line, label = "Lab", muted = muted)
         WeekTypeLegendItem(color = lectureTypeColors("TUTORIAL").line, label = "Tutorial", muted = muted)
     }
 }
