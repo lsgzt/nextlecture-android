@@ -734,29 +734,31 @@ fun PremiumHolidayHeroCard(
     modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 20.dp),
-        shape = RoundedCornerShape(30.dp),
+        // Width/insets come from the caller so Home and Today stay aligned with notice cards.
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
         elevation = CardDefaults.cardElevation(0.dp)
     ) {
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 26.dp, vertical = 30.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 22.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(
-                Modifier.size(56.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), CircleShape),
+                Modifier.size(48.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.Celebration, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                Icon(Icons.Default.Celebration, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
             }
-            Spacer(Modifier.height(14.dp))
-            Text("Today is a holiday", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(12.dp))
+            Text("Today is a holiday", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             if (holidayNames.isNotBlank()) {
                 Spacer(Modifier.height(6.dp))
                 Text(
                     "on account of $holidayNames",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodyMedium
                 )
             }
             Spacer(Modifier.height(12.dp))
@@ -798,7 +800,8 @@ fun PremiumNextAfterHolidayCard(
     }
     val lecture = next.lecture
     Card(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 20.dp),
+        // Caller supplies horizontal insets so this matches other home/today cards.
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),

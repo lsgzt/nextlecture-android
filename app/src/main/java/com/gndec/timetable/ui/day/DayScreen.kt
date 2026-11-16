@@ -369,12 +369,14 @@ fun DayScreen(
                                         // holiday notice and the next teaching day.
                                         PremiumHolidayHeroCard(
                                             holidayNames = holidayNames,
-                                            onViewTimetable = { scope.launch { container.settings.setHolidayTimetableOverrideDay(todayIso) } }
+                                            onViewTimetable = { scope.launch { container.settings.setHolidayTimetableOverrideDay(todayIso) } },
+                                            modifier = Modifier.padding(horizontal = 20.dp)
                                         )
                                         nextAfterHoliday?.let { next ->
                                             PremiumNextAfterHolidayCard(
                                                 next = next,
-                                                todayIso = todayIso
+                                                todayIso = todayIso,
+                                                modifier = Modifier.padding(horizontal = 20.dp)
                                             )
                                         }
                                     } else {

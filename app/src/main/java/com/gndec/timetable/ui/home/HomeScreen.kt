@@ -179,8 +179,12 @@ fun HomeScreen(
         // A dated source can qualify for a whole week at once, so cap the carousel
         // to keep it swippable and stop a backlog burying the holiday banners.
         .take(MAX_HOME_NOTICE_BANNERS)
-    val homeBanners = (if (holidayActive) holidayBanners.filterNot { it.id.startsWith("holiday-today") } else holidayBanners) +
-        erpBannerNotices.map { it.toHomeBannerItem() }
+    // On a full holiday the large hero already covers "today is a holiday" — keep
+    // official ERP notices in the top carousel and only drop the redundant today-holiday banner.
+    val homeBanners = (
+        if (holidayActive) holidayBanners.filterNot { it.id.startsWith("holiday-today") }
+        else holidayBanners
+    ) + erpBannerNotices.map { it.toHomeBannerItem() }
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         PremiumScreenBackground {
@@ -281,6 +285,16 @@ fun HomeScreen(
                                 modifier = androidx.compose.ui.Modifier.fillMaxWidth().padding(horizontal = 20.dp).animateItem().itemEntrance(3)
                             )
                         }
+                        // Sit directly under the holiday hero (not below attendance).
+                        nextAfterHoliday?.let { next ->
+                            item(key = "next-after-holiday") {
+                                PremiumNextAfterHolidayCard(
+                                    next = next,
+                                    todayIso = todayIso,
+                                    modifier = androidx.compose.ui.Modifier.fillMaxWidth().padding(horizontal = 20.dp).itemEntrance(3).animateItem()
+                                )
+                            }
+                        }
                     } else {
                         item(key = "hero") {
                             val heroIn = motionTween<Float>(Motion.Emphasized)
@@ -374,17 +388,7 @@ fun HomeScreen(
                             AttendanceHomeSummary(state = attendanceState, onClick = onOpenAttendance)
                         }
                     }
-                    if (holidayActive) {
-                        nextAfterHoliday?.let { next ->
-                            item(key = "next-after-holiday") {
-                                PremiumNextAfterHolidayCard(
-                                    next = next,
-                                    todayIso = todayIso,
-                                    modifier = androidx.compose.ui.Modifier.fillMaxWidth().padding(horizontal = 20.dp).itemEntrance(6).animateItem()
-                                )
-                            }
-                        }
-                    } else {
+                    if (!holidayActive) {
                         item(key = "today-preview") {
                             Box(androidx.compose.ui.Modifier.itemEntrance(6).animateItem()) {
                                 PremiumTodayPreview(
