@@ -274,7 +274,7 @@ fun FacultyBirthdaysScreen(
                             value = searchQuery,
                             onValueChange = { searchQuery = it },
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                            placeholder = { Text("Search teachers by name or department") },
+                            placeholder = { Text("Type name or department") },
                             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                             trailingIcon = {
                                 if (searchQuery.isNotEmpty()) {

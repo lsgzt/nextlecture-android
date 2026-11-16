@@ -1276,7 +1276,7 @@ private fun androidx.compose.ui.text.AnnotatedString.Builder.appendFriendsAfterD
  */
 @Composable
 private fun FriendAvailabilityNote(windows: List<FriendFreeWindow>, startMinutes: Int, endMinutes: Int) {
-    val sentences = friendAvailabilitySentences(windows, startMinutes, endMinutes, ::formatTime)
+    val sentences = friendAvailabilitySentences(windows, startMinutes, endMinutes, ::formatTimeCompact)
     if (sentences.isEmpty()) return
     // Plain text, matching the other friend notes ("Also free · …"): a boxed row
     // under every lecture card read as clutter, so this is just a quiet line.
@@ -1340,9 +1340,9 @@ private fun friendFreeLine(windows: List<FriendFreeWindow>, periodStart: Int, pe
     windows.joinToString(", ") { window ->
         when {
             window.startMinutes <= periodStart && window.endMinutes >= periodEnd -> window.name
-            window.startMinutes <= periodStart -> "${window.name} (until ${formatTime(window.endMinutes)})"
-            window.endMinutes >= periodEnd -> "${window.name} (from ${formatTime(window.startMinutes)})"
-            else -> "${window.name} (${formatTime(window.startMinutes)} - ${formatTime(window.endMinutes)})"
+            window.startMinutes <= periodStart -> "${window.name} (until ${formatTimeCompact(window.endMinutes)})"
+            window.endMinutes >= periodEnd -> "${window.name} (from ${formatTimeCompact(window.startMinutes)})"
+            else -> "${window.name} (${formatTimeCompact(window.startMinutes)} - ${formatTimeCompact(window.endMinutes)})"
         }
     }
 
@@ -1352,6 +1352,14 @@ private fun formatTime(minutes: Int): String {
     val suffix = if (hour >= 12) "PM" else "AM"
     val displayHour = if (hour % 12 == 0) 12 else hour % 12
     return "%d:%02d %s".format(displayHour, minute, suffix)
+}
+
+/** Compact 12-hour time for inline friend availability notes. */
+private fun formatTimeCompact(minutes: Int): String {
+    val hour = (minutes / 60) % 24
+    val minute = minutes % 60
+    val displayHour = if (hour % 12 == 0) 12 else hour % 12
+    return "%d:%02d".format(displayHour, minute)
 }
 
 private fun formatDurationUpper(minutes: Int): String = when {

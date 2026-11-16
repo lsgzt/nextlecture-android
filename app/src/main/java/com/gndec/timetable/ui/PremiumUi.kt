@@ -734,7 +734,7 @@ fun PremiumHolidayHeroCard(
     modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = modifier,
+        modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp),
         shape = RoundedCornerShape(30.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
         elevation = CardDefaults.cardElevation(0.dp)
@@ -798,7 +798,7 @@ fun PremiumNextAfterHolidayCard(
     }
     val lecture = next.lecture
     Card(
-        modifier = modifier,
+        modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),

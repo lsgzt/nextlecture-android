@@ -1,6 +1,7 @@
 package com.gndec.timetable.domain
 
 import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 
 /**
  * One teacher's upcoming birthday: the directory record plus the derived
@@ -52,7 +53,9 @@ object FacultyBirthdays {
                     record = record,
                     birthDate = birth,
                     nextDate = next,
-                    daysUntil = today.until(next).days,
+                    // Period.days is only the leftover day component (so
+                    // Nov 16 → Mar 16 incorrectly becomes 0); use total days.
+                    daysUntil = ChronoUnit.DAYS.between(today, next).toInt(),
                     turningAge = next.year - birth.year
                 )
             }
@@ -73,8 +76,14 @@ object FacultyBirthdays {
         fun inYear(year: Int): LocalDate =
             runCatching { birth.withYear(year) }
                 .getOrDefault(LocalDate.of(year, 2, 28)) // Feb 29 in a non-leap year
+        // Compare only the annual birthday month/day. The birth year must never
+        // influence whether this year's birthday is still upcoming.
         var next = inYear(today.year)
-        if (next.isBefore(today)) next = inYear(today.year + 1)
+        if (next.monthValue < today.monthValue ||
+            (next.monthValue == today.monthValue && next.dayOfMonth < today.dayOfMonth)
+        ) {
+            next = inYear(today.year + 1)
+        }
         return next
     }
 

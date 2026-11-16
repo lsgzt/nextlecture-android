@@ -23,6 +23,22 @@ class FacultyBirthdaysTest {
     }
 
     @Test
+    fun sameDayMonthWinsOverEarlierMonthOnCurrentDate() {
+        val novemberSixteenth = LocalDate.of(1991, 11, 16)
+        val marchSixteenth = LocalDate.of(1993, 3, 16)
+        val list = FacultyBirthdays.upcoming(
+            listOf(
+                teacher("MARCH", marchSixteenth.toString()),
+                teacher("NOVEMBER", novemberSixteenth.toString())
+            ),
+            LocalDate.of(2026, 11, 16)
+        )
+        assertEquals("NOVEMBER", list.first().record.name)
+        assertEquals(0, list.first().daysUntil)
+        assertEquals(LocalDate.of(2027, 3, 16), list[1].nextDate)
+    }
+
+    @Test
     fun passedThisYearRollsToNextYearAndComputesTurningAge() {
         // Born 16 July 1974; on 14 Nov 2026 the next occurrence is 16 July 2027 → turns 53.
         val list = FacultyBirthdays.upcoming(listOf(teacher("HARPREET", "1974-07-16")), today)

@@ -56,7 +56,7 @@ class AnnouncementManager(
     private val settings: SettingsManager
 ) {
     companion object {
-        const val FEED_URL = "https://raw.githubusercontent.com/lsgzt/nextlecture/main/announcements.json"
+        const val FEED_URL = "https://raw.githubusercontent.com/lsgzt/nextlecture-android/main/announcements.json"
     }
 
     private val _announcements = MutableStateFlow<List<Announcement>>(emptyList())
