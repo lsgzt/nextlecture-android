@@ -98,6 +98,39 @@ class AttendanceManager(
         return record
     }
 
+    /**
+     * Mark attendance for a lecture that is not on today's published slot — e.g. a
+     * teacher swap where Chemistry ran in the Maths period. Builds a stable
+     * lecture key from the chosen subject/time so the mark is syncable and clearable.
+     */
+    suspend fun markManual(
+        date: LocalDate,
+        groupName: String,
+        subject: String,
+        lectureType: String,
+        startMinutes: Int,
+        endMinutes: Int,
+        status: String,
+        teacher: String = "",
+        venue: String = ""
+    ): AttendanceRecord {
+        require(subject.isNotBlank()) { "Subject is required" }
+        require(endMinutes > startMinutes) { "End time must be after start time" }
+        val lecture = LectureEntity(
+            groupName = groupName,
+            dayOfWeek = date.dayOfWeek.value,
+            startMinutes = startMinutes,
+            endMinutes = endMinutes,
+            subject = subject.trim(),
+            teacher = teacher.trim().ifBlank { null },
+            venue = venue.trim().ifBlank { null },
+            lectureType = lectureType,
+            rawText = "manual-swap",
+            fetchId = 0L
+        )
+        return mark(date, lecture, status)
+    }
+
     suspend fun unmark(date: LocalDate, lecture: LectureEntity) {
         val cfg = settings.flow.first()
         withSession(cfg) { token ->

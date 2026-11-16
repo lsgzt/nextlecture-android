@@ -114,7 +114,14 @@ fun AttendanceScreen(
     var leaderboardResponse by remember { mutableStateOf<LeaderboardResponse?>(null) }
     var leaderboardLoading by remember { mutableStateOf(true) }
     var leaderboardError by remember { mutableStateOf<String?>(null) }
+    var manualSheetOpen by remember { mutableStateOf(false) }
+    var manualSaving by remember { mutableStateOf(false) }
     val historyDates = remember(today) { (0L..13L).map { today.minusDays(it) }.reversed() }
+    val knownSubjects = remember(lectures) {
+        lectures.mapNotNull { it.subject?.trim()?.takeIf { s -> s.isNotEmpty() } }
+            .distinct()
+            .sorted()
+    }
 
     suspend fun reloadNow() {
         loading = true
@@ -274,7 +281,10 @@ fun AttendanceScreen(
             } else if (dayLectures.isEmpty()) {
                 item(key = "empty-day") {
                     Box(Modifier.animateItem()) {
-                        AttendanceInfoCard("No lectures for this date", "The saved timetable has no lecture for ${selectedDate.format(attendanceShortFormatter)}. You can choose another date above.")
+                        AttendanceInfoCard(
+                            "No lectures for this date",
+                            "The saved timetable has no lecture for ${selectedDate.format(attendanceShortFormatter)}. Use manual mark below for a teacher swap or make-up class."
+                        )
                     }
                 }
             } else {
@@ -312,8 +322,13 @@ fun AttendanceScreen(
                     }
                 }
             }
+            if (activeGroup.isNotBlank()) {
+                item(key = "manual-mark-prompt") {
+                    ManualAttendancePromptCard(onClick = { manualSheetOpen = true })
+                }
+            }
             item { SubjectSummaryCard(response?.records.orEmpty(), target) }
-            item { AttendanceInfoCard("How the percentage works", "Only lectures you mark as present or absent are counted. Unmarked lectures stay neutral. You can update a mark later if you made a mistake.") }
+            item { AttendanceInfoCard("How the percentage works", "Only lectures you mark as present or absent are counted. Unmarked lectures stay neutral. You can update a mark later if you made a mistake. Use manual mark when a teacher swaps slots or runs a make-up class.") }
         }
         if (fullCalendarOpen) {
             FullCalendarDialog(
@@ -323,6 +338,37 @@ fun AttendanceScreen(
                 onMonthChange = { calendarMonth = it },
                 onDateSelected = { date -> selectedDate = date; fullCalendarOpen = false },
                 onDismiss = { fullCalendarOpen = false }
+            )
+        }
+        if (manualSheetOpen) {
+            ManualAttendanceSheet(
+                subjects = knownSubjects,
+                defaultDate = selectedDate,
+                saving = manualSaving,
+                onDismiss = { if (!manualSaving) manualSheetOpen = false },
+                onSubmit = { subject, lectureType, date, startMinutes, endMinutes, status ->
+                    manualSaving = true
+                    scope.launch {
+                        runCatching {
+                            container.attendanceManager.markManual(
+                                date = date,
+                                groupName = activeGroup,
+                                subject = subject,
+                                lectureType = lectureType,
+                                startMinutes = startMinutes,
+                                endMinutes = endMinutes,
+                                status = status
+                            )
+                        }.onSuccess {
+                            selectedDate = date
+                            manualSheetOpen = false
+                            reload()
+                        }.onFailure {
+                            error = it.message ?: "Could not save manual attendance"
+                        }
+                        manualSaving = false
+                    }
+                }
             )
         }
     }
