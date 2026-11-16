@@ -78,7 +78,12 @@ class HomeViewModel(private val c: AppContainer) {
     val ui: StateFlow<HomeUiState> =
         combine(c.settings.flow, c.db.metaDao().observe(), lecturesFlow, ticker, c.holidayManager.holidays) { s, m, lectures, now, holidays ->
             val zdt = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault())
-            val dow = zdt.dayOfWeek.value
+            val calendarDow = zdt.dayOfWeek.value
+            val todayIso = zdt.toLocalDate().toString()
+            // Weekend follow: a free calendar day can run another weekday's lectures.
+            val dow = if (
+                s.weekendFollowDayIso == todayIso && s.weekendFollowDow in 1..7
+            ) s.weekendFollowDow else calendarDow
             val nowMin = zdt.hour * 60 + zdt.minute
             val todayLectures = lectures.filter { it.dayOfWeek == dow }.sortedBy { it.startMinutes }
             HomeUiState(
@@ -86,7 +91,7 @@ class HomeViewModel(private val c: AppContainer) {
                 group = s.group,
                 lastFetch = m?.lastSuccessfulFetch,
                 nowMillis = now,
-                status = holidayAwareStatus(lectures, dow, nowMin, holidays, zdt.toLocalDate().toString()),
+                status = holidayAwareStatus(lectures, dow, nowMin, holidays, todayIso),
                 lectures = lectures,
                 upcomingToday = todayLectures.filter { it.startMinutes > nowMin },
                 todayLectures = todayLectures,

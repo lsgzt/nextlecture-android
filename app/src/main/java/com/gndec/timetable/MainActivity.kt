@@ -87,7 +87,8 @@ class MainActivity : ComponentActivity() {
                     // self-heal rebuilds the whole reminder set.
                     app.container.scheduler.rescheduleAll(
                         app.container.db, group, ReminderConfig.from(cfg),
-                        com.gndec.timetable.domain.HolidayGate.decode(cfg.holidayJson)
+                        com.gndec.timetable.domain.HolidayGate.decode(cfg.holidayJson),
+                        cfg.weekendFollowDayIso, cfg.weekendFollowDow
                     )
                 }
             }

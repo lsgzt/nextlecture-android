@@ -37,7 +37,8 @@ class BootReceiver : BroadcastReceiver() {
                     // Holiday-aware: a full holiday gets no reminders after a reboot either.
                     app.container.scheduler.rescheduleAll(
                         app.container.db, group, ReminderConfig.from(cfg),
-                        com.gndec.timetable.domain.HolidayGate.decode(cfg.holidayJson)
+                        com.gndec.timetable.domain.HolidayGate.decode(cfg.holidayJson),
+                        cfg.weekendFollowDayIso, cfg.weekendFollowDow
                     )
                 }
             } finally {

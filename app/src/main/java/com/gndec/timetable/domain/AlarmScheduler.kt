@@ -62,23 +62,29 @@ class AlarmScheduler(private val context: Context) {
         db: AppDatabase,
         group: String,
         config: ReminderConfig,
-        holidays: List<Holiday> = emptyList()
+        holidays: List<Holiday> = emptyList(),
+        weekendFollowDayIso: String = "",
+        weekendFollowDow: Int = 0
     ) {
         val dao = db.alarmDao()
         dao.getAll().forEach { cancel(it.requestCode) }
         dao.clear()
-        scheduleUpcoming(db, group, config, holidays)
+        scheduleUpcoming(db, group, config, holidays, weekendFollowDayIso, weekendFollowDow)
     }
 
     /**
      * Schedule reminders for lectures and real gaps in the next [DAYS_AHEAD] days,
      * skipping full-holiday dates ([holidays] comes from the cached official list).
+     * When [weekendFollowDayIso] matches a calendar day and [weekendFollowDow] is set,
+     * that day's reminders use the followed weekday's lectures (college working Saturday).
      */
     suspend fun scheduleUpcoming(
         db: AppDatabase,
         group: String,
         config: ReminderConfig,
-        holidays: List<Holiday> = emptyList()
+        holidays: List<Holiday> = emptyList(),
+        weekendFollowDayIso: String = "",
+        weekendFollowDow: Int = 0
     ) {
         val lectures = db.lectureDao().getForGroup(group)
         val zone = ZoneId.systemDefault()
@@ -91,10 +97,14 @@ class AlarmScheduler(private val context: Context) {
         // stage is enabled.
         for (dayOffset in 0 until DAYS_AHEAD) {
             val date = today.plusDays(dayOffset.toLong())
+            val dateIso = date.toString()
             // A full holiday has no classes: neither lecture reminders nor free-period
             // alerts belong on it. Half-days keep their whole schedule.
-            if (HolidayGate.isFullHolidayOn(holidays, date.toString())) continue
-            val dow = date.dayOfWeek.value
+            if (HolidayGate.isFullHolidayOn(holidays, dateIso)) continue
+            val calendarDow = date.dayOfWeek.value
+            val dow = if (
+                weekendFollowDayIso == dateIso && weekendFollowDow in 1..7
+            ) weekendFollowDow else calendarDow
             val dayLectures = lectures
                 .filter { it.dayOfWeek == dow }
                 .sortedBy { it.startMinutes }

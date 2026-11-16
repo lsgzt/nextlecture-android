@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -100,6 +101,7 @@ import com.gndec.timetable.domain.earlySlotsBefore
 import com.gndec.timetable.domain.lateSlotsAfter
 import com.gndec.timetable.domain.FriendFreeWindow
 import com.gndec.timetable.domain.HolidayGate
+import com.gndec.timetable.domain.ReminderConfig
 import com.gndec.timetable.domain.friendAvailabilitySentences
 import com.gndec.timetable.domain.friendsFreeWithin
 import com.gndec.timetable.ui.PremiumBottomBarContentClearance
@@ -119,6 +121,7 @@ import com.gndec.timetable.util.Formatters
 import com.gndec.timetable.util.displayTeacher
 import com.gndec.timetable.util.resolvedVenue
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -136,8 +139,24 @@ private sealed class TimelineItem {
 private enum class LectureState { COMPLETED, HAPPENING, UPCOMING }
 private enum class DayViewMode(val title: String) { TODAY("Today"), TOMORROW("Tomorrow"), WEEK("Full week") }
 
-/** Keys day content so Today↔Tomorrow and holiday↔timetable both animate. */
-private data class DayContentKey(val mode: DayViewMode, val showHoliday: Boolean)
+/** Keys day content so Today↔Tomorrow, holiday↔timetable, and weekend-follow all animate. */
+private data class DayContentKey(
+    val mode: DayViewMode,
+    val showHoliday: Boolean,
+    /** 0 = not following another day; 1–7 = ISO day-of-week being followed. */
+    val weekendFollowDow: Int
+)
+
+private fun dayOfWeekLabel(dow: Int): String = when (dow) {
+    1 -> "Monday"
+    2 -> "Tuesday"
+    3 -> "Wednesday"
+    4 -> "Thursday"
+    5 -> "Friday"
+    6 -> "Saturday"
+    7 -> "Sunday"
+    else -> "that day"
+}
 
 private val Zone = ZoneId.systemDefault()
 private val DateFormatter = DateTimeFormatter.ofPattern("d MMMM")
@@ -212,6 +231,36 @@ fun DayScreen(
     } else {
         null
     }
+    // Free/weekend day following another weekday's timetable (day-scoped, closable).
+    val weekendFollowActive =
+        settings.weekendFollowDayIso == todayIso && settings.weekendFollowDow in 1..7
+    val weekendFollowDow = if (weekendFollowActive) settings.weekendFollowDow else 0
+    val todayEffectiveDow = if (weekendFollowActive) weekendFollowDow else todayDow
+    var showWeekendDayPicker by remember { mutableStateOf(false) }
+    val applyWeekendFollow: (Int) -> Unit = { followDow ->
+        scope.launch {
+            container.settings.setWeekendTimetableFollow(todayIso, followDow)
+            val cfg = container.settings.flow.first()
+            val group = cfg.group ?: return@launch
+            container.scheduler.rescheduleAll(
+                container.db, group, ReminderConfig.from(cfg),
+                HolidayGate.decode(cfg.holidayJson),
+                cfg.weekendFollowDayIso, cfg.weekendFollowDow
+            )
+        }
+    }
+    val clearWeekendFollow: () -> Unit = {
+        scope.launch {
+            container.settings.setWeekendTimetableFollow("", 0)
+            val cfg = container.settings.flow.first()
+            val group = cfg.group ?: return@launch
+            container.scheduler.rescheduleAll(
+                container.db, group, ReminderConfig.from(cfg),
+                HolidayGate.decode(cfg.holidayJson),
+                cfg.weekendFollowDayIso, cfg.weekendFollowDow
+            )
+        }
+    }
     val selectedDate = when (viewMode) {
         DayViewMode.TODAY -> time.toLocalDate()
         DayViewMode.TOMORROW -> time.toLocalDate().plusDays(1)
@@ -276,7 +325,7 @@ fun DayScreen(
                             // Animate Today ↔ Tomorrow and holiday ↔ timetable with the same
                             // premium motion so neither switch hard-cuts.
                             AnimatedContent(
-                                targetState = DayContentKey(viewMode, holidayActive),
+                                targetState = DayContentKey(viewMode, holidayActive, weekendFollowDow),
                                 transitionSpec = {
                                     if (reduced) {
                                         fadeIn(tween(Motion.Normal, easing = Motion.EasingStandard)) togetherWith
@@ -336,14 +385,27 @@ fun DayScreen(
                                                 onClose = { scope.launch { container.settings.setHolidayTimetableOverrideDay("") } }
                                             )
                                         }
+                                        if (mode == DayViewMode.TODAY && key.weekendFollowDow in 1..7) {
+                                            // Following another weekday on a free/weekend day —
+                                            // closable so an accidental pick never sticks.
+                                            WeekendFollowStrip(
+                                                followDow = key.weekendFollowDow,
+                                                onClose = clearWeekendFollow
+                                            )
+                                        }
                                         val modeLectures = when (mode) {
-                                            DayViewMode.TODAY -> lectures.filter { it.dayOfWeek == todayDow }
+                                            DayViewMode.TODAY -> lectures.filter { it.dayOfWeek == todayEffectiveDow }
                                             DayViewMode.TOMORROW -> lectures.filter { it.dayOfWeek == tomorrowDow }
                                             DayViewMode.WEEK -> emptyList()
                                         }.sortedBy { it.startMinutes }
                                         val modeTimeline = buildTimeline(modeLectures, if (mode == DayViewMode.TODAY) nowMinutes else -1)
                                         val modeFreeMinutes = modeTimeline.filterIsInstance<TimelineItem.Free>().sumOf { it.end - it.start }
-                                        val modeFriends = if (mode == DayViewMode.TODAY) todayFriendDays else tomorrowFriendDays
+                                        val modeFriends = if (mode == DayViewMode.TODAY) {
+                                            // Friends still keyed to the calendar day; lectures follow the chosen DOW.
+                                            todayFriendDays
+                                        } else {
+                                            tomorrowFriendDays
+                                        }
                                         val myFirstStart = modeLectures.minOfOrNull { it.startMinutes }
                                         val earlyFriendSlots = if (myFirstStart != null) {
                                             modeFriends.earlySlotsBefore(myFirstStart)
@@ -358,15 +420,17 @@ fun DayScreen(
                                         } else {
                                             emptyList()
                                         }
-                                        DaySummary(
-                                            lectures = modeLectures.size,
-                                            freeMinutes = modeFreeMinutes,
-                                            reminders = if (mode == DayViewMode.TODAY) scheduledReminders else 0,
-                                            accent = accent,
-                                            primaryText = primaryText,
-                                            muted = muted,
-                                            cardColor = MaterialTheme.colorScheme.surface
-                                        )
+                                        if (modeTimeline.isNotEmpty() || key.weekendFollowDow in 1..7) {
+                                            DaySummary(
+                                                lectures = modeLectures.size,
+                                                freeMinutes = modeFreeMinutes,
+                                                reminders = if (mode == DayViewMode.TODAY) scheduledReminders else 0,
+                                                accent = accent,
+                                                primaryText = primaryText,
+                                                muted = muted,
+                                                cardColor = MaterialTheme.colorScheme.surface
+                                            )
+                                        }
                                         if (earlyFriendSlots.isNotEmpty()) {
                                             FriendsBeforeDayNote(
                                                 slots = earlyFriendSlots,
@@ -381,6 +445,15 @@ fun DayScreen(
                                                 muted = muted,
                                                 dayLabel = if (mode == DayViewMode.TODAY) "today" else "tomorrow"
                                             )
+                                            // Free calendar day (often a weekend): offer to follow
+                                            // a specific weekday's timetable with reminders.
+                                            if (mode == DayViewMode.TODAY && key.weekendFollowDow !in 1..7) {
+                                                WeekendFollowPromptCard(
+                                                    primaryText = primaryText,
+                                                    muted = muted,
+                                                    onClick = { showWeekendDayPicker = true }
+                                                )
+                                            }
                                         } else {
                                             val shownDate = if (mode == DayViewMode.TODAY) time.toLocalDate() else time.toLocalDate().plusDays(1)
                                             TimelineSection(
@@ -434,6 +507,15 @@ fun DayScreen(
                         Text(status, color = muted, style = MaterialTheme.typography.bodySmall)
                     }
                 }
+            }
+            if (showWeekendDayPicker) {
+                WeekendFollowDayDialog(
+                    onSelect = { dow ->
+                        showWeekendDayPicker = false
+                        applyWeekendFollow(dow)
+                    },
+                    onDismiss = { showWeekendDayPicker = false }
+                )
             }
         }
     }
@@ -687,6 +769,121 @@ private fun EmptyDayCard(cardColor: Color, primaryText: Color, muted: Color, day
             Text("No lectures are scheduled for this day.", color = muted, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         }
     }
+}
+
+/**
+ * Shown under the free-day card when the calendar day has no lectures (weekends
+ * and empty weekdays). Lets the student run another weekday's timetable for today
+ * — useful when the college works a Saturday on Monday's schedule, etc.
+ */
+@Composable
+private fun WeekendFollowPromptCard(
+    primaryText: Color,
+    muted: Color,
+    onClick: () -> Unit
+) {
+    Card(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+        elevation = CardDefaults.cardElevation(0.dp)
+    ) {
+        Column(Modifier.padding(horizontal = 18.dp, vertical = 16.dp)) {
+            Text(
+                "Following timetable of a specific day?",
+                color = primaryText,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Tap here to view the timetable for a specific day — reminders will fire for those lectures too.",
+                color = muted,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+    }
+}
+
+/** Escape hatch while a free day is following another weekday's lectures. */
+@Composable
+private fun WeekendFollowStrip(
+    followDow: Int,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f))
+            .padding(start = 14.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            Icons.Default.CalendarMonth,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(17.dp)
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            "Following ${dayOfWeekLabel(followDow)}’s timetable",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        TextButton(onClick = onClose, contentPadding = PaddingValues(horizontal = 10.dp)) {
+            Text("Holiday?")
+        }
+    }
+}
+
+@Composable
+private fun WeekendFollowDayDialog(
+    onSelect: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val days = listOf(
+        1 to "Monday",
+        2 to "Tuesday",
+        3 to "Wednesday",
+        4 to "Thursday",
+        5 to "Friday",
+        6 to "Saturday"
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Follow which day’s timetable?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    "College sometimes runs a weekday schedule on a free/weekend day. Pick the day to show and get reminders for.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+                days.forEach { (dow, label) ->
+                    TextButton(
+                        onClick = { onSelect(dow) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(label, modifier = Modifier.fillMaxWidth())
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
 
 /**

@@ -89,6 +89,16 @@ data class AppSettings(
      * blank (or any other date) means the holiday notice is in charge again.
      */
     val holidayTimetableOverrideDay: String = "",
+    /**
+     * yyyy-MM-dd of the free/weekend day the student chose to follow another weekday's
+     * timetable on. Day-scoped like the holiday override — blank means no follow is active.
+     */
+    val weekendFollowDayIso: String = "",
+    /**
+     * ISO day-of-week (1=Monday … 7=Sunday) whose lectures to show and remind for on
+     * [weekendFollowDayIso]. 0 means unset.
+     */
+    val weekendFollowDow: Int = 0,
     val lastReleaseMarker: String = "",
     val lastReleaseName: String = "",
     val lastReleaseNotes: String = "",
@@ -174,6 +184,8 @@ class SettingsManager(private val context: Context) {
         val HOLIDAY_JSON = stringPreferencesKey("holiday_json")
         val HOLIDAY_UPDATED_AT = longPreferencesKey("holiday_updated_at")
         val HOLIDAY_TIMETABLE_OVERRIDE_DAY = stringPreferencesKey("holiday_timetable_override_day")
+        val WEEKEND_FOLLOW_DAY_ISO = stringPreferencesKey("weekend_follow_day_iso")
+        val WEEKEND_FOLLOW_DOW = intPreferencesKey("weekend_follow_dow")
         val LAST_RELEASE_MARKER = stringPreferencesKey("last_release_marker")
         val LAST_RELEASE_NAME = stringPreferencesKey("last_release_name")
         val LAST_RELEASE_NOTES = stringPreferencesKey("last_release_notes")
@@ -241,6 +253,8 @@ class SettingsManager(private val context: Context) {
             holidayJson = p[K.HOLIDAY_JSON] ?: "",
             holidayUpdatedAt = p[K.HOLIDAY_UPDATED_AT] ?: 0L,
             holidayTimetableOverrideDay = p[K.HOLIDAY_TIMETABLE_OVERRIDE_DAY] ?: "",
+            weekendFollowDayIso = p[K.WEEKEND_FOLLOW_DAY_ISO] ?: "",
+            weekendFollowDow = (p[K.WEEKEND_FOLLOW_DOW] ?: 0).coerceIn(0, 7),
             lastReleaseMarker = p[K.LAST_RELEASE_MARKER] ?: "",
             lastReleaseName = p[K.LAST_RELEASE_NAME] ?: "",
             lastReleaseNotes = p[K.LAST_RELEASE_NOTES] ?: "",
@@ -406,6 +420,21 @@ class SettingsManager(private val context: Context) {
         if (dayIso.isBlank()) it.remove(K.HOLIDAY_TIMETABLE_OVERRIDE_DAY)
         else it[K.HOLIDAY_TIMETABLE_OVERRIDE_DAY] = dayIso
     }
+
+    /**
+     * Day-scoped "this free/weekend day follows [followDow]'s timetable".
+     * Pass blank [dayIso] (or [followDow] outside 1..7) to clear.
+     */
+    suspend fun setWeekendTimetableFollow(dayIso: String, followDow: Int) = context.dataStore.edit {
+        if (dayIso.isBlank() || followDow !in 1..7) {
+            it.remove(K.WEEKEND_FOLLOW_DAY_ISO)
+            it.remove(K.WEEKEND_FOLLOW_DOW)
+        } else {
+            it[K.WEEKEND_FOLLOW_DAY_ISO] = dayIso
+            it[K.WEEKEND_FOLLOW_DOW] = followDow
+        }
+    }
+
     suspend fun setReleaseCache(marker: String, name: String, notes: String, checkedAt: Long) = context.dataStore.edit {
         it[K.LAST_RELEASE_MARKER] = marker.trim()
         it[K.LAST_RELEASE_NAME] = name.trim()

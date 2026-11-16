@@ -203,7 +203,8 @@ class SettingsViewModel(private val c: AppContainer) {
             // Holiday-aware: toggling reminder stages must not arm holiday reminders.
             c.scheduler.rescheduleAll(
                 c.db, g, com.gndec.timetable.domain.ReminderConfig.from(cfg),
-                com.gndec.timetable.domain.HolidayGate.decode(cfg.holidayJson)
+                com.gndec.timetable.domain.HolidayGate.decode(cfg.holidayJson),
+                cfg.weekendFollowDayIso, cfg.weekendFollowDow
             )
         }
     }
