@@ -9,8 +9,11 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -133,6 +136,9 @@ private sealed class TimelineItem {
 private enum class LectureState { COMPLETED, HAPPENING, UPCOMING }
 private enum class DayViewMode(val title: String) { TODAY("Today"), TOMORROW("Tomorrow"), WEEK("Full week") }
 
+/** Keys day content so Today↔Tomorrow and holiday↔timetable both animate. */
+private data class DayContentKey(val mode: DayViewMode, val showHoliday: Boolean)
+
 private val Zone = ZoneId.systemDefault()
 private val DateFormatter = DateTimeFormatter.ofPattern("d MMMM")
 private val TimelineHorizontalPadding = 16.dp
@@ -199,7 +205,13 @@ fun DayScreen(
     val holidayNames = HolidayGate.displayNames(todayFullHolidays)
     val holidayOverride = settings.holidayTimetableOverrideDay == todayIso
     val holidayActive = todayFullHolidays.isNotEmpty() && !holidayOverride
-    val nextAfterHoliday = if (holidayActive) HolidayGate.nextLectureAfter(lectures, holidays, todayIso) else null
+    // Keep next-after-holiday available during the holiday↔timetable exit animation
+    // (holidayActive flips before the outgoing content is fully gone).
+    val nextAfterHoliday = if (todayFullHolidays.isNotEmpty()) {
+        HolidayGate.nextLectureAfter(lectures, holidays, todayIso)
+    } else {
+        null
+    }
     val selectedDate = when (viewMode) {
         DayViewMode.TODAY -> time.toLocalDate()
         DayViewMode.TOMORROW -> time.toLocalDate().plusDays(1)
@@ -261,29 +273,49 @@ fun DayScreen(
                                 }
                             }
                         } else {
-                            // Animate Today ↔ Tomorrow the same way whether the day is a
-                            // holiday (hero cards) or a normal timetable, so switching tabs
-                            // never feels like a hard cut when the holiday card is showing.
+                            // Animate Today ↔ Tomorrow and holiday ↔ timetable with the same
+                            // premium motion so neither switch hard-cuts.
                             AnimatedContent(
-                                targetState = viewMode,
+                                targetState = DayContentKey(viewMode, holidayActive),
                                 transitionSpec = {
                                     if (reduced) {
                                         fadeIn(tween(Motion.Normal, easing = Motion.EasingStandard)) togetherWith
                                             fadeOut(tween(Motion.Fast, easing = Motion.EasingStandard))
-                                    } else {
+                                    } else if (initialState.mode != targetState.mode) {
                                         // Segmented-control motion: content slides toward the
                                         // direction of the newly selected tab.
-                                        val dir = if (targetState.ordinal >= initialState.ordinal) 1 else -1
+                                        val dir = if (targetState.mode.ordinal >= initialState.mode.ordinal) 1 else -1
                                         (slideInHorizontally(tween(Motion.Emphasized, easing = Motion.EasingEnter)) { dir * it / 12 } +
                                             fadeIn(tween(Motion.Emphasized, easing = Motion.EasingEnter))) togetherWith
                                             (slideOutHorizontally(tween(Motion.Normal, easing = Motion.EasingExit)) { -dir * it / 14 } +
                                                 fadeOut(tween(Motion.Normal, easing = Motion.EasingExit)))
+                                    } else {
+                                        // Holiday hero ↔ timetable reveal on the same day.
+                                        // Timetable rises in under a lifting holiday card (and the
+                                        // reverse when closing the override).
+                                        val revealingTimetable = initialState.showHoliday && !targetState.showHoliday
+                                        if (revealingTimetable) {
+                                            (slideInVertically(tween(Motion.Emphasized, easing = Motion.EasingEnter)) { it / 10 } +
+                                                fadeIn(tween(Motion.Emphasized, easing = Motion.EasingEnter)) +
+                                                scaleIn(tween(Motion.Emphasized, easing = Motion.EasingEnter), initialScale = 0.98f)) togetherWith
+                                                (slideOutVertically(tween(Motion.Normal, easing = Motion.EasingExit)) { -it / 12 } +
+                                                    fadeOut(tween(Motion.Normal, easing = Motion.EasingExit)) +
+                                                    scaleOut(tween(Motion.Normal, easing = Motion.EasingExit), targetScale = 0.98f))
+                                        } else {
+                                            (slideInVertically(tween(Motion.Emphasized, easing = Motion.EasingEnter)) { -it / 12 } +
+                                                fadeIn(tween(Motion.Emphasized, easing = Motion.EasingEnter)) +
+                                                scaleIn(tween(Motion.Emphasized, easing = Motion.EasingEnter), initialScale = 0.98f)) togetherWith
+                                                (slideOutVertically(tween(Motion.Normal, easing = Motion.EasingExit)) { it / 10 } +
+                                                    fadeOut(tween(Motion.Normal, easing = Motion.EasingExit)) +
+                                                    scaleOut(tween(Motion.Normal, easing = Motion.EasingExit), targetScale = 0.98f))
+                                        }
                                     }
                                 },
                                 label = "dayModeContent"
-                            ) { mode ->
+                            ) { key ->
+                                val mode = key.mode
                                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    if (mode == DayViewMode.TODAY && holidayActive) {
+                                    if (mode == DayViewMode.TODAY && key.showHoliday) {
                                         // Full holiday: the timeline itself steps aside for the
                                         // holiday notice and the next teaching day.
                                         PremiumHolidayHeroCard(
