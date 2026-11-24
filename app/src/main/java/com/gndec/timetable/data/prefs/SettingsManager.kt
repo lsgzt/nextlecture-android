@@ -99,6 +99,13 @@ data class AppSettings(
      * [weekendFollowDayIso]. 0 means unset.
      */
     val weekendFollowDow: Int = 0,
+    /**
+     * Group the student said they sit exams with ("Chemistry Group"), and the id of
+     * the date-sheet announcement the answer was given for. Every newly published
+     * date sheet asks again; a blank id means there is no answer for the sheet on.
+     */
+    val examGroupAnnouncementId: String = "",
+    val examGroupName: String = "",
     val lastReleaseMarker: String = "",
     val lastReleaseName: String = "",
     val lastReleaseNotes: String = "",
@@ -186,6 +193,8 @@ class SettingsManager(private val context: Context) {
         val HOLIDAY_TIMETABLE_OVERRIDE_DAY = stringPreferencesKey("holiday_timetable_override_day")
         val WEEKEND_FOLLOW_DAY_ISO = stringPreferencesKey("weekend_follow_day_iso")
         val WEEKEND_FOLLOW_DOW = intPreferencesKey("weekend_follow_dow")
+        val EXAM_GROUP_ANNOUNCEMENT_ID = stringPreferencesKey("exam_group_announcement_id")
+        val EXAM_GROUP_NAME = stringPreferencesKey("exam_group_name")
         val LAST_RELEASE_MARKER = stringPreferencesKey("last_release_marker")
         val LAST_RELEASE_NAME = stringPreferencesKey("last_release_name")
         val LAST_RELEASE_NOTES = stringPreferencesKey("last_release_notes")
@@ -255,6 +264,8 @@ class SettingsManager(private val context: Context) {
             holidayTimetableOverrideDay = p[K.HOLIDAY_TIMETABLE_OVERRIDE_DAY] ?: "",
             weekendFollowDayIso = p[K.WEEKEND_FOLLOW_DAY_ISO] ?: "",
             weekendFollowDow = (p[K.WEEKEND_FOLLOW_DOW] ?: 0).coerceIn(0, 7),
+            examGroupAnnouncementId = p[K.EXAM_GROUP_ANNOUNCEMENT_ID] ?: "",
+            examGroupName = p[K.EXAM_GROUP_NAME] ?: "",
             lastReleaseMarker = p[K.LAST_RELEASE_MARKER] ?: "",
             lastReleaseName = p[K.LAST_RELEASE_NAME] ?: "",
             lastReleaseNotes = p[K.LAST_RELEASE_NOTES] ?: "",
@@ -433,6 +444,12 @@ class SettingsManager(private val context: Context) {
             it[K.WEEKEND_FOLLOW_DAY_ISO] = dayIso
             it[K.WEEKEND_FOLLOW_DOW] = followDow
         }
+    }
+
+    /** Records which exam group the student sits with, for the date sheet published as [announcementId]. */
+    suspend fun setExamGroupChoice(announcementId: String, group: String) = context.dataStore.edit {
+        it[K.EXAM_GROUP_ANNOUNCEMENT_ID] = announcementId
+        it[K.EXAM_GROUP_NAME] = group.trim()
     }
 
     suspend fun setReleaseCache(marker: String, name: String, notes: String, checkedAt: Long) = context.dataStore.edit {

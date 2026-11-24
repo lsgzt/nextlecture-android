@@ -1128,13 +1128,13 @@ private fun PremiumPreviewRow(lecture: LectureEntity, onClick: () -> Unit, mento
 }
 
 @Composable
-fun PremiumOfflineCard(modifier: Modifier = Modifier) {
+fun PremiumOfflineCard(modifier: Modifier = Modifier, text: String = "Saved timetable and reminders stay available without internet.") {
     Row(modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(Icons.Default.CloudDone, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(23.dp))
         Spacer(Modifier.width(10.dp))
         Column {
             Text("Works offline", fontWeight = FontWeight.Bold)
-            Text("Saved timetable and reminders stay available without internet.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         }
     }
 }

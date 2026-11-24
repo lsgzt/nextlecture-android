@@ -1,6 +1,7 @@
 package com.gndec.timetable.domain
 
 import android.content.Context
+import com.gndec.timetable.data.db.AppDatabase
 import com.gndec.timetable.data.prefs.AppSettings
 import com.gndec.timetable.data.prefs.SettingsManager
 import com.gndec.timetable.net.Net
@@ -42,7 +43,14 @@ data class Announcement(
      */
     @SerialName("for")
     val target: String = "both",
-    val active: Boolean = true
+    val active: Boolean = true,
+    /**
+     * "on" puts every student this announcement reaches into exam mode: lecture
+     * reminders and the timetable pause, and [message] is read as the exam
+     * schedule (see [ExamScheduleParser]). Any other value is off.
+     */
+    @SerialName("exam_mode")
+    val examMode: String = "off"
 )
 
 @Serializable
@@ -53,7 +61,9 @@ data class AnnouncementFeed(
 
 class AnnouncementManager(
     private val context: Context,
-    private val settings: SettingsManager
+    private val settings: SettingsManager,
+    private val db: AppDatabase,
+    private val scheduler: AlarmScheduler
 ) {
     companion object {
         const val FEED_URL = "https://raw.githubusercontent.com/lsgzt/nextlecture-android/main/announcements.json"
@@ -66,7 +76,7 @@ class AnnouncementManager(
 
     suspend fun loadCached() = withContext(Dispatchers.IO) {
         val cached = settings.flow.first()
-        val restored = decode(cached.announcementsJson).ifEmpty { legacyAnnouncements(cached) }
+        val restored = decodeAnnouncements(cached.announcementsJson).ifEmpty { legacyAnnouncements(cached) }
         _announcements.value = restored.filter { it.isShowable() && it.matchesAudience(cached) }
     }
 
@@ -80,6 +90,7 @@ class AnnouncementManager(
      */
     suspend fun refreshAndNotify(): List<Announcement> = withContext(Dispatchers.IO) {
         val profile = settings.flow.first()
+        val examsWereOn = ExamGate.active(profile) != null
         val fetched: List<Announcement>? = try {
             val request = Request.Builder()
                 .url(FEED_URL)
@@ -120,12 +131,23 @@ class AnnouncementManager(
                 newestId = newest.id
             )
         }
+        // A date sheet switched on or off: the alarms armed for the lecture timetable
+        // must go, or the next two weeks of them must come back. The scheduler reads
+        // exam mode itself, so the same call settles both directions.
+        if ((ExamGate.activeAnnouncement(fetched) != null) != examsWereOn) {
+            profile.group?.let { group ->
+                scheduler.rescheduleAll(
+                    db = db,
+                    group = group,
+                    config = ReminderConfig.from(profile),
+                    holidays = HolidayGate.decode(profile.holidayJson),
+                    weekendFollowDayIso = profile.weekendFollowDayIso,
+                    weekendFollowDow = profile.weekendFollowDow
+                )
+            }
+        }
         fetched
     }
-
-    private fun decode(value: String): List<Announcement> =
-        runCatching { if (value.isBlank()) emptyList() else json.decodeFromString<List<Announcement>>(value) }
-            .getOrDefault(emptyList())
 
     /**
      * The single announcement cached by builds that only ever showed one. Read
@@ -155,6 +177,13 @@ class AnnouncementManager(
         )
     }
 }
+
+private val announcementJson = Json { ignoreUnknownKeys = true; isLenient = true }
+
+/** The cached Home feed as it was stored by [AnnouncementManager]; blank or damaged JSON reads as nothing. */
+internal fun decodeAnnouncements(value: String): List<Announcement> = runCatching {
+    if (value.isBlank()) emptyList() else announcementJson.decodeFromString<List<Announcement>>(value)
+}.getOrDefault(emptyList())
 
 /** Everything that has to hold before an announcement is worth showing at all. */
 private fun Announcement.isShowable(): Boolean =

@@ -98,13 +98,18 @@ import com.gndec.timetable.domain.FriendDay
 import com.gndec.timetable.domain.FriendEarlySlot
 import com.gndec.timetable.domain.FriendLateSlot
 import com.gndec.timetable.domain.earlySlotsBefore
+import com.gndec.timetable.domain.ExamGate
+import com.gndec.timetable.domain.ExamState
 import com.gndec.timetable.domain.lateSlotsAfter
 import com.gndec.timetable.domain.FriendFreeWindow
 import com.gndec.timetable.domain.HolidayGate
 import com.gndec.timetable.domain.ReminderConfig
 import com.gndec.timetable.domain.friendAvailabilitySentences
 import com.gndec.timetable.domain.friendsFreeWithin
+import com.gndec.timetable.ui.ExamGroupPickerDialog
 import com.gndec.timetable.ui.PremiumBottomBarContentClearance
+import com.gndec.timetable.ui.PremiumExamDayCard
+import com.gndec.timetable.ui.PremiumExamModeCard
 import com.gndec.timetable.ui.PremiumHolidayHeroCard
 import com.gndec.timetable.ui.PremiumHolidayOverrideStrip
 import com.gndec.timetable.ui.PremiumNextAfterHolidayCard
@@ -116,6 +121,9 @@ import com.gndec.timetable.ui.motion.hapticTick
 import com.gndec.timetable.ui.motion.motionSpring
 import com.gndec.timetable.ui.motion.motionTween
 import com.gndec.timetable.ui.motion.pressFeedback
+import com.gndec.timetable.ui.examDayClock
+import com.gndec.timetable.ui.examDayLabel
+import com.gndec.timetable.ui.nextExamLine
 import com.gndec.timetable.ui.theme.lectureTypeColors
 import com.gndec.timetable.util.Formatters
 import com.gndec.timetable.util.displayTeacher
@@ -127,6 +135,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAdjusters
@@ -224,6 +233,15 @@ fun DayScreen(
     val holidayNames = HolidayGate.displayNames(todayFullHolidays)
     val holidayOverride = settings.holidayTimetableOverrideDay == todayIso
     val holidayActive = todayFullHolidays.isNotEmpty() && !holidayOverride
+    // Exam mode: a date-sheet announcement that is on replaces the timetable in all
+    // three views with the student's exams. Read from the cached feed, as the alarms are.
+    val todayDate = time.toLocalDate()
+    val exam = remember(settings, todayDate) { ExamGate.resolve(settings, todayDate) }
+    var showExamGroupDialog by rememberSaveable { mutableStateOf(false) }
+    val pickExamGroup: (String) -> Unit = { picked ->
+        showExamGroupDialog = false
+        scope.launch { ExamGate.rememberGroup(container.settings, picked) }
+    }
     // Keep next-after-holiday available during the holiday↔timetable exit animation
     // (holidayActive flips before the outgoing content is fully gone).
     val nextAfterHoliday = if (todayFullHolidays.isNotEmpty()) {
@@ -283,8 +301,16 @@ fun DayScreen(
                     DayModeSelector(viewMode) { viewModeName = it.name }
                 }
                 item(key = "day-view-content") {
+                    // Exams outrank the other two kinds: whichever view is selected, a date
+                    // sheet that is on is what this tab shows. The selected view is part of
+                    // the key only there, where it is the outermost switch.
+                    val contentKind = when {
+                        exam != null -> "exams:${viewMode.name}"
+                        viewMode == DayViewMode.WEEK -> "week"
+                        else -> "day"
+                    }
                     AnimatedContent(
-                        targetState = viewMode == DayViewMode.WEEK,
+                        targetState = contentKind,
                         transitionSpec = {
                             if (reduced) {
                                 fadeIn(tween(Motion.Emphasized, easing = Motion.EasingStandard)) togetherWith
@@ -295,9 +321,21 @@ fun DayScreen(
                                     fadeOut(tween(Motion.Normal, easing = Motion.EasingExit))
                             }
                         },
-                        label = "weekModeContent"
-                    ) { isWeekMode ->
-                        if (isWeekMode) {
+                        label = "dayContentKind"
+                    ) { kind ->
+                        if (kind.startsWith("exams") && exam != null) {
+                            ExamViews(
+                                state = exam,
+                                // Read from the key, not from the live selection: the view that is
+                                // fading out must keep showing the mode it was composed for.
+                                mode = DayViewMode.valueOf(kind.removePrefix("exams:")),
+                                today = todayDate,
+                                nowMinutes = nowMinutes,
+                                weekStart = selectedDate,
+                                onPickGroup = pickExamGroup,
+                                onChangeGroup = { showExamGroupDialog = true }
+                            )
+                        } else if (kind == "week") {
                             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 WeekSummary(
                                     totalLectures = lectures.size,
@@ -491,6 +529,7 @@ fun DayScreen(
                         cardColor = MaterialTheme.colorScheme.secondaryContainer,
                         primaryText = primaryText,
                         muted = muted,
+                        title = if (exam != null) "Explore more exam days" else "Explore more timetable views",
                         onSelect = { viewModeName = it.name }
                     )
                 }
@@ -503,12 +542,21 @@ fun DayScreen(
                         Spacer(Modifier.width(8.dp))
                         // One compact status line (matches FacultyDetail source footer style).
                         // Prefer FET generation time when known; otherwise keep the offline cue.
-                        val status = meta?.generatedAtMillis?.let { generatedAt ->
+                        val status = if (exam != null) {
+                            "Exams are ongoing · lecture reminders are paused"
+                        } else meta?.generatedAtMillis?.let { generatedAt ->
                             "Using saved timetable · generated ${Formatters.dateTime(generatedAt)}"
                         } ?: "Using saved timetable · reminders work offline"
                         Text(status, color = muted, style = MaterialTheme.typography.bodySmall)
                     }
                 }
+            }
+            if (showExamGroupDialog && exam != null && !exam.needsGroupPick && exam.schedule.groups.size > 1) {
+                ExamGroupPickerDialog(
+                    groups = exam.schedule.groups,
+                    onPick = pickExamGroup,
+                    onDismiss = { showExamGroupDialog = false }
+                )
             }
             if (showWeekendDayPicker) {
                 WeekendFollowDayDialog(
@@ -561,10 +609,10 @@ private fun DayModeSelector(mode: DayViewMode, onSelect: (DayViewMode) -> Unit) 
 }
 
 @Composable
-private fun DayViewActionCard(mode: DayViewMode, cardColor: Color, primaryText: Color, muted: Color, onSelect: (DayViewMode) -> Unit) {
+private fun DayViewActionCard(mode: DayViewMode, cardColor: Color, primaryText: Color, muted: Color, onSelect: (DayViewMode) -> Unit, title: String = "Explore more timetable views") {
     Card(Modifier.fillMaxWidth().padding(horizontal = 20.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = cardColor), elevation = CardDefaults.cardElevation(0.dp)) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-            Text("Explore more timetable views", color = primaryText, fontWeight = FontWeight.Bold)
+            Text(title, color = primaryText, fontWeight = FontWeight.Bold)
             Text("Switch without leaving Today", color = muted, style = MaterialTheme.typography.bodySmall)
             Row(
                 Modifier.animateContentSize(motionTween(Motion.Normal)),
@@ -843,6 +891,89 @@ private fun WeekendFollowStrip(
         )
         TextButton(onClick = onClose, contentPadding = PaddingValues(horizontal = 10.dp)) {
             Text("Holiday?")
+        }
+    }
+}
+
+/**
+ * What this tab shows while a date sheet is on, whichever of the three views is
+ * selected: the notice that exams have taken the timetable's place, then that
+ * view's exams.
+ */
+@Composable
+private fun ExamViews(
+    state: ExamState,
+    mode: DayViewMode,
+    today: LocalDate,
+    nowMinutes: Int,
+    weekStart: LocalDate,
+    onPickGroup: (String) -> Unit,
+    onChangeGroup: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        PremiumExamModeCard(
+            state = state,
+            onPickGroup = onPickGroup,
+            onChangeGroup = onChangeGroup,
+            modifier = Modifier.padding(horizontal = 20.dp)
+        )
+        // Nothing to list until the group is picked on the card above, and a sheet the
+        // parser could not read is still on the Home tab as an ordinary notice.
+        if (state.readable && !state.needsGroupPick) {
+            val cardModifier = Modifier.padding(horizontal = 20.dp)
+            when (mode) {
+                DayViewMode.TODAY -> PremiumExamDayCard(
+                    exams = state.exams.filter { it.date == today },
+                    title = "Today · ${DateFormatter.format(today)}",
+                    nowMinutes = nowMinutes,
+                    emptyText = nextExamLine(today, state.exams, today, nowMinutes),
+                    modifier = cardModifier
+                )
+                DayViewMode.TOMORROW -> {
+                    val tomorrow = today.plusDays(1)
+                    PremiumExamDayCard(
+                        exams = state.exams.filter { it.date == tomorrow },
+                        title = "Tomorrow · ${DateFormatter.format(tomorrow)}",
+                        nowMinutes = examDayClock(tomorrow, today, nowMinutes),
+                        emptyText = nextExamLine(tomorrow, state.exams, today, nowMinutes),
+                        modifier = cardModifier
+                    )
+                }
+                DayViewMode.WEEK -> {
+                    val weekEnd = weekStart.plusDays(6)
+                    val weekExams = state.exams.filter { !it.date.isBefore(weekStart) && !it.date.isAfter(weekEnd) }
+                    if (weekExams.isEmpty()) {
+                        PremiumExamDayCard(
+                            exams = emptyList(),
+                            title = "Exams this week",
+                            nowMinutes = -1,
+                            emptyText = "No exam falls this week. ${nextExamLine(weekEnd, state.exams, today, nowMinutes)}",
+                            modifier = cardModifier
+                        )
+                    } else {
+                        Text(
+                            "${weekExams.size} exam${if (weekExams.size == 1) "" else "s"} this week",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.padding(horizontal = 24.dp)
+                        )
+                        // One card per day that has an exam, so a one-exam week is one card, not seven.
+                        weekExams.map { it.date }.distinct().forEach { date ->
+                            // "Today · 24 November", "Tomorrow · 25 November", else the weekday's name.
+                            val day = examDayLabel(date, today)
+                            val named = if (day == "Today" || day == "Tomorrow") day else dayOfWeekLabel(date.dayOfWeek.value)
+                            PremiumExamDayCard(
+                                exams = weekExams.filter { it.date == date },
+                                title = "$named · ${DateFormatter.format(date)}",
+                                // Today's rows say which exam is on now; an earlier day is all over.
+                                nowMinutes = examDayClock(date, today, nowMinutes),
+                                emptyText = "",
+                                modifier = cardModifier
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }

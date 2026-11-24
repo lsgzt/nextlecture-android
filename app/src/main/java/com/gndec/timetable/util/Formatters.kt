@@ -49,6 +49,20 @@ object Formatters {
         else -> "$minutes min"
     }
 
+    /** Countdown for waits that can run past a day: "2 days 3 hr", "5 hr 40 min", "25 min". */
+    fun longCountdown(minutes: Int): String {
+        val total = minutes.coerceAtLeast(0)
+        val days = total / 1440
+        val hours = total % 1440 / 60
+        val mins = total % 60
+        return when {
+            days > 0 -> listOfNotNull("$days day${if (days == 1) "" else "s"}", if (hours > 0) "$hours hr" else null)
+                .joinToString(" ")
+            hours > 0 -> "$hours hr $mins min"
+            else -> "$mins min"
+        }
+    }
+
     fun dateTime(millis: Long): String =
         SimpleDateFormat("EEE, d MMM, h:mm a", Locale.getDefault()).format(Date(millis))
 

@@ -8,7 +8,9 @@ import com.gndec.timetable.data.db.AppDatabase
 import com.gndec.timetable.data.db.LectureEntity
 import com.gndec.timetable.data.db.ScheduledAlarmEntity
 import com.gndec.timetable.data.prefs.AppSettings
+import com.gndec.timetable.data.prefs.SettingsManager
 import com.gndec.timetable.receiver.LectureAlarmReceiver
+import kotlinx.coroutines.flow.first
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
@@ -57,6 +59,8 @@ class AlarmScheduler(private val context: Context) {
      * Cancel every recorded alarm, clear records, then schedule upcoming lectures and gaps.
      * [holidays] is the cached official holiday list: reminders for full holidays are
      * not scheduled at all, because no class runs on those days.
+     *
+     * While an exam-mode announcement is on this only clears: see [scheduleUpcoming].
      */
     suspend fun rescheduleAll(
         db: AppDatabase,
@@ -77,6 +81,9 @@ class AlarmScheduler(private val context: Context) {
      * skipping full-holiday dates ([holidays] comes from the cached official list).
      * When [weekendFollowDayIso] matches a calendar day and [weekendFollowDow] is set,
      * that day's reminders use the followed weekday's lectures (college working Saturday).
+     *
+     * Exam mode is checked here rather than passed in by every caller, so no path can
+     * arm a lecture reminder while a date-sheet announcement is on.
      */
     suspend fun scheduleUpcoming(
         db: AppDatabase,
@@ -86,6 +93,7 @@ class AlarmScheduler(private val context: Context) {
         weekendFollowDayIso: String = "",
         weekendFollowDow: Int = 0
     ) {
+        if (ExamGate.isActive(SettingsManager(context).flow.first())) return
         val lectures = db.lectureDao().getForGroup(group)
         val zone = ZoneId.systemDefault()
         val today = LocalDate.now(zone)

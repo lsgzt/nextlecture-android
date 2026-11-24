@@ -41,4 +41,15 @@ class FormattersTest {
         assertEquals("1 hr 5 min", Formatters.countdown(65))
         assertEquals("2 hr 0 min", Formatters.countdown(120))
     }
+
+    @Test
+    fun longCountdownFormatting() {
+        assertEquals("25 min", Formatters.longCountdown(25))
+        assertEquals("1 hr 0 min", Formatters.longCountdown(60))
+        assertEquals("5 hr 40 min", Formatters.longCountdown(5 * 60 + 40))
+        assertEquals("1 day", Formatters.longCountdown(1440))
+        assertEquals("1 day 3 hr", Formatters.longCountdown(1440 + 180))
+        assertEquals("2 days 3 hr", Formatters.longCountdown(2 * 1440 + 195))
+        assertEquals("0 min", Formatters.longCountdown(-4))
+    }
 }

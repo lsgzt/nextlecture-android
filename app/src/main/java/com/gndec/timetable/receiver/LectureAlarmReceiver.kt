@@ -4,8 +4,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationManagerCompat
+import com.gndec.timetable.data.prefs.AppSettings
 import com.gndec.timetable.data.prefs.SettingsManager
 import com.gndec.timetable.domain.AlarmScheduler
+import com.gndec.timetable.domain.ExamGate
 import com.gndec.timetable.domain.HolidayGate
 import com.gndec.timetable.domain.NotificationHelper
 import kotlinx.coroutines.CoroutineScope
@@ -29,15 +31,17 @@ class LectureAlarmReceiver : BroadcastReceiver() {
             return
         }
 
-        // Reminders are armed up to 14 days ahead, while the holiday list can refresh
-        // any time after that (a newly published list, or one cached before the
-        // reminder was scheduled). Re-check the cached list at fire time so a full
-        // holiday stays silent no matter when it became known. The read is a tiny
-        // local file, so goAsync's ten-second window is far more than enough.
+        // Reminders are armed up to 14 days ahead, while the holiday list and the
+        // announcement feed can refresh any time after that. Re-check both at fire
+        // time so a full holiday or a switched-on date sheet stays silent no matter
+        // when it became known. The read is a tiny local file, so goAsync's
+        // ten-second window is far more than enough.
         val pending = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
-                if (!suppressForHoliday(context, intent)) {
+                val settings = SettingsManager(context).flow.first()
+                // Exam mode pauses the timetable: neither lecture nor free-period reminders fire.
+                if (!suppressForHoliday(settings, intent) && !ExamGate.isActive(settings)) {
                     fireReminder(context, intent)
                 }
             } finally {
@@ -47,12 +51,11 @@ class LectureAlarmReceiver : BroadcastReceiver() {
     }
 
     /** True when this alarm points at a full holiday and must not notify. */
-    private suspend fun suppressForHoliday(context: Context, intent: Intent): Boolean {
+    private fun suppressForHoliday(settings: AppSettings, intent: Intent): Boolean {
         val epochDay = intent.getLongExtra(EXTRA_EPOCH_DAY, -1L)
         if (epochDay < 0L) return false
         val date = LocalDate.ofEpochDay(epochDay)
-        val holidayJson = SettingsManager(context).flow.first().holidayJson
-        return HolidayGate.isFullHolidayOn(HolidayGate.decode(holidayJson), date.toString())
+        return HolidayGate.isFullHolidayOn(HolidayGate.decode(settings.holidayJson), date.toString())
     }
 
     private fun fireReminder(context: Context, intent: Intent) {

@@ -2,6 +2,8 @@ package com.gndec.timetable.ui.home
 
 import com.gndec.timetable.data.db.LectureEntity
 import com.gndec.timetable.domain.AppContainer
+import com.gndec.timetable.domain.ExamGate
+import com.gndec.timetable.domain.ExamState
 import com.gndec.timetable.domain.Holiday
 import com.gndec.timetable.domain.HolidayGate
 import com.gndec.timetable.domain.NextLectureEngine
@@ -48,7 +50,12 @@ data class HomeUiState(
     val upcomingToday: List<LectureEntity> = emptyList(),
     val todayLectures: List<LectureEntity> = emptyList(),
     val freeGapMinutes: Int? = null,
-    val stale: Boolean = false
+    val stale: Boolean = false,
+    /**
+     * The date sheet that is on, read for this student. Null while exams are off;
+     * the home page puts its exam in the big card instead of the next lecture.
+     */
+    val exam: ExamState? = null
 )
 
 class HomeViewModel(private val c: AppContainer) {
@@ -96,7 +103,9 @@ class HomeViewModel(private val c: AppContainer) {
                 upcomingToday = todayLectures.filter { it.startMinutes > nowMin },
                 todayLectures = todayLectures,
                 freeGapMinutes = NextLectureEngine.freeGapMinutes(lectures, dow, nowMin),
-                stale = Formatters.isStale(m?.lastSuccessfulFetch, now)
+                stale = Formatters.isStale(m?.lastSuccessfulFetch, now),
+                // Read from the cached feed, so the home page agrees with the alarms online or not.
+                exam = ExamGate.resolve(s, zdt.toLocalDate())
             )
         }.stateIn(scope, SharingStarted.WhileSubscribed(5000), HomeUiState())
 
@@ -124,6 +133,11 @@ class HomeViewModel(private val c: AppContainer) {
         else -> base
     }
 
+    /**
+     * Pull-to-refresh. Besides the timetable it fetches the announcement feed,
+     * so a date sheet published since the last background run reaches the home
+     * page (and pauses the reminders) as soon as the student pulls.
+     */
     fun fetchAgain() {
         if (_fetchState.value == FetchState.Running) return
         scope.launch {
@@ -134,6 +148,8 @@ class HomeViewModel(private val c: AppContainer) {
                 is RefreshResult.Failed -> FetchState.Failed(r.reason)
             }
         }
+        // Its own launch: a feed problem must not turn an otherwise good refresh into a failure.
+        scope.launch { runCatching { c.announcementManager.refreshAndNotify() } }
     }
 
     fun clearFetchState() { _fetchState.value = FetchState.Idle }

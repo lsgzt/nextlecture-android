@@ -34,8 +34,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,12 +51,16 @@ import kotlinx.coroutines.launch
 import com.gndec.timetable.data.db.LectureEntity
 import com.gndec.timetable.domain.AppContainer
 import com.gndec.timetable.domain.ErpNoticeManager
+import com.gndec.timetable.domain.ExamGate
+import com.gndec.timetable.domain.ExamTimeline
 import com.gndec.timetable.domain.HolidayGate
 import com.gndec.timetable.domain.NextLectureEngine
 import com.gndec.timetable.ui.motion.Motion
 import com.gndec.timetable.ui.motion.itemEntrance
 import com.gndec.timetable.ui.motion.motionTween
 import com.gndec.timetable.ui.PremiumAnnouncementCard
+import com.gndec.timetable.ui.ExamGroupPickerDialog
+import com.gndec.timetable.ui.PremiumExamHeroCard
 import com.gndec.timetable.ui.attendance.AttendanceHomeSummary
 import com.gndec.timetable.ui.attendance.rememberAttendanceHomeState
 import com.gndec.timetable.ui.attendance.subjectAttendance
@@ -71,6 +77,7 @@ import com.gndec.timetable.ui.PremiumNextLectureCard
 import com.gndec.timetable.ui.PremiumOfflineCard
 import com.gndec.timetable.ui.PremiumScreenBackground
 import com.gndec.timetable.ui.PremiumTodayPreview
+import com.gndec.timetable.ui.PremiumUpcomingExamsCard
 import com.gndec.timetable.ui.isBannerEligibleOn
 import com.gndec.timetable.ui.theme.GndecOrange
 import com.gndec.timetable.util.Formatters
@@ -169,6 +176,37 @@ fun HomeScreen(
     val closeHolidayOverride: () -> Unit = {
         scope.launch { container.settings.setHolidayTimetableOverrideDay("") }
     }
+    // Exam mode: a date-sheet announcement that is on takes the big card away from
+    // the next lecture, and its own notice card is not repeated further down.
+    val exam = state.exam
+    val todayDate = Instant.ofEpochMilli(state.nowMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+    val examView = remember(exam?.exams, state.nowMillis) { exam?.let { ExamTimeline.compute(it.exams, state.nowMillis) } }
+    // Only a sheet the exam cards show in full is left out of the feed below. One the
+    // parser could not read, or read only in part, stays as an ordinary notice, so no
+    // exam is lost.
+    val shownAnnouncements =
+        if (exam != null && exam.readable && !exam.partial) announcements.filterNot { ExamGate.isOn(it.examMode) } else announcements
+    // Every newly published date sheet asks for the group once per launch until it is
+    // answered; "Change" on the big card opens the same dialog for a group already known.
+    var examGroupPromptSeenFor by rememberSaveable { mutableStateOf("") }
+    var showExamGroupDialog by rememberSaveable { mutableStateOf(false) }
+    val pickExamGroup: (String) -> Unit = { group ->
+        showExamGroupDialog = false
+        examGroupPromptSeenFor = exam?.announcement?.id ?: ""
+        scope.launch { ExamGate.rememberGroup(container.settings, group) }
+    }
+    if (exam != null && exam.schedule.groups.size > 1 &&
+        (showExamGroupDialog || (exam.needsGroupPick && examGroupPromptSeenFor != exam.announcement.id))
+    ) {
+        ExamGroupPickerDialog(
+            groups = exam.schedule.groups,
+            onPick = pickExamGroup,
+            onDismiss = {
+                showExamGroupDialog = false
+                examGroupPromptSeenFor = exam.announcement.id
+            }
+        )
+    }
     val erpBannerNotices = erpNotices
         .filter { it.isBannerEligibleOn(todayIso) }
         .sortedWith(
@@ -181,8 +219,9 @@ fun HomeScreen(
         .take(MAX_HOME_NOTICE_BANNERS)
     // On a full holiday the large hero already covers "today is a holiday" — keep
     // official ERP notices in the top carousel and only drop the redundant today-holiday banner.
+    // While exams are on the hero shows an exam instead, so that banner is kept.
     val homeBanners = (
-        if (holidayActive) holidayBanners.filterNot { it.id.startsWith("holiday-today") }
+        if (holidayActive && exam == null) holidayBanners.filterNot { it.id.startsWith("holiday-today") }
         else holidayBanners
     ) + erpBannerNotices.map { it.toHomeBannerItem() }
 
@@ -269,7 +308,8 @@ fun HomeScreen(
                             )
                         }
                     }
-                    if (todayFullHolidays.isNotEmpty() && holidayOverride) {
+                    // The strip leads back to the timetable, which exam mode has stepped aside.
+                    if (todayFullHolidays.isNotEmpty() && holidayOverride && exam == null) {
                         item(key = "holiday-override-strip") {
                             PremiumHolidayOverrideStrip(
                                 onClose = closeHolidayOverride,
@@ -277,7 +317,43 @@ fun HomeScreen(
                             )
                         }
                     }
-                    if (holidayActive) {
+                    if (exam != null) {
+                        item(key = "exam-hero") {
+                            val examIn = motionTween<Float>(Motion.Emphasized)
+                            val examOut = motionTween<Float>(Motion.Fast)
+                            // The slot is keyed to the exam in it, so handing the big card to the
+                            // next exam animates, while the minute tick that updates the countdown does not.
+                            val slotted = examView?.featured?.let { "${it.exam.date}|${it.exam.startMinutes}" }
+                            AnimatedContent(
+                                targetState = slotted,
+                                modifier = androidx.compose.ui.Modifier.fillMaxWidth().animateItem().itemEntrance(3),
+                                transitionSpec = { fadeIn(examIn) togetherWith fadeOut(examOut) },
+                                label = "examHero"
+                            ) { _ ->
+                                PremiumExamHeroCard(
+                                    state = exam,
+                                    view = examView ?: ExamTimeline.compute(exam.exams, state.nowMillis),
+                                    today = todayDate,
+                                    onOpenSchedule = onOpenToday,
+                                    onPickGroup = pickExamGroup,
+                                    onChangeGroup = { showExamGroupDialog = true },
+                                    modifier = androidx.compose.ui.Modifier.padding(horizontal = 20.dp)
+                                )
+                            }
+                        }
+                        // What is still to come, under the big card. Nothing is listed while
+                        // the card is asking for the group, or once the schedule has run out.
+                        val upcomingExams = examView?.upcoming.orEmpty()
+                        if (!exam.needsGroupPick && upcomingExams.isNotEmpty()) {
+                            item(key = "upcoming-exams") {
+                                PremiumUpcomingExamsCard(
+                                    upcoming = upcomingExams,
+                                    today = todayDate,
+                                    modifier = androidx.compose.ui.Modifier.fillMaxWidth().padding(horizontal = 20.dp).itemEntrance(3).animateItem()
+                                )
+                            }
+                        }
+                    } else if (holidayActive) {
                         item(key = "holiday-hero") {
                             PremiumHolidayHeroCard(
                                 holidayNames = holidayNames,
@@ -371,8 +447,10 @@ fun HomeScreen(
                             PremiumDailyQuote(current, androidx.compose.ui.Modifier.itemEntrance(4).animateItem())
                         }
                     }
-                    // Every eligible announcement, newest first, stacked in feed order.
-                    announcements.forEachIndexed { index, current ->
+                    // Every eligible announcement, newest first, stacked in feed order. Notices from
+                    // the college and every other announcement stay; only a date sheet that is
+                    // already shown as exam cards above is left out.
+                    shownAnnouncements.forEachIndexed { index, current ->
                         item(key = "announcement-${current.id}") {
                             PremiumAnnouncementCard(
                                 announcement = current,
@@ -388,7 +466,7 @@ fun HomeScreen(
                             AttendanceHomeSummary(state = attendanceState, onClick = onOpenAttendance)
                         }
                     }
-                    if (!holidayActive) {
+                    if (!holidayActive && exam == null) {
                         item(key = "today-preview") {
                             Box(androidx.compose.ui.Modifier.itemEntrance(6).animateItem()) {
                                 PremiumTodayPreview(
@@ -402,7 +480,11 @@ fun HomeScreen(
                         }
                     }
                     item(key = "offline") {
-                        PremiumOfflineCard(androidx.compose.ui.Modifier.itemEntrance(7).padding(horizontal = 20.dp).animateItem())
+                        PremiumOfflineCard(
+                            androidx.compose.ui.Modifier.itemEntrance(7).padding(horizontal = 20.dp).animateItem(),
+                            text = if (exam != null) "Your exam schedule stays available without internet."
+                            else "Saved timetable and reminders stay available without internet."
+                        )
                     }
                 }
             }
